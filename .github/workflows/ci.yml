@@ -102,7 +102,7 @@ jobs:
             $release = Invoke-RestMethod -Uri $apiUrl
             
             # Find the x86_64 POSIX SEH release asset
-            $asset = $release.assets | Where-Object { $_.name -like "*x86_64*posix*seh*" -and $_.name -like "*.7z" } | Select-Object -First 1
+            $asset = $release.assets | Where-Object { $_.name -like "*x86_64*posix-seh-ucrt*" -and $_.name -like "*.7z" } | Select-Object -First 1
             Write-Host "Downloading MinGW from: $($asset.browser_download_url)"
             
             # Download the asset
@@ -220,6 +220,7 @@ jobs:
         run: |
           mkdir -p ${ANDROID_HOME}/ndk
           cd ${ANDROID_HOME}/ndk
+          echo "ANDROID_API=35" >> $GITHUB_ENV
           curl -O https://dl.google.com/android/repository/android-ndk-r28b-linux.zip
           unzip -q android-ndk-r28b-linux.zip
           echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/android-ndk-r28b" >> $GITHUB_ENV
