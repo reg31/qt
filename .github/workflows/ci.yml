@@ -135,10 +135,11 @@ jobs:
           mingw32-make --version
 
       - name: Initialize Qt submodules
-        shell: cmd
         run: |
-          set PATH=C:\mingw64\bin;%PATH%
-          perl init-repository.bat --module-subset=qtbase,qtdeclarative,qtmultimedia
+          $env:Path = "C:/mingw64/bin;" + $env:Path
+          $env:PERL5SHELL = "cmd.exe /c"
+          # Use perl directly with relative path
+          perl ./init-repository --module-subset=qtbase,qtdeclarative,qtmultimedia
 
       - name: Configure and build Qt
         shell: cmd
