@@ -170,9 +170,8 @@ jobs:
           mingw32-make install
           
       - name: Package artifacts
-        shell: cmd
         run: |
-          $OUTPUT_DIR = "qt5-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}"
+          OUTPUT_DIR = "qt5-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}"
           
           # Use the install directory directly
           Rename-Item -Path "build\install" -NewName $OUTPUT_DIR
