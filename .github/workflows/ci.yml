@@ -120,50 +120,39 @@ jobs:
           mingw32-make --version
 
       - name: Initialize Qt submodules
+        shell: cmd
         run: |
-          # Fix for Windows path issues with perl scripts
-          $env:Path = "C:/mingw64/bin;" + $env:Path
-          $env:PERL5SHELL = "cmd.exe /c"
-          
-          # Use perl directly with relative path
-          perl ./init-repository --module-subset=qtbase,qtdeclarative,qtmultimedia
+          set PATH=C:\mingw64\bin;%PATH%
+          perl init-repository --module-subset=qtbase,qtdeclarative,qtmultimedia
 
       - name: Configure and build Qt
+        shell: cmd
         run: |
           mkdir build
           cd build
           
-          $env:Path = "C:/mingw64/bin;" + $env:Path
+          set PATH=C:\mingw64\bin;%PATH%
           
-          $config_options = @(
-            "-static",
-            "-ltcg",
-            "-qt-zlib",
-            "-qt-libjpeg", 
-            "-qt-libpng", 
-            "-qt-freetype", 
-            "-qt-pcre", 
-            "-qt-harfbuzz",
-            "-schannel",
-            "-no-feature-testlib",
-            "-platform", "win32-g++",
-            "-prefix", "$pwd/install"
-          )
+          set CFLAGS=-O3 -s
+          set CXXFLAGS=-O3 -s
           
-          if ("${{ matrix.build_type }}" -eq "debug") {
-            $config_options += "-debug"
-          } else {
-            $config_options += "-release"
-          }
+          ..\configure.bat -static ^
+          -ltcg ^
+          -qt-zlib ^
+          -qt-libjpeg ^
+          -qt-libpng ^
+          -qt-freetype ^
+          -no-pcre ^
+          -no-harfbuzz ^
+          -schannel ^
+		  -reduce-exports ^
+          -no-feature-testlib ^
+          -platform win32-g++ ^
+          -prefix %CD%\install ^
+          -submodules qtbase,qtdeclarative,qtmultimedia ^
+          ${{ matrix.build_type == 'debug' && '-debug' || '-release' }}
           
-          $env:CMAKE_PREFIX_PATH = $env:CMAKE_PREFIX_PATH
-          $env:QT_BUILD_EXAMPLES_BY_DEFAULT = "OFF"
-          $env:QT_BUILD_TESTS_BY_DEFAULT = "OFF"
-          $env:QT_BUILD_TOOLS_BY_DEFAULT = "OFF"
-          
-          ..\configure.bat -submodules qtbase,qtdeclarative,qtmultimedia $config_options
-          
-          mingw32-make -j (Get-CpuCount)
+          mingw32-make -j %NUMBER_OF_PROCESSORS%
           mingw32-make install
           
       - name: Package artifacts
@@ -224,15 +213,16 @@ jobs:
       
       - name: Initialize Qt submodules
         run: |
-          perl init-repository --module-subset=qtbase,qtdeclarative,qtmultimedia
+          perl init-repository --module-subset=qtbase,qtdeclarative
       
       - name: Build host Qt for cross-compilation
         run: |
           mkdir -p host-qt
           cd host-qt
           
-          ../configure -prefix $PWD/install -submodules qtbase,qtdeclarative,qtmultimedia \
-            -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -qt-harfbuzz
+          ../configure -prefix $PWD/install -submodules qtbase,qtdeclarative \
+            -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -no-pcre -no-harfbuzz -reduce-exports \
+			CFLAGS="-O3" CXXFLAGS="-O3"
           
           cmake --build . --parallel $(nproc)
           cmake --install .
@@ -246,7 +236,7 @@ jobs:
           
           INSTALL_PATH=$PWD/install
           
-          CONFIG_OPTIONS="-static -ltcg -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -qt-harfbuzz -openssl-runtime -android-ndk ${ANDROID_NDK_HOME} -android-sdk ${ANDROID_HOME} -android-arch ${{ matrix.arch }} -prefix ${INSTALL_PATH} -qt-host-path ${QT_HOST_PATH}"
+          CONFIG_OPTIONS="-static -ltcg -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -no-pcre -no-harfbuzz -reduce-exports -openssl-runtime -android-ndk ${ANDROID_NDK_HOME} -android-sdk ${ANDROID_HOME} -android-arch ${{ matrix.arch }} -prefix ${INSTALL_PATH} -qt-host-path ${QT_HOST_PATH}"
           
           if [ "${{ matrix.build_type }}" = "debug" ]; then
             CONFIG_OPTIONS="$CONFIG_OPTIONS -debug"
@@ -258,8 +248,15 @@ jobs:
           export QT_BUILD_EXAMPLES_BY_DEFAULT=OFF
           export QT_BUILD_TESTS_BY_DEFAULT=OFF
           export QT_BUILD_TOOLS_BY_DEFAULT=OFF
+          export CFLAGS="-O3"
+          export CXXFLAGS="-O3"
           
-          ../configure -platform android-clang -xplatform android-clang -submodules qtbase,qtdeclarative,qtmultimedia $CONFIG_OPTIONS
+          ../configure -platform android-clang -xplatform android-clang -submodules qtbase,qtdeclarative \
+			  -static -ltcg -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -no-pcre -no-harfbuzz -reduce-exports \
+			  -openssl-runtime -android-ndk ${ANDROID_NDK_HOME} -android-sdk ${ANDROID_HOME} \
+			  -android-arch ${{ matrix.arch }} -prefix ${INSTALL_PATH} -qt-host-path ${QT_HOST_PATH} \
+			  ${{ matrix.build_type == 'debug' && '-debug' || '-release' }} \
+			  -DCMAKE_C_FLAGS="-O3 -s" -DCMAKE_CXX_FLAGS="-O3 -s"
           
           cmake --build . --parallel $(nproc)
           cmake --install .
@@ -310,7 +307,7 @@ jobs:
           
           INSTALL_PATH=$PWD/install
           
-          CONFIG_OPTIONS="-static -ltcg -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -qt-harfbuzz -securetransport -prefix ${INSTALL_PATH}"
+          CONFIG_OPTIONS="-static -ltcg -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -no-pcre -no-harfbuzz -securetransport -reduce-exports -prefix ${INSTALL_PATH}"
           
           if [ "${{ matrix.build_type }}" = "debug" ]; then
             CONFIG_OPTIONS="$CONFIG_OPTIONS -debug"
@@ -322,6 +319,8 @@ jobs:
           export QT_BUILD_EXAMPLES_BY_DEFAULT=OFF
           export QT_BUILD_TESTS_BY_DEFAULT=OFF
           export QT_BUILD_TOOLS_BY_DEFAULT=OFF
+          export CFLAGS="-O3"
+          export CXXFLAGS="-O3"
           
           ../configure -platform macx-clang -submodules qtbase,qtdeclarative,qtmultimedia $CONFIG_OPTIONS
           
@@ -360,15 +359,15 @@ jobs:
       
       - name: Initialize Qt submodules
         run: |
-          perl init-repository --module-subset=qtbase,qtdeclarative,qtmultimedia
+          perl init-repository --module-subset=qtbase,qtdeclarative
       
       - name: Build host Qt for cross-compilation
         run: |
           mkdir -p host-qt
           cd host-qt
           
-          ../configure -prefix $PWD/install -submodules qtbase,qtdeclarative,qtmultimedia \
-            -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -qt-harfbuzz
+          CFLAGS="-O3" CXXFLAGS="-O3" ../configure -prefix $PWD/install -submodules qtbase,qtdeclarative \
+            -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -no-pcre -no-harfbuzz -reduce-exports
           
           cmake --build . --parallel $(sysctl -n hw.ncpu)
           cmake --install .
@@ -382,7 +381,7 @@ jobs:
           
           INSTALL_PATH=$PWD/install
           
-          CONFIG_OPTIONS="-static -ltcg -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -qt-harfbuzz -securetransport -prefix ${INSTALL_PATH} -qt-host-path ${QT_HOST_PATH}"
+          CONFIG_OPTIONS="-static -ltcg -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -no-pcre -no-harfbuzz -securetransport -reduce-exports -prefix ${INSTALL_PATH} -qt-host-path ${QT_HOST_PATH}"
           
           if [ "${{ matrix.build_type }}" = "debug" ]; then
             CONFIG_OPTIONS="$CONFIG_OPTIONS -debug"
@@ -394,8 +393,10 @@ jobs:
           export QT_BUILD_EXAMPLES_BY_DEFAULT=OFF
           export QT_BUILD_TESTS_BY_DEFAULT=OFF
           export QT_BUILD_TOOLS_BY_DEFAULT=OFF
+          export CFLAGS="-O3"
+          export CXXFLAGS="-O3"
           
-          ../configure -platform macx-ios-clang -submodules qtbase,qtdeclarative,qtmultimedia $CONFIG_OPTIONS
+          ../configure -platform macx-ios-clang -submodules qtbase,qtdeclarative $CONFIG_OPTIONS
           
           cmake --build . --parallel $(sysctl -n hw.ncpu)
           cmake --install .
@@ -434,15 +435,12 @@ jobs:
             Automated build of Qt5 ${{ needs.setup.outputs.qt_version }}
             
             This build includes binaries for:
-            - Windows (x64)
-            - Android (armeabi-v7a, arm64-v8a)
-            - iOS
-            - macOS
+            - Windows (x64) with qtbase, qtdeclarative, qtmultimedia
+            - Android (armeabi-v7a, arm64-v8a) with qtbase, qtdeclarative
+            - iOS with qtbase, qtdeclarative
+            - macOS with qtbase, qtdeclarative, qtmultimedia
             
-            Build includes only the following modules:
-            - qtbase
-            - qtdeclarative
-            - qtmultimedia
+            All builds compiled with -O3 optimization level.
             
             **Note:** This snapshot may be overwritten by newer builds.
           files: |
