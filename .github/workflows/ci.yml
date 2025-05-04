@@ -15,7 +15,7 @@ on:
       skip_macos_ios:
         description: 'Skip macOS and iOS builds'
         required: false
-        default: true
+        default: false
         type: boolean
   #schedule:
     #- cron: '0 0 * * 1,5'
@@ -184,114 +184,117 @@ jobs:
           path: qt5-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}.zip
 
   build-android:
-    needs: setup
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        build_type: [release, debug]
-        arch: [arm64-v8a, armeabi-v7a]
-        include:
-          - build_type: release
-            is_release: true
-          - build_type: debug
-            is_debug: true
-    steps:
-      - name: Checkout Qt5
-        uses: actions/checkout@v4
-        with:
-          repository: qt/qt5
-          ref: ${{ needs.setup.outputs.qt_branch }}
-          fetch-depth: 0
-          submodules: false
-      
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '24'
-      
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential git perl make curl ninja-build cmake libgl1-mesa-dev
-          pip3 install setuptools wheel
-      
-      - name: Download NDK
-        run: |
-          mkdir -p ${ANDROID_HOME}/ndk
-          cd ${ANDROID_HOME}/ndk
-          echo "ANDROID_API=35" >> $GITHUB_ENV
-          curl -O https://dl.google.com/android/repository/android-ndk-r28b-linux.zip
-          unzip -q android-ndk-r28b-linux.zip
-          echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/android-ndk-r28b" >> $GITHUB_ENV
-      
-      - name: Initialize Qt submodules
-        run: |
-          perl init-repository --module-subset=qtbase,qtdeclarative
-      
-      - name: Build host Qt for cross-compilation
-        run: |
-          mkdir -p host-qt
-          cd host-qt
-          
-          ../configure -prefix $PWD/install -submodules qtbase,qtdeclarative \
-            -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports \
-            CFLAGS="-O3" CXXFLAGS="-O3"
-          
-          cmake --build . --parallel $(nproc)
-          cmake --install .
-          
-          echo "QT_HOST_PATH=$PWD/install" >> $GITHUB_ENV
-      
-      - name: Configure and build for Android
-        run: |
-          mkdir -p build
-          cd build
-          
-          INSTALL_PATH=$PWD/install
-          
-          CONFIG_OPTIONS="-static -ltcg -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports -openssl-runtime -android-ndk ${ANDROID_NDK_HOME} -android-sdk ${ANDROID_HOME} -android-arch ${{ matrix.arch }} -prefix ${INSTALL_PATH} -qt-host-path ${QT_HOST_PATH}"
-          
-          if [ "${{ matrix.build_type }}" = "debug" ]; then
-            CONFIG_OPTIONS="$CONFIG_OPTIONS -debug"
-          else
-            CONFIG_OPTIONS="$CONFIG_OPTIONS -release"
-          fi
-          
-          export CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH
-          export QT_BUILD_EXAMPLES_BY_DEFAULT=OFF
-          export QT_BUILD_TESTS_BY_DEFAULT=OFF
-          export QT_BUILD_TOOLS_BY_DEFAULT=OFF
-          export CFLAGS="-O3"
-          export CXXFLAGS="-O3"
-          
-          ../configure -platform android-clang -xplatform android-clang -submodules qtbase,qtdeclarative \
-              -static -ltcg -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports \
-              -openssl-runtime -android-ndk ${ANDROID_NDK_HOME} -android-sdk ${ANDROID_HOME} \
-              -android-arch ${{ matrix.arch }} -prefix ${QT_INSTALL_DIR} -qt-host-path ${QT_HOST_PATH} \
-              ${{ matrix.build_type == 'debug' && '-debug' || '-release' }} \
-              -DCMAKE_C_FLAGS="-O3 -s" -DCMAKE_CXX_FLAGS="-O3 -s"
-          
-          cmake --build . --parallel $(nproc)
-          cmake --install .
-          
-      - name: Package artifacts
-        run: |
-          OUTPUT_DIR="qt5-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}"
-          
-          # Use QT_INSTALL_DIR set by CMake
-          echo "Using QT_INSTALL_DIR: $QT_INSTALL_DIR"
-          
-          # Copy the installed Qt files to the output directory
-          cp -r "${QT_INSTALL_DIR}" "${OUTPUT_DIR}"
-          
-          zip -r ${OUTPUT_DIR}.zip ${OUTPUT_DIR}
-          
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: qt5-android-${{ matrix.arch }}-${{ matrix.build_type }}
-          path: qt5-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}.zip
+  needs: setup
+  runs-on: ubuntu-latest
+  strategy:
+    matrix:
+      build_type: [release, debug]
+      arch: [arm64-v8a, armeabi-v7a]
+      include:
+        - build_type: release
+          is_release: true
+        - build_type: debug
+          is_debug: true
+  steps:
+    - name: Checkout Qt5
+      uses: actions/checkout@v4
+      with:
+        repository: qt/qt5
+        ref: ${{ needs.setup.outputs.qt_branch }}
+        fetch-depth: 0
+        submodules: false
+    
+    - name: Set up JDK
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '24'
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential git perl make curl ninja-build cmake libgl1-mesa-dev
+        pip3 install setuptools wheel
+    
+    - name: Download NDK
+      run: |
+        mkdir -p ${ANDROID_HOME}/ndk
+        cd ${ANDROID_HOME}/ndk
+        echo "ANDROID_API=35" >> $GITHUB_ENV
+        curl -O https://dl.google.com/android/repository/android-ndk-r28b-linux.zip
+        unzip -q android-ndk-r28b-linux.zip
+        echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/android-ndk-r28b" >> $GITHUB_ENV
+    
+    - name: Initialize Qt submodules
+      run: |
+        perl init-repository --module-subset=qtbase,qtdeclarative
+    
+    - name: Build host Qt for cross-compilation
+      run: |
+        mkdir -p host-qt
+        cd host-qt
+        
+        ../configure -prefix $PWD/install -submodules qtbase,qtdeclarative \
+          -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports \
+          CFLAGS="-O3" CXXFLAGS="-O3"
+        
+        cmake --build . --parallel $(nproc)
+        cmake --install .
+        
+        echo "QT_HOST_PATH=$PWD/install" >> $GITHUB_ENV
+    
+    - name: Configure and build for Android
+      run: |
+        mkdir -p build
+        cd build
+        
+        # Define install path and set it as environment variable
+        INSTALL_PATH=$PWD/install
+        echo "QT_INSTALL_DIR=$INSTALL_PATH" >> $GITHUB_ENV
+        
+        export CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH
+        export QT_BUILD_EXAMPLES_BY_DEFAULT=OFF
+        export QT_BUILD_TESTS_BY_DEFAULT=OFF
+        export QT_BUILD_TOOLS_BY_DEFAULT=OFF
+        export CFLAGS="-O3"
+        export CXXFLAGS="-O3"
+        
+        # Setup configuration options
+        CONFIG_OPTIONS="-static -ltcg -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports"
+        CONFIG_OPTIONS="$CONFIG_OPTIONS -openssl-runtime -android-ndk ${ANDROID_NDK_HOME} -android-sdk ${ANDROID_HOME}"
+        CONFIG_OPTIONS="$CONFIG_OPTIONS -android-arch ${{ matrix.arch }} -prefix ${INSTALL_PATH} -qt-host-path ${QT_HOST_PATH}"
+        
+        if [ "${{ matrix.build_type }}" = "debug" ]; then
+          CONFIG_OPTIONS="$CONFIG_OPTIONS -debug"
+        else
+          CONFIG_OPTIONS="$CONFIG_OPTIONS -release"
+        fi
+        
+        # Configure Qt for Android
+        ../configure -platform android-clang -xplatform android-clang -submodules qtbase,qtdeclarative $CONFIG_OPTIONS
+        
+        # Build and install
+        cmake --build . --parallel $(nproc)
+        cmake --install .
+        
+    - name: Package artifacts
+      run: |
+        OUTPUT_DIR="qt5-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}"
+        
+        # Make sure the directory exists
+        mkdir -p "${OUTPUT_DIR}"
+        
+        # Copy the installed Qt files to the output directory
+        cp -r "${QT_INSTALL_DIR}"/* "${OUTPUT_DIR}/"
+        
+        # Create zip archive
+        zip -r "${OUTPUT_DIR}.zip" "${OUTPUT_DIR}"
+        
+    - name: Upload build artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: qt5-android-${{ matrix.arch }}-${{ matrix.build_type }}
+        path: qt5-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}.zip
 
   build-macos:
     needs: setup
