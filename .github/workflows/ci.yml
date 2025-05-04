@@ -80,7 +80,7 @@ jobs:
           # Check if MinGW directory already exists
           if (-Not (Test-Path -Path "C:/mingw64")) {
             # Create directory for MinGW
-            mkdir -p C:/mingw64
+            New-Item -Path "C:/mingw64" -ItemType Directory -Force
             
             # Get latest release info from niXman/mingw-builds-binaries
             $apiUrl = "https://api.github.com/repos/niXman/mingw-builds-binaries/releases/latest"
@@ -121,7 +121,12 @@ jobs:
 
       - name: Initialize Qt submodules
         run: |
-          perl init-repository --module-subset=qtbase,qtdeclarative,qtmultimedia
+          # Fix for Windows path issues with perl scripts
+          $env:Path = "C:/mingw64/bin;" + $env:Path
+          $env:PERL5SHELL = "cmd.exe /c"
+          
+          # Use perl directly with relative path
+          perl ./init-repository --module-subset=qtbase,qtdeclarative,qtmultimedia
 
       - name: Configure and build Qt
         run: |
