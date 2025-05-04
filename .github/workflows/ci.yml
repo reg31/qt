@@ -12,6 +12,11 @@ on:
         required: true
         default: "dev"
         type: string
+      skip_macos_ios:
+        description: 'Skip macOS and iOS builds'
+        required: false
+        default: true
+        type: boolean
   #schedule:
     #- cron: '0 0 * * 1,5'
   push:
@@ -25,6 +30,7 @@ jobs:
     outputs:
       qt_branch: ${{ steps.set-branch.outputs.qt_branch }}
       qt_version: ${{ steps.get-version.outputs.qt_version }}
+      skip_macos_ios: ${{ steps.set-skip-macos-ios.outputs.skip_macos_ios }}
     steps:
       - name: Set branch
         id: set-branch
@@ -33,6 +39,15 @@ jobs:
             echo "qt_branch=${{ github.event.inputs.qt_branch }}" >> $GITHUB_OUTPUT
           else
             echo "qt_branch=${{ env.QT_BRANCH }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set skip_macos_ios flag
+        id: set-skip-macos-ios
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "skip_macos_ios=${{ github.event.inputs.skip_macos_ios }}" >> $GITHUB_OUTPUT
+          else
+            echo "skip_macos_ios=true" >> $GITHUB_OUTPUT
           fi
 
       - name: Checkout Qt5
@@ -142,7 +157,7 @@ jobs:
           -qt-libjpeg ^
           -qt-libpng ^
           -qt-freetype ^
-          -no-pcre ^
+          -qt-pcre ^
           -no-harfbuzz ^
           -schannel ^
           -reduce-exports ^
@@ -221,7 +236,7 @@ jobs:
           cd host-qt
           
           ../configure -prefix $PWD/install -submodules qtbase,qtdeclarative \
-            -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -no-pcre -no-harfbuzz -reduce-exports \
+            -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports \
             CFLAGS="-O3" CXXFLAGS="-O3"
           
           cmake --build . --parallel $(nproc)
@@ -236,7 +251,7 @@ jobs:
           
           INSTALL_PATH=$PWD/install
           
-          CONFIG_OPTIONS="-static -ltcg -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -no-pcre -no-harfbuzz -reduce-exports -openssl-runtime -android-ndk ${ANDROID_NDK_HOME} -android-sdk ${ANDROID_HOME} -android-arch ${{ matrix.arch }} -prefix ${INSTALL_PATH} -qt-host-path ${QT_HOST_PATH}"
+          CONFIG_OPTIONS="-static -ltcg -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports -openssl-runtime -android-ndk ${ANDROID_NDK_HOME} -android-sdk ${ANDROID_HOME} -android-arch ${{ matrix.arch }} -prefix ${INSTALL_PATH} -qt-host-path ${QT_HOST_PATH}"
           
           if [ "${{ matrix.build_type }}" = "debug" ]; then
             CONFIG_OPTIONS="$CONFIG_OPTIONS -debug"
@@ -252,11 +267,11 @@ jobs:
           export CXXFLAGS="-O3"
           
           ../configure -platform android-clang -xplatform android-clang -submodules qtbase,qtdeclarative \
-           -static -ltcg -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -no-pcre -no-harfbuzz -reduce-exports \
-          -openssl-runtime -android-ndk ${ANDROID_NDK_HOME} -android-sdk ${ANDROID_HOME} \
-          -android-arch ${{ matrix.arch }} -prefix ${INSTALL_PATH} -qt-host-path ${QT_HOST_PATH} \
-          ${{ matrix.build_type == 'debug' && '-debug' || '-release' }} \
-          -DCMAKE_C_FLAGS="-O3 -s" -DCMAKE_CXX_FLAGS="-O3 -s"
+              -static -ltcg -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports \
+              -openssl-runtime -android-ndk ${ANDROID_NDK_HOME} -android-sdk ${ANDROID_HOME} \
+              -android-arch ${{ matrix.arch }} -prefix ${INSTALL_PATH} -qt-host-path ${QT_HOST_PATH} \
+              ${{ matrix.build_type == 'debug' && '-debug' || '-release' }} \
+              -DCMAKE_C_FLAGS="-O3 -s" -DCMAKE_CXX_FLAGS="-O3 -s"
           
           cmake --build . --parallel $(nproc)
           cmake --install .
@@ -279,6 +294,7 @@ jobs:
   build-macos:
     needs: setup
     runs-on: macos-latest
+    if: ${{ needs.setup.outputs.skip_macos_ios != 'true' }}
     strategy:
       matrix:
         build_type: [release, debug]
@@ -307,7 +323,7 @@ jobs:
           
           INSTALL_PATH=$PWD/install
           
-          CONFIG_OPTIONS="-static -ltcg -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -no-pcre -no-harfbuzz -securetransport -reduce-exports -prefix ${INSTALL_PATH}"
+          CONFIG_OPTIONS="-static -ltcg -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -securetransport -reduce-exports -prefix ${INSTALL_PATH}"
           
           if [ "${{ matrix.build_type }}" = "debug" ]; then
             CONFIG_OPTIONS="$CONFIG_OPTIONS -debug"
@@ -345,6 +361,7 @@ jobs:
   build-ios:
     needs: setup
     runs-on: macos-latest
+    if: ${{ needs.setup.outputs.skip_macos_ios != 'true' }}
     strategy:
       matrix:
         build_type: [release, debug]
@@ -367,7 +384,7 @@ jobs:
           cd host-qt
           
           CFLAGS="-O3" CXXFLAGS="-O3" ../configure -prefix $PWD/install -submodules qtbase,qtdeclarative \
-            -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -no-pcre -no-harfbuzz -reduce-exports
+            -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports
           
           cmake --build . --parallel $(sysctl -n hw.ncpu)
           cmake --install .
@@ -381,7 +398,7 @@ jobs:
           
           INSTALL_PATH=$PWD/install
           
-          CONFIG_OPTIONS="-static -ltcg -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -no-pcre -no-harfbuzz -securetransport -reduce-exports -prefix ${INSTALL_PATH} -qt-host-path ${QT_HOST_PATH}"
+          CONFIG_OPTIONS="-static -ltcg -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -securetransport -reduce-exports -prefix ${INSTALL_PATH} -qt-host-path ${QT_HOST_PATH}"
           
           if [ "${{ matrix.build_type }}" = "debug" ]; then
             CONFIG_OPTIONS="$CONFIG_OPTIONS -debug"
@@ -437,8 +454,8 @@ jobs:
             This build includes binaries for:
             - Windows (x64) with qtbase, qtdeclarative, qtmultimedia
             - Android (armeabi-v7a, arm64-v8a) with qtbase, qtdeclarative
-            - iOS with qtbase, qtdeclarative
-            - macOS with qtbase, qtdeclarative, qtmultimedia
+            ${{ needs.setup.outputs.skip_macos_ios != 'true' && '- iOS with qtbase, qtdeclarative
+            - macOS with qtbase, qtdeclarative, qtmultimedia' || '' }}
             
             All builds compiled with -O3 optimization level.
             
@@ -446,6 +463,6 @@ jobs:
           files: |
             qt5-builds/qt5-windows-*/qt5-windows-*.zip
             qt5-builds/qt5-android-*/qt5-android-*.zip
-            qt5-builds/qt5-ios-*/qt5-ios-*.zip
-            qt5-builds/qt5-macos-*/qt5-macos-*.zip
+            ${{ needs.setup.outputs.skip_macos_ios != 'true' && 'qt5-builds/qt5-ios-*/qt5-ios-*.zip
+            qt5-builds/qt5-macos-*/qt5-macos-*.zip' || '' }}
           prerelease: true
