@@ -137,9 +137,10 @@ jobs:
       - name: Initialize Qt submodules
         shell: cmd
         run: |
-          perl init-repository --module-subset=qtbase,qtdeclarative,qtmultimedia
+          perl init-repository.bat --module-subset=qtbase,qtdeclarative,qtmultimedia
 
       - name: Configure and build Qt
+        shell: cmd
         run: |
           mkdir build
           cd build
