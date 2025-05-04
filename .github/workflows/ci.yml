@@ -170,6 +170,7 @@ jobs:
           mingw32-make install
           
       - name: Package artifacts
+        shell: cmd
         run: |
           $OUTPUT_DIR = "qt5-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}"
           
