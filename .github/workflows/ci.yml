@@ -135,6 +135,7 @@ jobs:
           mingw32-make --version
 
       - name: Initialize Qt submodules
+        shell: cmd
         run: |
           perl init-repository --module-subset=qtbase,qtdeclarative,qtmultimedia
 
