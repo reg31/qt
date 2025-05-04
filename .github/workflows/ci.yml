@@ -12,15 +12,6 @@ on:
         required: true
         default: "dev"
         type: string
-      build_type:
-        description: 'Build type (release, debug, or both)'
-        required: true
-        default: "release"
-        type: choice
-        options:
-          - release
-          - debug
-          - both
   #schedule:
     #- cron: '0 0 * * 1,5'
   push:
@@ -34,7 +25,6 @@ jobs:
     outputs:
       qt_branch: ${{ steps.set-branch.outputs.qt_branch }}
       qt_version: ${{ steps.get-version.outputs.qt_version }}
-      build_type: ${{ steps.set-build-type.outputs.build_type }}
     steps:
       - name: Set branch
         id: set-branch
@@ -43,15 +33,6 @@ jobs:
             echo "qt_branch=${{ github.event.inputs.qt_branch }}" >> $GITHUB_OUTPUT
           else
             echo "qt_branch=${{ env.QT_BRANCH }}" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Set build type
-        id: set-build-type
-        run: |
-          if [ "${{ github.event.inputs.build_type }}" != "" ]; then
-            echo "build_type=${{ github.event.inputs.build_type }}" >> $GITHUB_OUTPUT
-          else
-            echo "build_type=release" >> $GITHUB_OUTPUT
           fi
 
       - name: Checkout Qt5
@@ -74,7 +55,12 @@ jobs:
     runs-on: windows-latest
     strategy:
       matrix:
-        build_type: ${{ (needs.setup.outputs.build_type == 'both') && fromJson('["release", "debug"]') || fromJson(format('["{}"]', needs.setup.outputs.build_type)) }}
+        build_type: [release, debug]
+        include:
+          - build_type: release
+            is_release: true
+          - build_type: debug
+            is_debug: true
     steps:
       - name: Checkout Qt5
         uses: actions/checkout@v4
@@ -157,8 +143,13 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        build_type: ${{ (needs.setup.outputs.build_type == 'both') && fromJson('["release", "debug"]') || fromJson(format('["{}"]', needs.setup.outputs.build_type)) }}
+        build_type: [release, debug]
         arch: [arm64-v8a, armeabi-v7a]
+        include:
+          - build_type: release
+            is_release: true
+          - build_type: debug
+            is_debug: true
     steps:
       - name: Checkout Qt5
         uses: actions/checkout@v4
@@ -237,7 +228,12 @@ jobs:
     runs-on: macos-latest
     strategy:
       matrix:
-        build_type: ${{ (needs.setup.outputs.build_type == 'both') && fromJson('["release", "debug"]') || fromJson(format('["{}"]', needs.setup.outputs.build_type)) }}
+        build_type: [release, debug]
+        include:
+          - build_type: release
+            is_release: true
+          - build_type: debug
+            is_debug: true
     steps:
       - name: Checkout Qt5
         uses: actions/checkout@v4
