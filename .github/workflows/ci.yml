@@ -74,7 +74,7 @@ jobs:
     runs-on: windows-latest
     strategy:
       matrix:
-        build_type: ${{ fromJson(needs.setup.outputs.build_type == 'both' && '["release", "debug"]' || format('["{}"]', needs.setup.outputs.build_type)) }}
+        build_type: ${{ (needs.setup.outputs.build_type == 'both') && fromJson('["release", "debug"]') || fromJson(format('["{}"]', needs.setup.outputs.build_type)) }}
     steps:
       - name: Checkout Qt5
         uses: actions/checkout@v4
@@ -157,7 +157,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        build_type: ${{ fromJson(needs.setup.outputs.build_type == 'both' && '["release", "debug"]' || format('["{}"]', needs.setup.outputs.build_type)) }}
+        build_type: ${{ (needs.setup.outputs.build_type == 'both') && fromJson('["release", "debug"]') || fromJson(format('["{}"]', needs.setup.outputs.build_type)) }}
         arch: [arm64-v8a, armeabi-v7a]
     steps:
       - name: Checkout Qt5
@@ -237,7 +237,7 @@ jobs:
     runs-on: macos-latest
     strategy:
       matrix:
-        build_type: ${{ fromJson(needs.setup.outputs.build_type == 'both' && '["release", "debug"]' || format('["{}"]', needs.setup.outputs.build_type)) }}
+        build_type: ${{ (needs.setup.outputs.build_type == 'both') && fromJson('["release", "debug"]') || fromJson(format('["{}"]', needs.setup.outputs.build_type)) }}
     steps:
       - name: Checkout Qt5
         uses: actions/checkout@v4
