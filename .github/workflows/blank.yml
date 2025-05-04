@@ -1,0 +1,400 @@
+name: Build Qt5 Library
+env:
+  QT_REPO: 'https://github.com/qt/qt5.git'
+  QT_BRANCH: 'dev'
+  SNAPSHOT_TAG: 'qt5-daily-snapshot'
+
+on:
+  workflow_dispatch:
+    inputs:
+      qt_branch:
+        description: 'Qt branch/tag to build'
+        required: true
+        default: "dev"
+        type: string
+      build_type:
+        description: 'Build type (release, debug, or both)'
+        required: true
+        default: "release"
+        type: choice
+        options:
+          - release
+          - debug
+          - both
+  #schedule:
+    #- cron: '0 0 * * 1,5'
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      qt_branch: ${{ steps.set-branch.outputs.qt_branch }}
+      qt_version: ${{ steps.get-version.outputs.qt_version }}
+      build_type: ${{ steps.set-build-type.outputs.build_type }}
+    steps:
+      - name: Set branch
+        id: set-branch
+        run: |
+          if [ "${{ github.event.inputs.qt_branch }}" != "" ]; then
+            echo "qt_branch=${{ github.event.inputs.qt_branch }}" >> $GITHUB_OUTPUT
+          else
+            echo "qt_branch=${{ env.QT_BRANCH }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set build type
+        id: set-build-type
+        run: |
+          if [ "${{ github.event.inputs.build_type }}" != "" ]; then
+            echo "build_type=${{ github.event.inputs.build_type }}" >> $GITHUB_OUTPUT
+          else
+            echo "build_type=release" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Checkout Qt5
+        uses: actions/checkout@v4
+        with:
+          repository: qt/qt5
+          ref: ${{ steps.set-branch.outputs.qt_branch }}
+          fetch-depth: 0
+          path: qt5-src
+
+      - name: Get Qt version
+        id: get-version
+        working-directory: qt5-src
+        run: |
+          VERSION=$(git describe --tags --always 2>/dev/null || echo "unknown")
+          echo "qt_version=$VERSION" >> $GITHUB_OUTPUT
+
+  build-windows:
+    needs: setup
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        build_type: ${{ fromJson(needs.setup.outputs.build_type == 'both' && '["release", "debug"]' || format('["{}"]', needs.setup.outputs.build_type)) }}
+    steps:
+      - name: Checkout Qt5
+        uses: actions/checkout@v4
+        with:
+          repository: qt/qt5
+          ref: ${{ needs.setup.outputs.qt_branch }}
+          fetch-depth: 0
+          submodules: false
+
+      - name: Install dependencies
+        run: |
+          choco install -y ninja python3
+          pip3 install setuptools wheel
+
+      - name: Setup MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Initialize Qt submodules
+        run: |
+          perl init-repository --module-subset=qtbase,qtdeclarative,qtmultimedia
+
+      - name: Configure and build Qt
+        run: |
+          mkdir build
+          cd build
+          
+          $config_options = @(
+            "-static",
+            "-ltcg",
+            "-qt-zlib",
+            "-qt-libjpeg", 
+            "-qt-libpng", 
+            "-qt-freetype", 
+            "-qt-pcre", 
+            "-qt-harfbuzz",
+            "-schannel",
+            "-no-feature-testlib"
+          )
+          
+          if ("${{ matrix.build_type }}" -eq "debug") {
+            $config_options += "-debug"
+          } else {
+            $config_options += "-release"
+          }
+          
+          $env:CMAKE_PREFIX_PATH = $env:CMAKE_PREFIX_PATH
+          $env:QT_BUILD_EXAMPLES_BY_DEFAULT = "OFF"
+          $env:QT_BUILD_TESTS_BY_DEFAULT = "OFF"
+          $env:QT_BUILD_TOOLS_BY_DEFAULT = "OFF"
+          
+          ..\configure.bat -submodules qtbase,qtdeclarative,qtmultimedia $config_options
+          
+          cmake --build . --parallel (Get-CpuCount)
+          
+      - name: Package artifacts
+        run: |
+          $OUTPUT_DIR = "qt5-windows-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}"
+          mkdir -p $OUTPUT_DIR/lib
+          mkdir -p $OUTPUT_DIR/include
+          mkdir -p $OUTPUT_DIR/bin
+          
+          # Copy libraries and includes
+          robocopy build\lib $OUTPUT_DIR\lib /E /NFL /NDL /NJH /NJS /nc /ns /np
+          robocopy build\include $OUTPUT_DIR\include /E /NFL /NDL /NJH /NJS /nc /ns /np
+          robocopy build\bin $OUTPUT_DIR\bin /E /NFL /NDL /NJH /NJS /nc /ns /np
+          exit 0  # robocopy returns non-zero even on success
+          
+          Compress-Archive -Path $OUTPUT_DIR -DestinationPath "$OUTPUT_DIR.zip"
+          
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qt5-windows-${{ matrix.build_type }}
+          path: qt5-windows-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}.zip
+
+  build-android:
+    needs: setup
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        build_type: ${{ fromJson(needs.setup.outputs.build_type == 'both' && '["release", "debug"]' || format('["{}"]', needs.setup.outputs.build_type)) }}
+        arch: [arm64-v8a, armeabi-v7a]
+    steps:
+      - name: Checkout Qt5
+        uses: actions/checkout@v4
+        with:
+          repository: qt/qt5
+          ref: ${{ needs.setup.outputs.qt_branch }}
+          fetch-depth: 0
+          submodules: false
+      
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '24'
+      
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential git perl make curl ninja-build cmake libgl1-mesa-dev
+          pip3 install setuptools wheel
+      
+      - name: Download NDK
+        run: |
+          mkdir -p ${ANDROID_HOME}/ndk
+          cd ${ANDROID_HOME}/ndk
+          curl -O https://dl.google.com/android/repository/android-ndk-r28b-linux.zip
+          unzip -q android-ndk-r28b-linux.zip
+          echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/android-ndk-r28b" >> $GITHUB_ENV
+      
+      - name: Initialize Qt submodules
+        run: |
+          perl init-repository --module-subset=qtbase,qtdeclarative,qtmultimedia
+      
+      - name: Configure and build
+        run: |
+          mkdir -p build
+          cd build
+          
+          CONFIG_OPTIONS="-static -ltcg -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -qt-harfbuzz -openssl-runtime -android-ndk ${ANDROID_NDK_HOME} -android-sdk ${ANDROID_HOME} -android-arch ${{ matrix.arch }}"
+          
+          if [ "${{ matrix.build_type }}" = "debug" ]; then
+            CONFIG_OPTIONS="$CONFIG_OPTIONS -debug"
+          else
+            CONFIG_OPTIONS="$CONFIG_OPTIONS -release"
+          fi
+          
+          export CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH
+          export QT_BUILD_EXAMPLES_BY_DEFAULT=OFF
+          export QT_BUILD_TESTS_BY_DEFAULT=OFF
+          export QT_BUILD_TOOLS_BY_DEFAULT=OFF
+          
+          ../configure -platform android-clang -xplatform android-clang -submodules qtbase,qtdeclarative,qtmultimedia $CONFIG_OPTIONS
+          
+          cmake --build . --parallel $(nproc)
+          
+      - name: Package artifacts
+        run: |
+          OUTPUT_DIR="qt5-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}"
+          mkdir -p ${OUTPUT_DIR}/lib
+          mkdir -p ${OUTPUT_DIR}/include
+          
+          # Copy libraries and includes
+          cp -r build/lib/* ${OUTPUT_DIR}/lib/
+          cp -r build/include/* ${OUTPUT_DIR}/include/
+          
+          zip -r ${OUTPUT_DIR}.zip ${OUTPUT_DIR}
+          
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qt5-android-${{ matrix.arch }}-${{ matrix.build_type }}
+          path: qt5-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}.zip
+
+  build-macos:
+    needs: setup
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        build_type: ${{ fromJson(needs.setup.outputs.build_type == 'both' && '["release", "debug"]' || format('["{}"]', needs.setup.outputs.build_type)) }}
+    steps:
+      - name: Checkout Qt5
+        uses: actions/checkout@v4
+        with:
+          repository: qt/qt5
+          ref: ${{ needs.setup.outputs.qt_branch }}
+          fetch-depth: 0
+          submodules: false
+      
+      - name: Install dependencies
+        run: |
+          brew install ninja cmake
+          pip3 install setuptools wheel
+      
+      - name: Initialize Qt submodules
+        run: |
+          perl init-repository --module-subset=qtbase,qtdeclarative,qtmultimedia
+        
+      - name: Configure and build
+        run: |
+          mkdir -p build
+          cd build
+          
+          CONFIG_OPTIONS="-static -ltcg -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -qt-harfbuzz -securetransport"
+          
+          if [ "${{ matrix.build_type }}" = "debug" ]; then
+            CONFIG_OPTIONS="$CONFIG_OPTIONS -debug"
+          else
+            CONFIG_OPTIONS="$CONFIG_OPTIONS -release"
+          fi
+          
+          export CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH
+          export QT_BUILD_EXAMPLES_BY_DEFAULT=OFF
+          export QT_BUILD_TESTS_BY_DEFAULT=OFF
+          export QT_BUILD_TOOLS_BY_DEFAULT=OFF
+          
+          ../configure -platform macx-clang -submodules qtbase,qtdeclarative,qtmultimedia $CONFIG_OPTIONS
+          
+          cmake --build . --parallel $(sysctl -n hw.ncpu)
+          
+      - name: Package artifacts
+        run: |
+          OUTPUT_DIR="qt5-macos-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}"
+          mkdir -p "${OUTPUT_DIR}/lib"
+          mkdir -p "${OUTPUT_DIR}/include"
+          mkdir -p "${OUTPUT_DIR}/bin"
+          
+          # Copy libraries and includes
+          cp -r build/lib/* "${OUTPUT_DIR}/lib/"
+          cp -r build/include/* "${OUTPUT_DIR}/include/"
+          cp -r build/bin/* "${OUTPUT_DIR}/bin/"
+          
+          zip -r "${OUTPUT_DIR}.zip" "${OUTPUT_DIR}"
+          
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qt5-macos-${{ matrix.build_type }}
+          path: qt5-macos-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}.zip
+
+  build-ios:
+    needs: setup
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        build_type: ${{ fromJson(needs.setup.outputs.build_type == 'both' && '["release", "debug"]' || format('["{}"]', needs.setup.outputs.build_type)) }}
+    steps:
+      - name: Checkout Qt5
+        uses: actions/checkout@v4
+        with:
+          repository: qt/qt5
+          ref: ${{ needs.setup.outputs.qt_branch }}
+          fetch-depth: 0
+          submodules: false
+      
+      - name: Install dependencies
+        run: |
+          brew install ninja cmake
+          pip3 install setuptools wheel
+      
+      - name: Initialize Qt submodules
+        run: |
+          perl init-repository --module-subset=qtbase,qtdeclarative,qtmultimedia
+        
+      - name: Configure and build
+        run: |
+          mkdir -p build
+          cd build
+          
+          CONFIG_OPTIONS="-static -ltcg -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -qt-harfbuzz -securetransport"
+          
+          if [ "${{ matrix.build_type }}" = "debug" ]; then
+            CONFIG_OPTIONS="$CONFIG_OPTIONS -debug"
+          else
+            CONFIG_OPTIONS="$CONFIG_OPTIONS -release"
+          fi
+          
+          export CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH
+          export QT_BUILD_EXAMPLES_BY_DEFAULT=OFF
+          export QT_BUILD_TESTS_BY_DEFAULT=OFF
+          export QT_BUILD_TOOLS_BY_DEFAULT=OFF
+          
+          ../configure -platform macx-ios-clang -submodules qtbase,qtdeclarative,qtmultimedia $CONFIG_OPTIONS
+          
+          cmake --build . --parallel $(sysctl -n hw.ncpu)
+          
+      - name: Package artifacts
+        run: |
+          OUTPUT_DIR="qt5-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}"
+          mkdir -p "${OUTPUT_DIR}/lib"
+          mkdir -p "${OUTPUT_DIR}/include"
+          
+          # Copy libraries and includes
+          cp -r build/lib/* "${OUTPUT_DIR}/lib/"
+          cp -r build/include/* "${OUTPUT_DIR}/include/"
+          
+          zip -r "${OUTPUT_DIR}.zip" "${OUTPUT_DIR}"
+          
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qt5-ios-${{ matrix.build_type }}
+          path: qt5-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}.zip
+
+  release:
+    needs: [setup, build-windows, build-android, build-macos, build-ios]
+    runs-on: ubuntu-latest
+    if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: qt5-builds
+          
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.SNAPSHOT_TAG }}
+          name: "Qt5 Library - Build"
+          body: |
+            Automated build of Qt5 ${{ needs.setup.outputs.qt_version }}
+            
+            This build includes binaries for:
+            - Windows (x64)
+            - Android (armeabi-v7a, arm64-v8a)
+            - iOS
+            - macOS
+            
+            Build includes only the following modules:
+            - qtbase
+            - qtdeclarative
+            - qtmultimedia
+            
+            **Note:** This snapshot may be overwritten by newer builds.
+          files: |
+            qt5-builds/qt5-windows-*/qt5-windows-*.zip
+            qt5-builds/qt5-android-*/qt5-android-*.zip
+            qt5-builds/qt5-ios-*/qt5-ios-*.zip
+            qt5-builds/qt5-macos-*/qt5-macos-*.zip
+          prerelease: true
