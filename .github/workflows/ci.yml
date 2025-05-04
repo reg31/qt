@@ -138,7 +138,7 @@ jobs:
         shell: cmd
         run: |
           set PATH=C:\mingw64\bin;%PATH%
-          perl init-repository --module-subset=qtbase,qtdeclarative,qtmultimedia
+          perl init-repository.bat --module-subset=qtbase,qtdeclarative,qtmultimedia
 
       - name: Configure and build Qt
         shell: cmd
