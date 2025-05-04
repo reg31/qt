@@ -77,31 +77,36 @@ jobs:
 
       - name: Setup MinGW
         run: |
-          # Create directory for MinGW
-          mkdir -p C:/mingw64
-          
-          # Get latest release info from niXman/mingw-builds-binaries
-          $apiUrl = "https://api.github.com/repos/niXman/mingw-builds-binaries/releases/latest"
-          $release = Invoke-RestMethod -Uri $apiUrl
-          
-          # Find the x86_64 POSIX SEH release asset
-          $asset = $release.assets | Where-Object { $_.name -like "*x86_64*posix*seh*" -and $_.name -like "*.7z" } | Select-Object -First 1
-          Write-Host "Downloading MinGW from: $($asset.browser_download_url)"
-          
-          # Download the asset
-          $downloadPath = "C:/mingw-latest.7z"
-          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $downloadPath
-          
-          # Extract MinGW
-          Write-Host "Extracting MinGW..."
-          7z x $downloadPath -oC:/ -y
-          
-          # Get the actual directory name (should be something like mingw64)
-          $extractedDir = Get-ChildItem -Path C:/ -Directory -Filter "mingw*" | Select-Object -First 1
-          
-          # Rename if needed and set path
-          if ($extractedDir.Name -ne "mingw64") {
-            Move-Item -Path $extractedDir.FullName -Destination C:/mingw64
+          # Check if MinGW directory already exists
+          if (-Not (Test-Path -Path "C:/mingw64")) {
+            # Create directory for MinGW
+            mkdir -p C:/mingw64
+            
+            # Get latest release info from niXman/mingw-builds-binaries
+            $apiUrl = "https://api.github.com/repos/niXman/mingw-builds-binaries/releases/latest"
+            $release = Invoke-RestMethod -Uri $apiUrl
+            
+            # Find the x86_64 POSIX SEH release asset
+            $asset = $release.assets | Where-Object { $_.name -like "*x86_64*posix*seh*" -and $_.name -like "*.7z" } | Select-Object -First 1
+            Write-Host "Downloading MinGW from: $($asset.browser_download_url)"
+            
+            # Download the asset
+            $downloadPath = "C:/mingw-latest.7z"
+            Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $downloadPath
+            
+            # Extract MinGW
+            Write-Host "Extracting MinGW..."
+            7z x $downloadPath -oC:/ -y
+            
+            # Get the actual directory name (should be something like mingw64)
+            $extractedDir = Get-ChildItem -Path C:/ -Directory -Filter "mingw*" | Select-Object -First 1
+            
+            # Rename if needed
+            if ($extractedDir.Name -ne "mingw64") {
+              Move-Item -Path $extractedDir.FullName -Destination C:/mingw64
+            }
+          } else {
+            Write-Host "MinGW directory already exists at C:/mingw64, skipping download and extraction."
           }
           
           # Add to PATH
@@ -136,7 +141,8 @@ jobs:
             "-qt-harfbuzz",
             "-schannel",
             "-no-feature-testlib",
-            "-platform", "win32-g++"
+            "-platform", "win32-g++",
+            "-prefix", "$pwd/install"
           )
           
           if ("${{ matrix.build_type }}" -eq "debug") {
@@ -153,19 +159,14 @@ jobs:
           ..\configure.bat -submodules qtbase,qtdeclarative,qtmultimedia $config_options
           
           mingw32-make -j (Get-CpuCount)
+          mingw32-make install
           
       - name: Package artifacts
         run: |
           $OUTPUT_DIR = "qt5-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}"
-          mkdir -p $OUTPUT_DIR/lib
-          mkdir -p $OUTPUT_DIR/include
-          mkdir -p $OUTPUT_DIR/bin
           
-          # Copy libraries and includes
-          robocopy build\lib $OUTPUT_DIR\lib /E /NFL /NDL /NJH /NJS /nc /ns /np
-          robocopy build\include $OUTPUT_DIR\include /E /NFL /NDL /NJH /NJS /nc /ns /np
-          robocopy build\bin $OUTPUT_DIR\bin /E /NFL /NDL /NJH /NJS /nc /ns /np
-          exit 0  # robocopy returns non-zero even on success
+          # Use the install directory directly
+          Rename-Item -Path "build\install" -NewName $OUTPUT_DIR
           
           Compress-Archive -Path $OUTPUT_DIR -DestinationPath "$OUTPUT_DIR.zip"
           
@@ -220,12 +221,27 @@ jobs:
         run: |
           perl init-repository --module-subset=qtbase,qtdeclarative,qtmultimedia
       
-      - name: Configure and build
+      - name: Build host Qt for cross-compilation
+        run: |
+          mkdir -p host-qt
+          cd host-qt
+          
+          ../configure -prefix $PWD/install -submodules qtbase,qtdeclarative,qtmultimedia \
+            -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -qt-harfbuzz
+          
+          cmake --build . --parallel $(nproc)
+          cmake --install .
+          
+          echo "QT_HOST_PATH=$PWD/install" >> $GITHUB_ENV
+      
+      - name: Configure and build for Android
         run: |
           mkdir -p build
           cd build
           
-          CONFIG_OPTIONS="-static -ltcg -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -qt-harfbuzz -openssl-runtime -android-ndk ${ANDROID_NDK_HOME} -android-sdk ${ANDROID_HOME} -android-arch ${{ matrix.arch }}"
+          INSTALL_PATH=$PWD/install
+          
+          CONFIG_OPTIONS="-static -ltcg -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -qt-harfbuzz -openssl-runtime -android-ndk ${ANDROID_NDK_HOME} -android-sdk ${ANDROID_HOME} -android-arch ${{ matrix.arch }} -prefix ${INSTALL_PATH} -qt-host-path ${QT_HOST_PATH}"
           
           if [ "${{ matrix.build_type }}" = "debug" ]; then
             CONFIG_OPTIONS="$CONFIG_OPTIONS -debug"
@@ -241,16 +257,14 @@ jobs:
           ../configure -platform android-clang -xplatform android-clang -submodules qtbase,qtdeclarative,qtmultimedia $CONFIG_OPTIONS
           
           cmake --build . --parallel $(nproc)
+          cmake --install .
           
       - name: Package artifacts
         run: |
           OUTPUT_DIR="qt5-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}"
-          mkdir -p ${OUTPUT_DIR}/lib
-          mkdir -p ${OUTPUT_DIR}/include
           
-          # Copy libraries and includes
-          cp -r build/lib/* ${OUTPUT_DIR}/lib/
-          cp -r build/include/* ${OUTPUT_DIR}/include/
+          # Use the install directory directly
+          mv build/install $OUTPUT_DIR
           
           zip -r ${OUTPUT_DIR}.zip ${OUTPUT_DIR}
           
@@ -289,7 +303,9 @@ jobs:
           mkdir -p build
           cd build
           
-          CONFIG_OPTIONS="-static -ltcg -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -qt-harfbuzz -securetransport"
+          INSTALL_PATH=$PWD/install
+          
+          CONFIG_OPTIONS="-static -ltcg -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -qt-harfbuzz -securetransport -prefix ${INSTALL_PATH}"
           
           if [ "${{ matrix.build_type }}" = "debug" ]; then
             CONFIG_OPTIONS="$CONFIG_OPTIONS -debug"
@@ -305,18 +321,14 @@ jobs:
           ../configure -platform macx-clang -submodules qtbase,qtdeclarative,qtmultimedia $CONFIG_OPTIONS
           
           cmake --build . --parallel $(sysctl -n hw.ncpu)
+          cmake --install .
           
       - name: Package artifacts
         run: |
           OUTPUT_DIR="qt5-macos-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}"
-          mkdir -p "${OUTPUT_DIR}/lib"
-          mkdir -p "${OUTPUT_DIR}/include"
-          mkdir -p "${OUTPUT_DIR}/bin"
           
-          # Copy libraries and includes
-          cp -r build/lib/* "${OUTPUT_DIR}/lib/"
-          cp -r build/include/* "${OUTPUT_DIR}/include/"
-          cp -r build/bin/* "${OUTPUT_DIR}/bin/"
+          # Use the install directory directly
+          mv build/install "${OUTPUT_DIR}"
           
           zip -r "${OUTPUT_DIR}.zip" "${OUTPUT_DIR}"
           
@@ -331,7 +343,7 @@ jobs:
     runs-on: macos-latest
     strategy:
       matrix:
-        build_type: ${{ fromJson(needs.setup.outputs.build_type == 'both' && '["release", "debug"]' || format('["{}"]', needs.setup.outputs.build_type)) }}
+        build_type: [release, debug]
     steps:
       - name: Checkout Qt5
         uses: actions/checkout@v4
@@ -344,13 +356,28 @@ jobs:
       - name: Initialize Qt submodules
         run: |
           perl init-repository --module-subset=qtbase,qtdeclarative,qtmultimedia
+      
+      - name: Build host Qt for cross-compilation
+        run: |
+          mkdir -p host-qt
+          cd host-qt
+          
+          ../configure -prefix $PWD/install -submodules qtbase,qtdeclarative,qtmultimedia \
+            -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -qt-harfbuzz
+          
+          cmake --build . --parallel $(sysctl -n hw.ncpu)
+          cmake --install .
+          
+          echo "QT_HOST_PATH=$PWD/install" >> $GITHUB_ENV
         
-      - name: Configure and build
+      - name: Configure and build for iOS
         run: |
           mkdir -p build
           cd build
           
-          CONFIG_OPTIONS="-static -ltcg -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -qt-harfbuzz -securetransport"
+          INSTALL_PATH=$PWD/install
+          
+          CONFIG_OPTIONS="-static -ltcg -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -qt-harfbuzz -securetransport -prefix ${INSTALL_PATH} -qt-host-path ${QT_HOST_PATH}"
           
           if [ "${{ matrix.build_type }}" = "debug" ]; then
             CONFIG_OPTIONS="$CONFIG_OPTIONS -debug"
@@ -366,16 +393,14 @@ jobs:
           ../configure -platform macx-ios-clang -submodules qtbase,qtdeclarative,qtmultimedia $CONFIG_OPTIONS
           
           cmake --build . --parallel $(sysctl -n hw.ncpu)
+          cmake --install .
           
       - name: Package artifacts
         run: |
           OUTPUT_DIR="qt5-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}"
-          mkdir -p "${OUTPUT_DIR}/lib"
-          mkdir -p "${OUTPUT_DIR}/include"
           
-          # Copy libraries and includes
-          cp -r build/lib/* "${OUTPUT_DIR}/lib/"
-          cp -r build/include/* "${OUTPUT_DIR}/include/"
+          # Use the install directory directly
+          mv build/install "${OUTPUT_DIR}"
           
           zip -r "${OUTPUT_DIR}.zip" "${OUTPUT_DIR}"
           
