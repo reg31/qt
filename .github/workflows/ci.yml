@@ -172,8 +172,9 @@ jobs:
       - name: Package artifacts
         shell: pwsh
         run: |
-          $OUTPUT_DIR = ${{ env.QT_INSTALL_DIR }}
-          # Use the install directory directly
+          # Use the QT_INSTALL_DIR environment variable set by CMake
+          $OUTPUT_DIR = $env:QT_INSTALL_DIR
+          Write-Host "Packaging Qt install from: $OUTPUT_DIR"
           Compress-Archive -Path $OUTPUT_DIR -DestinationPath "qt5-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}.zip"
           
       - name: Upload build artifact
@@ -266,7 +267,7 @@ jobs:
           ../configure -platform android-clang -xplatform android-clang -submodules qtbase,qtdeclarative \
               -static -ltcg -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports \
               -openssl-runtime -android-ndk ${ANDROID_NDK_HOME} -android-sdk ${ANDROID_HOME} \
-              -android-arch ${{ matrix.arch }} -prefix ${INSTALL_PATH} -qt-host-path ${QT_HOST_PATH} \
+              -android-arch ${{ matrix.arch }} -prefix ${QT_INSTALL_DIR} -qt-host-path ${QT_HOST_PATH} \
               ${{ matrix.build_type == 'debug' && '-debug' || '-release' }} \
               -DCMAKE_C_FLAGS="-O3 -s" -DCMAKE_CXX_FLAGS="-O3 -s"
           
@@ -277,8 +278,11 @@ jobs:
         run: |
           OUTPUT_DIR="qt5-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}"
           
-          # Use the install directory directly
-          mv build/install $OUTPUT_DIR
+          # Use QT_INSTALL_DIR set by CMake
+          echo "Using QT_INSTALL_DIR: $QT_INSTALL_DIR"
+          
+          # Copy the installed Qt files to the output directory
+          cp -r "${QT_INSTALL_DIR}" "${OUTPUT_DIR}"
           
           zip -r ${OUTPUT_DIR}.zip ${OUTPUT_DIR}
           
@@ -344,8 +348,11 @@ jobs:
         run: |
           OUTPUT_DIR="qt5-macos-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}"
           
-          # Use the install directory directly
-          mv build/install "${OUTPUT_DIR}"
+          # Use the QT_INSTALL_DIR environment variable set by CMake
+          echo "Using QT_INSTALL_DIR: $QT_INSTALL_DIR"
+          
+          # Copy the installed Qt files to the output directory
+          cp -r "${QT_INSTALL_DIR}" "${OUTPUT_DIR}"
           
           zip -r "${OUTPUT_DIR}.zip" "${OUTPUT_DIR}"
           
@@ -419,8 +426,11 @@ jobs:
         run: |
           OUTPUT_DIR="qt5-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}"
           
-          # Use the install directory directly
-          mv build/install "${OUTPUT_DIR}"
+          # Use the QT_INSTALL_DIR environment variable set by CMake
+          echo "Using QT_INSTALL_DIR: $QT_INSTALL_DIR"
+          
+          # Copy the installed Qt files to the output directory
+          cp -r "${QT_INSTALL_DIR}" "${OUTPUT_DIR}"
           
           zip -r "${OUTPUT_DIR}.zip" "${OUTPUT_DIR}"
           
