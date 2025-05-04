@@ -145,7 +145,7 @@ jobs:
           -no-pcre ^
           -no-harfbuzz ^
           -schannel ^
-		  -reduce-exports ^
+          -reduce-exports ^
           -no-feature-testlib ^
           -platform win32-g++ ^
           -prefix %CD%\install ^
