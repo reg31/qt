@@ -170,13 +170,11 @@ jobs:
           mingw32-make install
           
       - name: Package artifacts
+        shell: pwsh
         run: |
-          OUTPUT_DIR = "qt5-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}"
-          
+          $OUTPUT_DIR = "D:/a/qt/qt/build/install"
           # Use the install directory directly
-          Rename-Item -Path "build\install" -NewName $OUTPUT_DIR
-          
-          Compress-Archive -Path $OUTPUT_DIR -DestinationPath "$OUTPUT_DIR.zip"
+          Compress-Archive -Path $OUTPUT_DIR -DestinationPath "qt5-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}.zip"
           
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
