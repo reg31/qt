@@ -136,13 +136,9 @@ jobs:
 
       - name: Initialize Qt submodules
         run: |
-          $env:Path = "C:/mingw64/bin;" + $env:Path
-          $env:PERL5SHELL = "cmd.exe /c"
-          # Use perl directly with relative path
-          perl ./init-repository --module-subset=qtbase,qtdeclarative,qtmultimedia
+          perl init-repository --module-subset=qtbase,qtdeclarative,qtmultimedia
 
       - name: Configure and build Qt
-        shell: cmd
         run: |
           mkdir build
           cd build
