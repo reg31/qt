@@ -87,7 +87,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          choco install -y ninja python3
+          choco install -y python3
           pip3 install setuptools wheel
 
       - name: Setup MinGW
@@ -137,7 +137,7 @@ jobs:
       - name: Initialize Qt submodules
         shell: cmd
         run: |
-          perl init-repository.bat --module-subset=qtbase,qtdeclarative,qtmultimedia
+          init-repository.bat --module-subset=qtbase,qtdeclarative,qtmultimedia
 
       - name: Configure and build Qt
         shell: cmd
