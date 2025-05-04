@@ -222,7 +222,7 @@ jobs:
           
           ../configure -prefix $PWD/install -submodules qtbase,qtdeclarative \
             -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -no-pcre -no-harfbuzz -reduce-exports \
-			CFLAGS="-O3" CXXFLAGS="-O3"
+            CFLAGS="-O3" CXXFLAGS="-O3"
           
           cmake --build . --parallel $(nproc)
           cmake --install .
@@ -252,11 +252,11 @@ jobs:
           export CXXFLAGS="-O3"
           
           ../configure -platform android-clang -xplatform android-clang -submodules qtbase,qtdeclarative \
-			  -static -ltcg -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -no-pcre -no-harfbuzz -reduce-exports \
-			  -openssl-runtime -android-ndk ${ANDROID_NDK_HOME} -android-sdk ${ANDROID_HOME} \
-			  -android-arch ${{ matrix.arch }} -prefix ${INSTALL_PATH} -qt-host-path ${QT_HOST_PATH} \
-			  ${{ matrix.build_type == 'debug' && '-debug' || '-release' }} \
-			  -DCMAKE_C_FLAGS="-O3 -s" -DCMAKE_CXX_FLAGS="-O3 -s"
+           -static -ltcg -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -no-pcre -no-harfbuzz -reduce-exports \
+          -openssl-runtime -android-ndk ${ANDROID_NDK_HOME} -android-sdk ${ANDROID_HOME} \
+          -android-arch ${{ matrix.arch }} -prefix ${INSTALL_PATH} -qt-host-path ${QT_HOST_PATH} \
+          ${{ matrix.build_type == 'debug' && '-debug' || '-release' }} \
+          -DCMAKE_C_FLAGS="-O3 -s" -DCMAKE_CXX_FLAGS="-O3 -s"
           
           cmake --build . --parallel $(nproc)
           cmake --install .
