@@ -457,7 +457,7 @@ jobs:
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.SNAPSHOT_TAG }}
+          tag_name: ${{ env.run_id }}
           name: "Qt5 Library - Build"
           body: |
             Automated build of Qt5 ${{ needs.setup.outputs.qt_version }}
