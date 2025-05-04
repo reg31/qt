@@ -75,10 +75,44 @@ jobs:
           choco install -y ninja python3
           pip3 install setuptools wheel
 
-      - name: Setup MSVC environment
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x64
+      - name: Setup MinGW
+        run: |
+          # Create directory for MinGW
+          mkdir -p C:/mingw64
+          
+          # Get latest release info from niXman/mingw-builds-binaries
+          $apiUrl = "https://api.github.com/repos/niXman/mingw-builds-binaries/releases/latest"
+          $release = Invoke-RestMethod -Uri $apiUrl
+          
+          # Find the x86_64 POSIX SEH release asset
+          $asset = $release.assets | Where-Object { $_.name -like "*x86_64*posix*seh*" -and $_.name -like "*.7z" } | Select-Object -First 1
+          Write-Host "Downloading MinGW from: $($asset.browser_download_url)"
+          
+          # Download the asset
+          $downloadPath = "C:/mingw-latest.7z"
+          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $downloadPath
+          
+          # Extract MinGW
+          Write-Host "Extracting MinGW..."
+          7z x $downloadPath -oC:/ -y
+          
+          # Get the actual directory name (should be something like mingw64)
+          $extractedDir = Get-ChildItem -Path C:/ -Directory -Filter "mingw*" | Select-Object -First 1
+          
+          # Rename if needed and set path
+          if ($extractedDir.Name -ne "mingw64") {
+            Move-Item -Path $extractedDir.FullName -Destination C:/mingw64
+          }
+          
+          # Add to PATH
+          echo "C:/mingw64/bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          echo "MINGW_PATH=C:/mingw64" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Verify MinGW installation
+        run: |
+          $env:Path = "C:/mingw64/bin;" + $env:Path
+          g++ --version
+          mingw32-make --version
 
       - name: Initialize Qt submodules
         run: |
@@ -88,6 +122,8 @@ jobs:
         run: |
           mkdir build
           cd build
+          
+          $env:Path = "C:/mingw64/bin;" + $env:Path
           
           $config_options = @(
             "-static",
@@ -99,7 +135,8 @@ jobs:
             "-qt-pcre", 
             "-qt-harfbuzz",
             "-schannel",
-            "-no-feature-testlib"
+            "-no-feature-testlib",
+            "-platform", "win32-g++"
           )
           
           if ("${{ matrix.build_type }}" -eq "debug") {
@@ -115,11 +152,11 @@ jobs:
           
           ..\configure.bat -submodules qtbase,qtdeclarative,qtmultimedia $config_options
           
-          cmake --build . --parallel (Get-CpuCount)
+          mingw32-make -j (Get-CpuCount)
           
       - name: Package artifacts
         run: |
-          $OUTPUT_DIR = "qt5-windows-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}"
+          $OUTPUT_DIR = "qt5-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}"
           mkdir -p $OUTPUT_DIR/lib
           mkdir -p $OUTPUT_DIR/include
           mkdir -p $OUTPUT_DIR/bin
@@ -135,8 +172,8 @@ jobs:
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: qt5-windows-${{ matrix.build_type }}
-          path: qt5-windows-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}.zip
+          name: qt5-windows-mingw-${{ matrix.build_type }}
+          path: qt5-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}.zip
 
   build-android:
     needs: setup
@@ -243,11 +280,6 @@ jobs:
           fetch-depth: 0
           submodules: false
       
-      - name: Install dependencies
-        run: |
-          brew install ninja cmake
-          pip3 install setuptools wheel
-      
       - name: Initialize Qt submodules
         run: |
           perl init-repository --module-subset=qtbase,qtdeclarative,qtmultimedia
@@ -308,11 +340,6 @@ jobs:
           ref: ${{ needs.setup.outputs.qt_branch }}
           fetch-depth: 0
           submodules: false
-      
-      - name: Install dependencies
-        run: |
-          brew install ninja cmake
-          pip3 install setuptools wheel
       
       - name: Initialize Qt submodules
         run: |
