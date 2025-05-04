@@ -150,6 +150,10 @@ jobs:
           set CFLAGS=-O3 -s
           set CXXFLAGS=-O3 -s
           
+          REM Create an absolute path for the install directory
+          set INSTALL_DIR=%CD%\install
+          echo "QT_INSTALL_DIR=%INSTALL_DIR%" >> %GITHUB_ENV%
+          
           ..\configure.bat -static ^
           -ltcg ^
           -qt-zlib ^
@@ -162,7 +166,7 @@ jobs:
           -reduce-exports ^
           -no-feature-testlib ^
           -platform win32-g++ ^
-          -prefix %CD%\install ^
+          -prefix %INSTALL_DIR% ^
           -submodules qtbase,qtdeclarative,qtmultimedia ^
           ${{ matrix.build_type == 'debug' && '-debug' || '-release' }}
           
@@ -172,9 +176,27 @@ jobs:
       - name: Package artifacts
         shell: pwsh
         run: |
-          $OUTPUT_DIR = "D:/a/qt/qt/build/install"
-          # Use the install directory directly
-          Compress-Archive -Path $OUTPUT_DIR -DestinationPath "qt5-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}.zip"
+          # Get the install directory from environment variable
+          $InstallDir = $env:QT_INSTALL_DIR
+          $PACKAGE_NAME = "qt5-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}"
+          
+          # Check if the install directory exists
+          if (-Not (Test-Path -Path $InstallDir)) {
+            Write-Host "Error: Install directory $InstallDir does not exist"
+            exit 1
+          }
+          
+          # Create a package directory with the final name
+          $PackageDir = $PACKAGE_NAME
+          New-Item -Path $PackageDir -ItemType Directory -Force
+          
+          # Copy the entire install directory content to the package directory
+          Write-Host "Copying files from $InstallDir to $PackageDir"
+          Copy-Item -Path "$InstallDir\*" -Destination $PackageDir -Recurse -Force
+          
+          # Create the zip file
+          Write-Host "Creating zip archive $PACKAGE_NAME.zip"
+          Compress-Archive -Path $PackageDir -DestinationPath "$PACKAGE_NAME.zip" -Force
           
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -246,7 +268,9 @@ jobs:
           mkdir -p build
           cd build
           
+          # Create absolute path for installation
           INSTALL_PATH=$PWD/install
+          echo "QT_INSTALL_DIR=${INSTALL_PATH}" >> $GITHUB_ENV
           
           CONFIG_OPTIONS="-static -ltcg -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports -openssl-runtime -android-ndk ${ANDROID_NDK_HOME} -android-sdk ${ANDROID_HOME} -android-arch ${{ matrix.arch }} -prefix ${INSTALL_PATH} -qt-host-path ${QT_HOST_PATH}"
           
@@ -275,11 +299,25 @@ jobs:
           
       - name: Package artifacts
         run: |
+          # Get the install directory from environment variable
+          INSTALL_DIR="${QT_INSTALL_DIR}"
           OUTPUT_DIR="qt5-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}"
           
-          # Use the install directory directly
-          mv build/install $OUTPUT_DIR
+          # Check if the install directory exists
+          if [ ! -d "${INSTALL_DIR}" ]; then
+            echo "Error: Install directory ${INSTALL_DIR} does not exist"
+            exit 1
+          fi
           
+          # Create a package directory with the final name
+          mkdir -p ${OUTPUT_DIR}
+          
+          # Copy the entire install directory content to the package directory
+          echo "Copying files from ${INSTALL_DIR} to ${OUTPUT_DIR}"
+          cp -r ${INSTALL_DIR}/* ${OUTPUT_DIR}/
+          
+          # Create zip archive
+          echo "Creating zip archive ${OUTPUT_DIR}.zip"
           zip -r ${OUTPUT_DIR}.zip ${OUTPUT_DIR}
           
       - name: Upload build artifact
@@ -318,7 +356,9 @@ jobs:
           mkdir -p build
           cd build
           
+          # Create absolute path for installation
           INSTALL_PATH=$PWD/install
+          echo "QT_INSTALL_DIR=${INSTALL_PATH}" >> $GITHUB_ENV
           
           CONFIG_OPTIONS="-static -ltcg -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -securetransport -reduce-exports -prefix ${INSTALL_PATH}"
           
@@ -342,11 +382,25 @@ jobs:
           
       - name: Package artifacts
         run: |
+          # Get the install directory from environment variable
+          INSTALL_DIR="${QT_INSTALL_DIR}"
           OUTPUT_DIR="qt5-macos-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}"
           
-          # Use the install directory directly
-          mv build/install "${OUTPUT_DIR}"
+          # Check if the install directory exists
+          if [ ! -d "${INSTALL_DIR}" ]; then
+            echo "Error: Install directory ${INSTALL_DIR} does not exist"
+            exit 1
+          fi
           
+          # Create a package directory with the final name
+          mkdir -p "${OUTPUT_DIR}"
+          
+          # Copy the entire install directory content to the package directory
+          echo "Copying files from ${INSTALL_DIR} to ${OUTPUT_DIR}"
+          cp -r "${INSTALL_DIR}"/* "${OUTPUT_DIR}"/
+          
+          # Create zip archive
+          echo "Creating zip archive ${OUTPUT_DIR}.zip"
           zip -r "${OUTPUT_DIR}.zip" "${OUTPUT_DIR}"
           
       - name: Upload build artifact
@@ -393,7 +447,9 @@ jobs:
           mkdir -p build
           cd build
           
+          # Create absolute path for installation
           INSTALL_PATH=$PWD/install
+          echo "QT_INSTALL_DIR=${INSTALL_PATH}" >> $GITHUB_ENV
           
           CONFIG_OPTIONS="-static -ltcg -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -securetransport -reduce-exports -prefix ${INSTALL_PATH} -qt-host-path ${QT_HOST_PATH}"
           
@@ -418,10 +474,15 @@ jobs:
       - name: Package artifacts
         run: |
           OUTPUT_DIR="qt5-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}"
+          INSTALL_DIR="build/install"
           
-          # Use the install directory directly
-          mv build/install "${OUTPUT_DIR}"
+          # Create a temporary directory for packaging
+          mkdir -p "${OUTPUT_DIR}"
           
+          # Copy the entire install directory
+          cp -r "${INSTALL_DIR}"/* "${OUTPUT_DIR}"/
+          
+          # Create zip archive
           zip -r "${OUTPUT_DIR}.zip" "${OUTPUT_DIR}"
           
       - name: Upload build artifact
