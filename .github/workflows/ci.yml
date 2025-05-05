@@ -71,11 +71,6 @@ jobs:
     strategy:
       matrix:
         build_type: [release]
-        include:
-          - build_type: release
-            is_release: true
-          - build_type: debug
-            is_debug: true
     steps:
       - name: Checkout Qt5
         uses: actions/checkout@v4
@@ -194,11 +189,6 @@ jobs:
       matrix:
         build_type: [release]
         arch: [arm64-v8a, armeabi-v7a]
-        include:
-          - build_type: release
-            is_release: true
-          - build_type: debug
-            is_debug: true
     steps:
       - name: Checkout Qt5
         uses: actions/checkout@v4
@@ -306,12 +296,7 @@ jobs:
     if: ${{ needs.setup.outputs.skip_macos_ios != 'true' }}
     strategy:
       matrix:
-        build_type: [release, debug]
-        include:
-          - build_type: release
-            is_release: true
-          - build_type: debug
-            is_debug: true
+        build_type: [release]
     steps:
       - name: Checkout Qt5
         uses: actions/checkout@v4
