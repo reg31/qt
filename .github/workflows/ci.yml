@@ -82,52 +82,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          choco install -y python3 ninja
+          choco install -y python3
           pip3 install setuptools wheel
-
-      - name: Setup MinGW
-        run: |
-          # Check if MinGW directory already exists
-          if (-Not (Test-Path -Path "C:/mingw64")) {
-            # Create directory for MinGW
-            New-Item -Path "C:/mingw64" -ItemType Directory -Force
-            
-            # Get latest release info from niXman/mingw-builds-binaries
-            $apiUrl = "https://api.github.com/repos/niXman/mingw-builds-binaries/releases/latest"
-            $release = Invoke-RestMethod -Uri $apiUrl
-            
-            # Find the x86_64 POSIX SEH release asset
-            $asset = $release.assets | Where-Object { $_.name -like "*x86_64*posix-seh-ucrt*" -and $_.name -like "*.7z" } | Select-Object -First 1
-            Write-Host "Downloading MinGW from: $($asset.browser_download_url)"
-            
-            # Download the asset
-            $downloadPath = "C:/mingw-latest.7z"
-            Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $downloadPath
-            
-            # Extract MinGW
-            Write-Host "Extracting MinGW..."
-            7z x $downloadPath -oC:/ -y
-            
-            # Get the actual directory name (should be something like mingw64)
-            $extractedDir = Get-ChildItem -Path C:/ -Directory -Filter "mingw*" | Select-Object -First 1
-            
-            # Rename if needed
-            if ($extractedDir.Name -ne "mingw64") {
-              Move-Item -Path $extractedDir.FullName -Destination C:/mingw64
-            }
-          } else {
-            Write-Host "MinGW directory already exists at C:/mingw64, skipping download and extraction."
-          }
-          
-          # Add to PATH
-          echo "C:/mingw64/bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          echo "MINGW_PATH=C:/mingw64" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-
-      - name: Verify MinGW installation
-        run: |
-          $env:Path = "C:/mingw64/bin;" + $env:Path
-          g++ --version
-          ninja --version
 
       - name: Initialize Qt submodules
         shell: cmd
@@ -166,8 +122,8 @@ jobs:
         shell: cmd
         run: |
           cd build          
-          ninja
-          ninja install
+          cmake --build . --parallel
+          cmake --install .
           
       - name: Package artifacts
         shell: pwsh
@@ -258,7 +214,6 @@ jobs:
           CONFIG_OPTIONS="-static -ltcg -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports"
           CONFIG_OPTIONS="$CONFIG_OPTIONS -openssl-runtime -android-ndk ${ANDROID_NDK_HOME} -android-sdk ${ANDROID_HOME}"
           CONFIG_OPTIONS="$CONFIG_OPTIONS -android-arch ${{ matrix.arch }} -prefix ${INSTALL_PATH} -qt-host-path ${QT_HOST_PATH}"
-          CONFIG_OPTIONS="$CONFIG_OPTIONS -ninja"
           
           if [ "${{ matrix.build_type }}" = "debug" ]; then
             CONFIG_OPTIONS="$CONFIG_OPTIONS -debug"
@@ -270,8 +225,8 @@ jobs:
           ../configure -platform android-clang -xplatform android-clang -submodules qtbase,qtdeclarative $CONFIG_OPTIONS
           
           # Build and install
-          ninja
-          ninja install
+          cmake --build . --parallel
+          cmake --install .
           
       - name: Package artifacts
         run: |
@@ -324,7 +279,6 @@ jobs:
           INSTALL_PATH=$PWD/install
           
           CONFIG_OPTIONS="-static -ltcg -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -securetransport -reduce-exports -prefix ${INSTALL_PATH}"
-          CONFIG_OPTIONS="$CONFIG_OPTIONS -ninja"
           
           if [ "${{ matrix.build_type }}" = "debug" ]; then
             CONFIG_OPTIONS="$CONFIG_OPTIONS -debug"
@@ -341,8 +295,8 @@ jobs:
           
           ../configure -platform macx-clang -submodules qtbase,qtdeclarative,qtmultimedia $CONFIG_OPTIONS
           
-          ninja
-          ninja install
+          cmake --build . --parallel
+          cmake --install .
           
       - name: Package artifacts
         run: |
@@ -392,10 +346,10 @@ jobs:
           cd host-qt
           
           CFLAGS="-O3" CXXFLAGS="-O3" ../configure -prefix $PWD/install -submodules qtbase,qtdeclarative \
-            -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports -ninja
+            -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports
           
-          ninja
-          ninja install
+          cmake --build . --parallel
+          cmake --install .
           
           echo "QT_HOST_PATH=$PWD/install" >> $GITHUB_ENV
         
@@ -407,7 +361,6 @@ jobs:
           INSTALL_PATH=$PWD/install
           
           CONFIG_OPTIONS="-static -ltcg -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -securetransport -reduce-exports -prefix ${INSTALL_PATH} -qt-host-path ${QT_HOST_PATH}"
-          CONFIG_OPTIONS="$CONFIG_OPTIONS -ninja"
           
           if [ "${{ matrix.build_type }}" = "debug" ]; then
             CONFIG_OPTIONS="$CONFIG_OPTIONS -debug"
@@ -424,8 +377,8 @@ jobs:
           
           ../configure -platform macx-ios-clang -submodules qtbase,qtdeclarative $CONFIG_OPTIONS
           
-          ninja
-          ninja install
+          cmake --build . --parallel
+          cmake --install .
           
       - name: Package artifacts
         run: |
