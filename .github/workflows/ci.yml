@@ -166,8 +166,8 @@ jobs:
           -submodules qtbase,qtdeclarative,qtmultimedia ^
           ${{ matrix.build_type == 'debug' && '-debug' || '-release' }}
           
-          make -j$(nproc)
-          make install
+          cmake --build . --parallel
+          cmake --install .
           
       - name: Package artifacts
         shell: pwsh
