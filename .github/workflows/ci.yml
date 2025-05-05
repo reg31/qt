@@ -82,7 +82,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          choco install -y python3 mingw
+          del "C:/mingw64"
+          choco install -y mingw
 
       - name: Initialize Qt submodules
         shell: cmd
