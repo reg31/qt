@@ -82,7 +82,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          choco install -y python3
+          choco install -y python3 ninja
           pip3 install setuptools wheel
 
       - name: Setup MinGW
@@ -127,7 +127,7 @@ jobs:
         run: |
           $env:Path = "C:/mingw64/bin;" + $env:Path
           g++ --version
-          mingw32-make --version
+          ninja --version
 
       - name: Initialize Qt submodules
         shell: cmd
@@ -159,14 +159,15 @@ jobs:
           -platform win32-g++ ^
           -prefix %CD%\install ^
           -submodules qtbase,qtdeclarative,qtmultimedia ^
+          -ninja ^
           ${{ matrix.build_type == 'debug' && '-debug' || '-release' }}
 
       - name: Build Qt
         shell: cmd
         run: |
           cd build          
-          cmake --build . --parallel
-          cmake --install .
+          ninja
+          ninja install
           
       - name: Package artifacts
         shell: pwsh
@@ -230,10 +231,10 @@ jobs:
           
           ../configure -prefix $PWD/install -submodules qtbase,qtdeclarative \
             -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports \
-            CFLAGS="-O3" CXXFLAGS="-O3"
+            -ninja CFLAGS="-O3" CXXFLAGS="-O3"
           
-          cmake --build . --parallel $(nproc)
-          cmake --install .
+          ninja
+          ninja install
           
           echo "QT_HOST_PATH=$PWD/install" >> $GITHUB_ENV
       
@@ -257,6 +258,7 @@ jobs:
           CONFIG_OPTIONS="-static -ltcg -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports"
           CONFIG_OPTIONS="$CONFIG_OPTIONS -openssl-runtime -android-ndk ${ANDROID_NDK_HOME} -android-sdk ${ANDROID_HOME}"
           CONFIG_OPTIONS="$CONFIG_OPTIONS -android-arch ${{ matrix.arch }} -prefix ${INSTALL_PATH} -qt-host-path ${QT_HOST_PATH}"
+          CONFIG_OPTIONS="$CONFIG_OPTIONS -ninja"
           
           if [ "${{ matrix.build_type }}" = "debug" ]; then
             CONFIG_OPTIONS="$CONFIG_OPTIONS -debug"
@@ -268,8 +270,8 @@ jobs:
           ../configure -platform android-clang -xplatform android-clang -submodules qtbase,qtdeclarative $CONFIG_OPTIONS
           
           # Build and install
-          cmake --build . --parallel $(nproc)
-          cmake --install .
+          ninja
+          ninja install
           
       - name: Package artifacts
         run: |
@@ -306,6 +308,10 @@ jobs:
           fetch-depth: 0
           submodules: false
       
+      - name: Install dependencies
+        run: |
+          brew install ninja
+      
       - name: Initialize Qt submodules
         run: |
           perl init-repository --module-subset=qtbase,qtdeclarative,qtmultimedia
@@ -318,6 +324,7 @@ jobs:
           INSTALL_PATH=$PWD/install
           
           CONFIG_OPTIONS="-static -ltcg -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -securetransport -reduce-exports -prefix ${INSTALL_PATH}"
+          CONFIG_OPTIONS="$CONFIG_OPTIONS -ninja"
           
           if [ "${{ matrix.build_type }}" = "debug" ]; then
             CONFIG_OPTIONS="$CONFIG_OPTIONS -debug"
@@ -334,8 +341,8 @@ jobs:
           
           ../configure -platform macx-clang -submodules qtbase,qtdeclarative,qtmultimedia $CONFIG_OPTIONS
           
-          cmake --build . --parallel $(sysctl -n hw.ncpu)
-          cmake --install .
+          ninja
+          ninja install
           
       - name: Package artifacts
         run: |
@@ -371,6 +378,10 @@ jobs:
           fetch-depth: 0
           submodules: false
       
+      - name: Install dependencies
+        run: |
+          brew install ninja
+      
       - name: Initialize Qt submodules
         run: |
           perl init-repository --module-subset=qtbase,qtdeclarative
@@ -381,10 +392,10 @@ jobs:
           cd host-qt
           
           CFLAGS="-O3" CXXFLAGS="-O3" ../configure -prefix $PWD/install -submodules qtbase,qtdeclarative \
-            -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports
+            -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports -ninja
           
-          cmake --build . --parallel $(sysctl -n hw.ncpu)
-          cmake --install .
+          ninja
+          ninja install
           
           echo "QT_HOST_PATH=$PWD/install" >> $GITHUB_ENV
         
@@ -396,6 +407,7 @@ jobs:
           INSTALL_PATH=$PWD/install
           
           CONFIG_OPTIONS="-static -ltcg -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -securetransport -reduce-exports -prefix ${INSTALL_PATH} -qt-host-path ${QT_HOST_PATH}"
+          CONFIG_OPTIONS="$CONFIG_OPTIONS -ninja"
           
           if [ "${{ matrix.build_type }}" = "debug" ]; then
             CONFIG_OPTIONS="$CONFIG_OPTIONS -debug"
@@ -412,8 +424,8 @@ jobs:
           
           ../configure -platform macx-ios-clang -submodules qtbase,qtdeclarative $CONFIG_OPTIONS
           
-          cmake --build . --parallel $(sysctl -n hw.ncpu)
-          cmake --install .
+          ninja
+          ninja install
           
       - name: Package artifacts
         run: |
@@ -447,7 +459,7 @@ jobs:
       - name: Create release
         uses: softprops/action-gh-release@v2.2.2
         with:
-          tag_name: ${{ github.run_id }}
+          tag_name: ${{ env.SNAPSHOT_TAG }}
           name: "Qt5 Library - Build"
           body: |
             Automated build of Qt5 ${{ needs.setup.outputs.qt_version }}
@@ -458,13 +470,12 @@ jobs:
             ${{ needs.setup.outputs.skip_macos_ios != 'true' && '- iOS with qtbase, qtdeclarative
             - macOS with qtbase, qtdeclarative, qtmultimedia' || '' }}
             
-            All builds compiled with -O3 optimization level.
+            All builds compiled with -O3 optimization level using Ninja build system.
             
-            **Note:** This snapshot may be overwritten by newer builds.
+            **Build Date:** $(date +'%Y-%m-%d %H:%M:%S')
           files: |
             qt5-builds/qt5-windows-*/qt5-windows-*.zip
             qt5-builds/qt5-android-*/qt5-android-*.zip
             ${{ needs.setup.outputs.skip_macos_ios != 'true' && 'qt5-builds/qt5-ios-*/qt5-ios-*.zip
             qt5-builds/qt5-macos-*/qt5-macos-*.zip' || '' }}
-          prerelease: true
-          delete_after: "7d"
+          prerelease: false
