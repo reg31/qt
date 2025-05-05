@@ -458,6 +458,7 @@ jobs:
       - name: Create release
         uses: softprops/action-gh-release@v2.2.2
         with:
+          repository: "https://github.com/reg31/qt.git"
           tag_name: ${{ env.run_id }}
           name: "Qt5 Library - Build"
           body: |
@@ -478,3 +479,4 @@ jobs:
             ${{ needs.setup.outputs.skip_macos_ios != 'true' && 'qt5-builds/qt5-ios-*/qt5-ios-*.zip
             qt5-builds/qt5-macos-*/qt5-macos-*.zip' || '' }}
           prerelease: true
+          delete_after: "7d"
