@@ -99,6 +99,9 @@ jobs:
           set CXXFLAGS=-O3 -s -ffat-lto-objects
           set "CC=C:\ProgramData\mingw64\mingw64\bin\gcc"
           set "CXX=C:\ProgramData\mingw64\mingw64\bin\g++"
+          set QT_BUILD_EXAMPLES_BY_DEFAULT=OFF
+          set QT_BUILD_TESTS_BY_DEFAULT=OFF
+          set QT_BUILD_TOOLS_BY_DEFAULT=OFF
           
           ..\configure.bat -qt-zlib ^
           -qt-libjpeg ^
@@ -106,6 +109,7 @@ jobs:
           -qt-freetype ^
           -no-harfbuzz ^
           -schannel ^
+          -ltcg ^
           -prefix %CD%\install ^
           -no-feature-testlib ^
           -submodules qtbase,qtdeclarative,qtmultimedia ^
