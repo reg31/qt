@@ -108,9 +108,10 @@ jobs:
           -schannel ^
           -reduce-exports ^
           -prefix %CD%\install ^
-          -no-feature-testlib ^
+          -no-feature-testlib -gc-binaries ^
           -nomake tests -nomake examples -nomake tools ^
           -submodules qtbase,qtdeclarative,qtmultimedia ^
+          -skip qtlanguageserver,qtquicktimeline ^
           ${{ matrix.build_type == 'debug' && '-debug' || '-release' }}
 
       - name: Build Qt
@@ -184,6 +185,7 @@ jobs:
           ../configure -prefix $PWD/install -submodules qtbase,qtdeclarative \
             -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports \
             CFLAGS="-O3" CXXFLAGS="-O3" -nomake tests -nomake examples -nomake tools \
+            -skip qtlanguageserver,qtquicktimeline \
             -android-abis arm64-v8a,armeabi-v7a -android-sdk ~/Android/Sdk -\
             android-ndk ${ANDROID_NDK_HOME}
           
@@ -209,8 +211,8 @@ jobs:
           export CXXFLAGS="-O3"
           
           # Setup configuration options
-          CONFIG_OPTIONS="-static -ltcg -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports"
-          CONFIG_OPTIONS="$CONFIG_OPTIONS -openssl-runtime -android-ndk ${ANDROID_NDK_HOME} -android-sdk ${ANDROID_HOME}"
+          CONFIG_OPTIONS="-qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports"
+          CONFIG_OPTIONS="$CONFIG_OPTIONS -gc-binaries -openssl-runtime -android-ndk ${ANDROID_NDK_HOME} -android-sdk ${ANDROID_HOME}"
           CONFIG_OPTIONS="$CONFIG_OPTIONS -android-arch ${{ matrix.arch }} -prefix ${INSTALL_PATH} -qt-host-path ${QT_HOST_PATH}"
           
           if [ "${{ matrix.build_type }}" = "debug" ]; then
@@ -272,7 +274,7 @@ jobs:
           
           INSTALL_PATH=$PWD/install
           
-          CONFIG_OPTIONS="-nomake tests -nomake examples -nomake tools -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -securetransport -reduce-exports -prefix ${INSTALL_PATH}"
+          CONFIG_OPTIONS="-gc-binaries -skip qtlanguageserver,qtquicktimeline -nomake tests -nomake examples -nomake tools -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -securetransport -reduce-exports -prefix ${INSTALL_PATH}"
           
           if [ "${{ matrix.build_type }}" = "debug" ]; then
             CONFIG_OPTIONS="$CONFIG_OPTIONS -debug"
@@ -334,7 +336,7 @@ jobs:
           
           CFLAGS="-O3" CXXFLAGS="-O3" ../configure -prefix $PWD/install -submodules qtbase,qtdeclarative \
             -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports \
-            -nomake tests -nomake examples -nomake tools
+            -nomake tests -nomake examples -nomake tools -skip qtlanguageserver,qtquicktimeline -gc-binaries
           
           cmake --build . --parallel
           cmake --install .
