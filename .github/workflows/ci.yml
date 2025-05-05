@@ -166,14 +166,14 @@ jobs:
           -submodules qtbase,qtdeclarative,qtmultimedia ^
           ${{ matrix.build_type == 'debug' && '-debug' || '-release' }}
           
-          mingw32-make -j %NUMBER_OF_PROCESSORS%
-          mingw32-make install
+          make -j$(nproc)
+          make install
           
       - name: Package artifacts
         shell: pwsh
         run: |
           # Use the QT_INSTALL_DIR environment variable set by CMake
-          $OUTPUT_DIR = "D:/a/qt/qt/build"
+          $OUTPUT_DIR = "D:/a/qt/qt/build/install"
           Write-Host "Packaging Qt install from: $OUTPUT_DIR"
           Compress-Archive -Path $OUTPUT_DIR -DestinationPath "qt5-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}.zip"
           
