@@ -70,7 +70,7 @@ jobs:
     runs-on: windows-latest
     strategy:
       matrix:
-        build_type: [release, debug]
+        build_type: [release]
         include:
           - build_type: release
             is_release: true
@@ -147,8 +147,8 @@ jobs:
           
           set PATH=C:\mingw64\bin;%PATH%
           
-          set CFLAGS=-O3 -s
-          set CXXFLAGS=-O3 -s
+          set CFLAGS=-O3 -s -ffat-lto-objects
+          set CXXFLAGS=-O3 -s -ffat-lto-objects
           
           ..\configure.bat -static ^
           -ltcg ^
@@ -192,7 +192,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        build_type: [release, debug]
+        build_type: [release]
         arch: [arm64-v8a, armeabi-v7a]
         include:
           - build_type: release
@@ -376,7 +376,7 @@ jobs:
     if: ${{ needs.setup.outputs.skip_macos_ios != 'true' }}
     strategy:
       matrix:
-        build_type: [release, debug]
+        build_type: [release]
     steps:
       - name: Checkout Qt5
         uses: actions/checkout@v4
