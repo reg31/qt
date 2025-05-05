@@ -82,7 +82,6 @@ jobs:
 
       - name: Install dependencies
         run: |
-          del "C:/mingw64"
           choco install -y mingw
 
       - name: Initialize Qt submodules
@@ -95,8 +94,6 @@ jobs:
         run: |
           mkdir build
           cd build
-          
-          set PATH=C:\mingw64\bin;%PATH%
           
           set CFLAGS=-O3 -s -ffat-lto-objects
           set CXXFLAGS=-O3 -s -ffat-lto-objects
