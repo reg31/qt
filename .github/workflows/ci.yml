@@ -113,7 +113,7 @@ jobs:
         shell: cmd
         run: |
           cd build
-          cmake -G Ninja ..
+          cmake -G Ninja -D CMAKE_C_COMPILER="C:\ProgramData\mingw64\mingw64\bin\gcc" -D CMAKE_CXX_COMPILER="C:\ProgramData\mingw64\mingw64\bin\g++" ..
           cmake --build . --parallel
           cmake --install .
           
