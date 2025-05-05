@@ -186,8 +186,8 @@ jobs:
             -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports \
             CFLAGS="-O3" CXXFLAGS="-O3" -nomake tests -nomake examples -nomake tools \
             -skip qtlanguageserver,qtquicktimeline \
-            -android-abis arm64-v8a,armeabi-v7a -android-sdk ~/Android/Sdk -\
-            android-ndk ${ANDROID_NDK_HOME}
+            -android-abis arm64-v8a,armeabi-v7a -android-sdk ~/Android/Sdk \
+            -android-ndk ${ANDROID_NDK_HOME}
           
           cmake --build . --parallel
           cmake --install .
