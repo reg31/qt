@@ -162,71 +162,34 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libgl1-mesa-dev libssl-dev
       
-      - name: Download NDK
-        run: |
-          mkdir -p ${ANDROID_HOME}/ndk
-          cd ${ANDROID_HOME}/ndk
-          echo "ANDROID_API=35" >> $GITHUB_ENV
-          curl -O https://dl.google.com/android/repository/android-ndk-r28b-linux.zip
-          unzip -q android-ndk-r28b-linux.zip
-          echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/android-ndk-r28b" >> $GITHUB_ENV
-      
       - name: Initialize Qt submodules
         run: |
-          export ANDROID_NDK_ROOT=$ANDROID_NDK_HOME
-          export PATH=$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH
           perl init-repository --module-subset=qtbase,qtdeclarative
       
       - name: Build host Qt for cross-compilation
         run: |
           mkdir -p host-qt
           cd host-qt
-          
-          ../configure -prefix $PWD/install -submodules qtbase,qtdeclarative \
-            -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports \
-            CFLAGS="-O3" CXXFLAGS="-O3" -nomake tests -nomake examples -nomake tools \
-            -skip qtlanguageserver,qtquicktimeline \
-            -android-abis arm64-v8a,armeabi-v7a -android-sdk ~/Android/Sdk \
-            -android-ndk ${ANDROID_NDK_HOME}
-          
-          cmake --build . --parallel
-          cmake --install .
-          
-          echo "QT_HOST_PATH=$PWD/install" >> $GITHUB_ENV
-      
-      - name: Configure and build for Android
-        run: |
-          mkdir -p build
-          cd build
-          
+
           # Define install path and set it as environment variable
           INSTALL_PATH=$PWD/install
           echo "QT_INSTALL_DIR=$INSTALL_PATH" >> $GITHUB_ENV
           
           export CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH
-          export QT_BUILD_EXAMPLES_BY_DEFAULT=OFF
-          export QT_BUILD_TESTS_BY_DEFAULT=OFF
-          export QT_BUILD_TOOLS_BY_DEFAULT=OFF
           export CFLAGS="-O3"
           export CXXFLAGS="-O3"
           
-          # Setup configuration options
-          CONFIG_OPTIONS="-qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports"
-          CONFIG_OPTIONS="$CONFIG_OPTIONS -gc-binaries -openssl-runtime -android-ndk ${ANDROID_NDK_HOME} -android-sdk ${ANDROID_HOME}"
-          CONFIG_OPTIONS="$CONFIG_OPTIONS -android-arch ${{ matrix.arch }} -prefix ${INSTALL_PATH} -qt-host-path ${QT_HOST_PATH}"
+          ../configure -prefix $INSTALL_PATH -submodules qtbase,qtdeclarative \
+            -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports \
+            -nomake tests -nomake examples -nomake tools \
+            -skip qtlanguageserver,qtquicktimeline -gc-binaries \
+            -android-abis arm64-v8a,armeabi-v7a -android-ndk ${ANDROID_NDK_LATEST_HOME} -android-sdk ${ANDROID_HOME} \
+            -platform android-clang -xplatform android-clang -submodules qtbase,qtdeclarative
           
-          if [ "${{ matrix.build_type }}" = "debug" ]; then
-            CONFIG_OPTIONS="$CONFIG_OPTIONS -debug"
-          else
-            CONFIG_OPTIONS="$CONFIG_OPTIONS -release"
-          fi
-          
-          # Configure Qt for Android
-          ../configure -platform android-clang -xplatform android-clang -submodules qtbase,qtdeclarative $CONFIG_OPTIONS
-          
-          # Build and install
           cmake --build . --parallel
           cmake --install .
+          
+          echo "QT_HOST_PATH=$PWD/install" >> $GITHUB_ENV
           
       - name: Package artifacts
         run: |
