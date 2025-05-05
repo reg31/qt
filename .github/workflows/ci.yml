@@ -119,7 +119,7 @@ jobs:
         shell: cmd
         run: |
           cd build
-          cmake Ninja ..
+          cmake -G Ninja ..
           cmake --build . --parallel
           cmake --install .
           
