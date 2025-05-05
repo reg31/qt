@@ -99,9 +99,6 @@ jobs:
           set CXXFLAGS=-O3 -s -ffat-lto-objects
           set "CC=C:\ProgramData\mingw64\mingw64\bin\gcc"
           set "CXX=C:\ProgramData\mingw64\mingw64\bin\g++"
-          set QT_BUILD_EXAMPLES_BY_DEFAULT=OFF
-          set QT_BUILD_TESTS_BY_DEFAULT=OFF
-          set QT_BUILD_TOOLS_BY_DEFAULT=OFF
           
           ..\configure.bat -qt-zlib ^
           -qt-libjpeg ^
@@ -112,6 +109,7 @@ jobs:
           -reduce-exports ^
           -prefix %CD%\install ^
           -no-feature-testlib ^
+          -nomake tests -nomake examples -nomake tools ^
           -submodules qtbase,qtdeclarative,qtmultimedia ^
           ${{ matrix.build_type == 'debug' && '-debug' || '-release' }}
 
@@ -161,7 +159,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libssl-dev
+          sudo apt-get install -y libgl1-mesa-dev libssl-dev
       
       - name: Download NDK
         run: |
@@ -185,7 +183,7 @@ jobs:
           
           ../configure -prefix $PWD/install -submodules qtbase,qtdeclarative \
             -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports \
-            CFLAGS="-O3" CXXFLAGS="-O3" -nomake tests -nomake examples
+            CFLAGS="-O3" CXXFLAGS="-O3" -nomake tests -nomake examples -nomake tools
           
           cmake --build . --parallel
           cmake --install .
@@ -272,7 +270,7 @@ jobs:
           
           INSTALL_PATH=$PWD/install
           
-          CONFIG_OPTIONS="-static -ltcg -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -securetransport -reduce-exports -prefix ${INSTALL_PATH}"
+          CONFIG_OPTIONS="-nomake tests -nomake examples -nomake tools -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -securetransport -reduce-exports -prefix ${INSTALL_PATH}"
           
           if [ "${{ matrix.build_type }}" = "debug" ]; then
             CONFIG_OPTIONS="$CONFIG_OPTIONS -debug"
@@ -281,9 +279,6 @@ jobs:
           fi
           
           export CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH
-          export QT_BUILD_EXAMPLES_BY_DEFAULT=OFF
-          export QT_BUILD_TESTS_BY_DEFAULT=OFF
-          export QT_BUILD_TOOLS_BY_DEFAULT=OFF
           export CFLAGS="-O3"
           export CXXFLAGS="-O3"
           
@@ -336,7 +331,8 @@ jobs:
           cd host-qt
           
           CFLAGS="-O3" CXXFLAGS="-O3" ../configure -prefix $PWD/install -submodules qtbase,qtdeclarative \
-            -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports
+            -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports \
+            -nomake tests -nomake examples -nomake tools
           
           cmake --build . --parallel
           cmake --install .
