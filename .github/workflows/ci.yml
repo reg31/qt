@@ -82,7 +82,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          choco install -y python3
+          choco install -y python3 mingw
 
       - name: Initialize Qt submodules
         shell: cmd
