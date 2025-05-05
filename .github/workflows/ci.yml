@@ -110,6 +110,7 @@ jobs:
           -no-harfbuzz ^
           -schannel ^
           -reduce-exports ^
+          -prefix %CD%\install ^
           -no-feature-testlib ^
           -submodules qtbase,qtdeclarative,qtmultimedia ^
           ${{ matrix.build_type == 'debug' && '-debug' || '-release' }}
@@ -117,7 +118,8 @@ jobs:
       - name: Build Qt
         shell: cmd
         run: |
-          cd build          
+          cd build
+          cmake Ninja ..
           cmake --build . --parallel
           cmake --install .
           
