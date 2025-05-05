@@ -100,9 +100,7 @@ jobs:
           set CFLAGS=-O3 -s -ffat-lto-objects
           set CXXFLAGS=-O3 -s -ffat-lto-objects
           
-          ..\configure.bat -static ^
-          -ltcg ^
-          -qt-zlib ^
+          ..\configure.bat -qt-zlib ^
           -qt-libjpeg ^
           -qt-libpng ^
           -qt-freetype ^
