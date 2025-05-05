@@ -83,7 +83,6 @@ jobs:
       - name: Install dependencies
         run: |
           choco install -y python3
-          pip3 install setuptools wheel
 
       - name: Initialize Qt submodules
         shell: cmd
@@ -112,10 +111,7 @@ jobs:
           -schannel ^
           -reduce-exports ^
           -no-feature-testlib ^
-          -platform win32-g++ ^
-          -prefix %CD%\install ^
           -submodules qtbase,qtdeclarative,qtmultimedia ^
-          -ninja ^
           ${{ matrix.build_type == 'debug' && '-debug' || '-release' }}
 
       - name: Build Qt
@@ -164,7 +160,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential git perl make curl ninja-build cmake libgl1-mesa-dev
+          sudo apt-get install -y build-essential git perl make curl cmake libgl1-mesa-dev
           pip3 install setuptools wheel
       
       - name: Download NDK
@@ -187,10 +183,10 @@ jobs:
           
           ../configure -prefix $PWD/install -submodules qtbase,qtdeclarative \
             -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports \
-            -ninja CFLAGS="-O3" CXXFLAGS="-O3"
+            CFLAGS="-O3" CXXFLAGS="-O3"
           
-          ninja
-          ninja install
+          cmake --build . --parallel
+          cmake --install .
           
           echo "QT_HOST_PATH=$PWD/install" >> $GITHUB_ENV
       
@@ -263,10 +259,6 @@ jobs:
           fetch-depth: 0
           submodules: false
       
-      - name: Install dependencies
-        run: |
-          brew install ninja
-      
       - name: Initialize Qt submodules
         run: |
           perl init-repository --module-subset=qtbase,qtdeclarative,qtmultimedia
@@ -331,10 +323,6 @@ jobs:
           ref: ${{ needs.setup.outputs.qt_branch }}
           fetch-depth: 0
           submodules: false
-      
-      - name: Install dependencies
-        run: |
-          brew install ninja
       
       - name: Initialize Qt submodules
         run: |
