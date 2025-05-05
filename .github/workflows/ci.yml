@@ -139,7 +139,7 @@ jobs:
         run: |
           init-repository.bat --module-subset=qtbase,qtdeclarative,qtmultimedia
 
-      - name: Configure and build Qt
+      - name: Configure
         shell: cmd
         run: |
           mkdir build
@@ -165,7 +165,11 @@ jobs:
           -prefix %CD%\install ^
           -submodules qtbase,qtdeclarative,qtmultimedia ^
           ${{ matrix.build_type == 'debug' && '-debug' || '-release' }}
-          
+
+      - name: Build Qt
+        shell: cmd
+        run: |
+          cd build          
           cmake --build . --parallel
           cmake --install .
           
