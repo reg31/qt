@@ -183,9 +183,13 @@ jobs:
             -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports \
             -nomake tests -nomake examples -nomake tools \
             -skip qtlanguageserver,qtquicktimeline -gc-binaries \
-            -android-abis arm64-v8a,armeabi-v7a -android-ndk ${ANDROID_NDK_LATEST_HOME} -android-sdk ${ANDROID_HOME} \
-            -platform android-clang -xplatform android-clang -submodules qtbase,qtdeclarative
-          
+            -android-abis ${{ matrix.arch }} -android-ndk ${ANDROID_NDK_LATEST_HOME} -android-sdk ${ANDROID_HOME} \
+            -platform android-clang -xplatform android-clang -submodules qtbase,qtdeclarative 
+ 
+      - name: Build Qt
+        shell: cmd
+        run: |
+          cd build
           cmake --build . --parallel
           cmake --install .
           
