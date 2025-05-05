@@ -119,7 +119,6 @@ jobs:
         shell: cmd
         run: |
           cd build
-          cmake -G Ninja ..
           cmake --build . --parallel
           cmake --install .
           
@@ -162,8 +161,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential git perl make curl cmake libgl1-mesa-dev
-          pip3 install setuptools wheel
+          sudo apt-get install -y build-essential git perl make curl cmake libgl1-mesa-dev libssl-dev
       
       - name: Download NDK
         run: |
@@ -185,7 +183,7 @@ jobs:
           
           ../configure -prefix $PWD/install -submodules qtbase,qtdeclarative \
             -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports \
-            CFLAGS="-O3" CXXFLAGS="-O3"
+            CFLAGS="-O3" CXXFLAGS="-O3" -nomake tests -nomake examples
           
           cmake --build . --parallel
           cmake --install .
