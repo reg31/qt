@@ -283,7 +283,7 @@ jobs:
           export CXXFLAGS="-O3 -std=c++20"
           
           ../configure -prefix $HOST_INSTALL_PATH -nomake tests -nomake examples
-		  
+          
           cmake --build . --parallel
           cmake --install .
         
