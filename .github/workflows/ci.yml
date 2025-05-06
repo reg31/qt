@@ -81,7 +81,7 @@ jobs:
           cd build
           
           set CFLAGS=-O3 -s
-          set CXXFLAGS=-O3 -s
+          set CXXFLAGS=-O3 -s -std=c++20
           set "CC=C:\ProgramData\mingw64\mingw64\bin\gcc"
           set "CXX=C:\ProgramData\mingw64\mingw64\bin\g++"
           
@@ -91,7 +91,7 @@ jobs:
           ..\configure.bat -qt-zlib -qt-libjpeg -qt-libpng ^
           -qt-freetype -no-harfbuzz -schannel -reduce-exports ^
           -prefix "%OUTPUT_DIR%" -no-feature-testlib -no-feature-sql ^
-          -nomake tests -nomake examples -feature-cxx20 ^
+          -nomake tests -nomake examples ^
           -submodules qtbase,qtdeclarative,qtmultimedia ^
           -skip qtlanguageserver,qtquicktimeline,WITH_PCH ^
           ${{ matrix.build_type == 'debug' && '-debug' || '-release' }}
@@ -157,9 +157,9 @@ jobs:
           
           export CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH
           export CFLAGS="-O3"
-          export CXXFLAGS="-O3"
+          export CXXFLAGS="-O3 -std=c++20"
           
-          ../configure -prefix $INSTALL_PATH -submodules qtbase,qtdeclarative -feature-cxx20 \
+          ../configure -prefix $INSTALL_PATH -submodules qtbase,qtdeclarative \
             -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports \
             -nomake tests -nomake examples -no-feature-sql -skip qtlanguageserver,qtquicktimeline,WITH_PCH -qt-host-path $INSTALL_PATH \
             -android-abis ${{ matrix.arch }} -android-ndk ${ANDROID_NDK_LATEST_HOME} -android-sdk ${ANDROID_HOME} \
@@ -179,9 +179,9 @@ jobs:
           
           export CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH
           export CFLAGS="-O3"
-          export CXXFLAGS="-O3"
+          export CXXFLAGS="-O3 -std=c++20"
           
-          ../configure -prefix $INSTALL_PATH -qt-host-path ${{ env.QT_HOST_PATH }} -feature-cxx20 \
+          ../configure -prefix $INSTALL_PATH -qt-host-path ${{ env.QT_HOST_PATH }}\
             -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports \
             -nomake tests -nomake examples -no-feature-sql -skip qtlanguageserver,qtquicktimeline,WITH_PCH \
             -android-abis ${{ matrix.arch }} -android-ndk ${ANDROID_NDK_LATEST_HOME} -android-sdk ${ANDROID_HOME} \
@@ -231,7 +231,7 @@ jobs:
           INSTALL_PATH=$PWD/install
           echo "QT_INSTALL_DIR=$INSTALL_PATH" >> $GITHUB_ENV
           
-          CONFIG_OPTIONS="-skip qtlanguageserver,qtquicktimeline -no-feature-sql -feature-cxx20 -nomake tests -nomake examples -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -securetransport -reduce-exports -prefix ${INSTALL_PATH}"
+          CONFIG_OPTIONS="-skip qtlanguageserver,qtquicktimeline -no-feature-sql -nomake tests -nomake examples -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -securetransport -reduce-exports -prefix ${INSTALL_PATH}"
           
           if [ "${{ matrix.build_type }}" = "debug" ]; then
             CONFIG_OPTIONS="$CONFIG_OPTIONS -debug"
@@ -241,7 +241,7 @@ jobs:
           
           export CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH
           export CFLAGS="-O3"
-          export CXXFLAGS="-O3"
+          export CXXFLAGS="-O3 -std=c++20"
           
           ../configure -platform macx-clang -submodules qtbase,qtdeclarative,qtmultimedia $CONFIG_OPTIONS
           
@@ -293,7 +293,7 @@ jobs:
           export CFLAGS="-O3" 
           export CXXFLAGS="-O3 -std=c++20"
           
-          ../configure -prefix $HOST_INSTALL_PATH -submodules qtbase,qtdeclarative -feature-cxx20 \
+          ../configure -prefix $HOST_INSTALL_PATH -submodules qtbase,qtdeclarative \
             -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports \
             -nomake tests -nomake examples -skip qtlanguageserver,qtquicktimeline -no-feature-sql
           
@@ -319,7 +319,7 @@ jobs:
           
           export CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH
           export CFLAGS="-O3"
-          export CXXFLAGS="-O3"
+          export CXXFLAGS="-O3 -std=c++20"
           
           ../configure -platform macx-ios-clang -submodules qtbase,qtdeclarative $CONFIG_OPTIONS
           
