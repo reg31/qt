@@ -152,15 +152,16 @@ jobs:
           mkdir -p host-qt
           cd host-qt
           
-          INSTALL_PATH=$PWD
+          INSTALL_PATH=$PWD/install
           echo "QT_HOST_PATH=$INSTALL_PATH" >> $GITHUB_ENV
           
           export CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH
           export CFLAGS="-O3"
           export CXXFLAGS="-O3 -std=c++20"
           
-          ../configure -developer-build -nomake tests -nomake examples          
-          cmake --build . --target host_tools
+          ../configure -prefix $INSTALL_PATH -nomake tests -nomake examples          
+          cmake --build . --parallel
+          cmake --install .
           
       - name: Build Android Qt
         run: |
@@ -281,8 +282,10 @@ jobs:
           export CFLAGS="-O3" 
           export CXXFLAGS="-O3 -std=c++20"
           
-          ../configure -developer-build -nomake tests -nomake examples          
-          cmake --build . --target host_tools
+          ../configure -prefix $HOST_INSTALL_PATH -nomake tests -nomake examples
+		  
+          cmake --build . --parallel
+          cmake --install .
         
       - name: Configure and build for iOS
         run: |
@@ -330,7 +333,7 @@ jobs:
           path: qt5-builds
           
       - name: Create release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v2.2.2
         with:
           tag_name: ${{ env.SNAPSHOT_TAG }}
           name: "Qt5 Library - Build"
