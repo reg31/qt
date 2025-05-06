@@ -103,9 +103,9 @@ jobs:
           ..\configure.bat -qt-zlib -qt-libjpeg -qt-libpng ^
           -qt-freetype -no-harfbuzz -schannel -reduce-exports ^
           -prefix %CD%\install -no-feature-testlib -no-feature-sql ^
-          -nomake tests -nomake examples ^
+          -nomake tests -nomake examples -nomake TOOLS_BY_DEFAULT -nomake DOCS ^
           -submodules qtbase,qtdeclarative,qtmultimedia ^
-          -skip qtlanguageserver,qtquicktimeline,TOOLS_BY_DEFAULT ^
+          -skip qtlanguageserver,qtquicktimeline,WITH_PCH ^
           ${{ matrix.build_type == 'debug' && '-debug' || '-release' }}
 
       - name: Build Qt
