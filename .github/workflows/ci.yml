@@ -330,7 +330,7 @@ jobs:
           path: qt5-builds
           
       - name: Create release
-        uses: softprops/action-gh-release@v2.2.2
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.SNAPSHOT_TAG }}
           name: "Qt5 Library - Build"
