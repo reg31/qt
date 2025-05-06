@@ -103,7 +103,7 @@ jobs:
           ..\configure.bat -qt-zlib -qt-libjpeg -qt-libpng ^
           -qt-freetype -no-harfbuzz -schannel -reduce-exports ^
           -prefix %CD%\install -no-feature-testlib ^
-          -nomake tests -nomake examples -nomake tools ^
+          -nomake tests -nomake examples ^
           -submodules qtbase,qtdeclarative,qtmultimedia ^
           -skip qtlanguageserver,qtquicktimeline ^
           ${{ matrix.build_type == 'debug' && '-debug' || '-release' }}
@@ -119,7 +119,7 @@ jobs:
         shell: pwsh
         run: |
           # Use the QT_INSTALL_DIR environment variable set by CMake
-          $OUTPUT_DIR = "D:/a/qt/qt/build/install"
+          $OUTPUT_DIR = "%CD%\build\install"
           Write-Host "Packaging Qt install from: $OUTPUT_DIR"
           Compress-Archive -Path $OUTPUT_DIR -DestinationPath "qt5-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}.zip"
           
@@ -175,9 +175,9 @@ jobs:
           
           ../configure -prefix $INSTALL_PATH -submodules qtbase,qtdeclarative \
             -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports \
-            -nomake tests -nomake examples -nomake tools -skip qtlanguageserver,qtquicktimeline \
+            -nomake tests -nomake examples -skip qtlanguageserver,qtquicktimeline -qt-host-path "" \
             -android-abis ${{ matrix.arch }} -android-ndk ${ANDROID_NDK_LATEST_HOME} -android-sdk ${ANDROID_HOME} \
-            -platform android-clang -xplatform android-clang -submodules qtbase,qtdeclarative 
+            -platform android-clang -xplatform android-clang -submodules qtbase,qtdeclarative
  
       - name: Build Qt
         shell: cmd
@@ -234,7 +234,7 @@ jobs:
           
           INSTALL_PATH=$PWD/install
           
-          CONFIG_OPTIONS="-skip qtlanguageserver,qtquicktimeline -nomake tests -nomake examples -nomake tools -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -securetransport -reduce-exports -prefix ${INSTALL_PATH}"
+          CONFIG_OPTIONS="-skip qtlanguageserver,qtquicktimeline -nomake tests -nomake examples -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -securetransport -reduce-exports -prefix ${INSTALL_PATH}"
           
           if [ "${{ matrix.build_type }}" = "debug" ]; then
             CONFIG_OPTIONS="$CONFIG_OPTIONS -debug"
@@ -296,7 +296,7 @@ jobs:
           
           CFLAGS="-O3" CXXFLAGS="-O3" ../configure -prefix $PWD/install -submodules qtbase,qtdeclarative \
             -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports \
-            -nomake tests -nomake examples -nomake tools -skip qtlanguageserver,qtquicktimeline
+            -nomake tests -nomake examples -skip qtlanguageserver,qtquicktimeline
           
           cmake --build . --parallel
           cmake --install .
