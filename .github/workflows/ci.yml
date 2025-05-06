@@ -175,7 +175,7 @@ jobs:
           
           ../configure -prefix $INSTALL_PATH -submodules qtbase,qtdeclarative \
             -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports \
-            -nomake tests -nomake examples -skip qtlanguageserver,qtquicktimeline -qt-host-path "" \
+            -nomake tests -nomake examples -skip qtlanguageserver,qtquicktimeline -qt-host-path $INSTALL_PATH \
             -android-abis ${{ matrix.arch }} -android-ndk ${ANDROID_NDK_LATEST_HOME} -android-sdk ${ANDROID_HOME} \
             -platform android-clang -xplatform android-clang -submodules qtbase,qtdeclarative
  
@@ -183,6 +183,7 @@ jobs:
         shell: cmd
         run: |
           cd build
+          cmake -DQT_BUILD_TOOLS_WHEN_CROSS_COMPILING=ON
           cmake --build . --parallel
           cmake --install .
           
