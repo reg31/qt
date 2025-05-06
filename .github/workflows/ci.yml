@@ -336,9 +336,9 @@ jobs:
           path: qt5-builds
           
       - name: Create release
-        uses: softprops/action-gh-release@v2.2.2
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.SNAPSHOT_TAG }}
+          tag_name: ${{ github.run_id }}
           name: "Qt5 Library - Build"
           body: |
             Automated build of Qt5 ${{ needs.setup.outputs.qt_version }}
@@ -352,9 +352,11 @@ jobs:
             All builds compiled with -O3 optimization level using Ninja build system.
             
             **Build Date:** $(date +'%Y-%m-%d %H:%M:%S')
-          #qt5-builds/qt5-android-*/qt5-android-*.zip
           files: |
             qt5-builds/qt5-windows-*/qt5-windows-*.zip
-            qt5-builds/qt5-ios-*/qt5-ios-*.zip
+            qt5-builds/qt5-android-*/qt5-android-*.zip
+            qt5-builds/qt5-android-*/qt5-android-*.zip
             qt5-builds/qt5-macos-*/qt5-macos-*.zip
-          prerelease: false
+            qt5-builds/qt5-ios-*/qt5-ios-*.zip
+          prerelease: true
+          delete_after: "3d"
