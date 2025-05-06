@@ -12,11 +12,6 @@ on:
         required: true
         default: "dev"
         type: string
-      skip_macos_ios:
-        description: 'Skip macOS and iOS builds'
-        required: false
-        default: false
-        type: boolean
   schedule:
     - cron: '0 0 * * *'
   push:
@@ -30,7 +25,6 @@ jobs:
     outputs:
       qt_branch: ${{ steps.set-branch.outputs.qt_branch }}
       qt_version: ${{ steps.get-version.outputs.qt_version }}
-      skip_macos_ios: ${{ steps.set-skip-macos-ios.outputs.skip_macos_ios }}
     steps:
       - name: Set branch
         id: set-branch
@@ -40,16 +34,7 @@ jobs:
           else
             echo "qt_branch=${{ env.QT_BRANCH }}" >> $GITHUB_OUTPUT
           fi
-
-      - name: Set skip_macos_ios flag
-        id: set-skip-macos-ios
-        run: |
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            echo "skip_macos_ios=${{ github.event.inputs.skip_macos_ios }}" >> $GITHUB_OUTPUT
-          else
-            echo "skip_macos_ios=true" >> $GITHUB_OUTPUT
-          fi
-
+          
       - name: Checkout Qt5
         uses: actions/checkout@v4
         with:
@@ -92,6 +77,7 @@ jobs:
       - name: Configure
         shell: cmd
         run: |
+          echo "OUTPUT_DIR=$(pwd)/install" >> $GITHUB_ENV
           mkdir build
           cd build
           
@@ -102,8 +88,8 @@ jobs:
           
           ..\configure.bat -qt-zlib -qt-libjpeg -qt-libpng ^
           -qt-freetype -no-harfbuzz -schannel -reduce-exports ^
-          -prefix %CD%\install -no-feature-testlib -no-feature-sql ^
-          -nomake tests -nomake examples -nomake tools ^
+          -prefix ${{ env.OUTPUT_DIR }} -no-feature-testlib -no-feature-sql ^
+          -nomake tests -nomake example ^
           -submodules qtbase,qtdeclarative,qtmultimedia ^
           -skip qtlanguageserver,qtquicktimeline,WITH_PCH ^
           ${{ matrix.build_type == 'debug' && '-debug' || '-release' }}
@@ -118,10 +104,8 @@ jobs:
       - name: Package artifacts
         shell: pwsh
         run: |
-          # Use the QT_INSTALL_DIR environment variable set by CMake
-          $OUTPUT_DIR = "%CD%\build\install"
-          Write-Host "Packaging Qt install from: $OUTPUT_DIR"
-          Compress-Archive -Path $OUTPUT_DIR -DestinationPath "qt5-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}.zip"
+          Write-Host "Packaging Qt install from: ${{ env.OUTPUT_DIR }}"
+          Compress-Archive -Path ${{ env.OUTPUT_DIR }} -DestinationPath "qt5-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}.zip"
           
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -175,7 +159,7 @@ jobs:
           
           ../configure -prefix $INSTALL_PATH -submodules qtbase,qtdeclarative \
             -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports \
-            -nomake tests -nomake examples -no-feature-sql -skip qtlanguageserver,qtquicktimeline -qt-host-path $INSTALL_PATH \
+            -nomake tests -nomake examples -no-feature-sql -skip qtlanguageserver,qtquicktimeline,WITH_PCH -qt-host-path $INSTALL_PATH \
             -android-abis ${{ matrix.arch }} -android-ndk ${ANDROID_NDK_LATEST_HOME} -android-sdk ${ANDROID_HOME} \
             -platform android-clang -xplatform android-clang -submodules qtbase,qtdeclarative
  
@@ -210,7 +194,6 @@ jobs:
   build-macos:
     needs: setup
     runs-on: macos-latest
-    if: ${{ needs.setup.outputs.skip_macos_ios != 'true' }}
     strategy:
       matrix:
         build_type: [release]
@@ -272,7 +255,6 @@ jobs:
   build-ios:
     needs: setup
     runs-on: macos-latest
-    if: ${{ needs.setup.outputs.skip_macos_ios != 'true' }}
     strategy:
       matrix:
         build_type: [release]
@@ -367,7 +349,7 @@ jobs:
             This build includes binaries for:
             - Windows (x64) with qtbase, qtdeclarative, qtmultimedia
             - Android (armeabi-v7a, arm64-v8a) with qtbase, qtdeclarative
-            ${{ needs.setup.outputs.skip_macos_ios != 'true' && '- iOS with qtbase, qtdeclarative
+            - iOS with qtbase, qtdeclarative
             - macOS with qtbase, qtdeclarative, qtmultimedia' || '' }}
             
             All builds compiled with -O3 optimization level using Ninja build system.
@@ -376,6 +358,6 @@ jobs:
           files: |
             qt5-builds/qt5-windows-*/qt5-windows-*.zip
             qt5-builds/qt5-android-*/qt5-android-*.zip
-            ${{ needs.setup.outputs.skip_macos_ios != 'true' && 'qt5-builds/qt5-ios-*/qt5-ios-*.zip
-            qt5-builds/qt5-macos-*/qt5-macos-*.zip' || '' }}
+            qt5-builds/qt5-ios-*/qt5-ios-*.zip
+            qt5-builds/qt5-macos-*/qt5-macos-*.zip
           prerelease: false
