@@ -353,10 +353,10 @@ jobs:
             
             **Build Date:** $(date +'%Y-%m-%d %H:%M:%S')
           files: |
-            qt5-builds/qt5-windows-*/qt5-windows-*.zip
-            qt5-builds/qt5-android-*/qt5-android-*.zip
-            qt5-builds/qt5-android-*/qt5-android-*.zip
-            qt5-builds/qt5-macos-*/qt5-macos-*.zip
-            qt5-builds/qt5-ios-*/qt5-ios-*.zip
+            qt5-builds/qt5-windows-*/qt5-windows-mingw-release.zip
+            qt5-builds/qt5-android-*/qt5-android-arm64-v8a-release.zip
+            qt5-builds/qt5-android-*/qt5-android-armeabi-v7a-release.zip
+            qt5-builds/qt5-macos-*/qt5-macos-release.zip
+            qt5-builds/qt5-ios-*/qt5-ios-release.zip
           prerelease: true
           delete_after: "3d"
