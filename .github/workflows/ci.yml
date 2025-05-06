@@ -368,9 +368,9 @@ jobs:
             All builds compiled with -O3 optimization level using Ninja build system.
             
             **Build Date:** $(date +'%Y-%m-%d %H:%M:%S')
+          #qt5-builds/qt5-android-*/qt5-android-*.zip
           files: |
             qt5-builds/qt5-windows-*/qt5-windows-*.zip
-            #qt5-builds/qt5-android-*/qt5-android-*.zip
             qt5-builds/qt5-ios-*/qt5-ios-*.zip
             qt5-builds/qt5-macos-*/qt5-macos-*.zip
           prerelease: false
