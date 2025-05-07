@@ -85,8 +85,8 @@ jobs:
         working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         shell: msys2 {0}
         run: |          
-          mkdir build
-          cd build
+          mkdir-p ./build
+          cd ./build
           
           set CFLAGS=-O3 -s
           set CXXFLAGS=-O3 -s -std=c++20
