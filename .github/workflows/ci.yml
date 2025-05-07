@@ -145,7 +145,7 @@ jobs:
       
       - name: Initialize Qt submodules
         run: |
-          perl init-repository --module-subset=qtbase,qtdeclarative
+          perl init-repository --module-subset=qtbase,qtdeclarative,qttools
       
       - name: Build host Qt for cross-compilation
         run: |
@@ -160,7 +160,7 @@ jobs:
           export CXXFLAGS="-O3 -std=c++20"
           
           ../configure -prefix $INSTALL_PATH -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports \
-            -nomake tests -nomake examples -no-feature-sql -skip qtlanguageserver,qtquicktimeline,WITH_PCH -submodules qtbase,qtdeclarative
+            -nomake tests -nomake examples -no-feature-sql -skip qtlanguageserver,qtquicktimeline,WITH_PCH -submodules qttools
           
           cmake --build . --parallel
           cmake --install .
@@ -270,7 +270,7 @@ jobs:
       
       - name: Initialize Qt submodules
         run: |
-          perl init-repository --module-subset=qtbase,qtdeclarative
+          perl init-repository --module-subset=qtbase,qtdeclarative,qttools
       
       - name: Build host Qt for cross-compilation
         run: |
@@ -285,7 +285,7 @@ jobs:
           export CXXFLAGS="-O3 -std=c++20"
           
           ../configure -prefix $HOST_INSTALL_PATH -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports \
-            -nomake tests -nomake examples -no-feature-sql -skip qtlanguageserver,qtquicktimeline,WITH_PCH -submodules qtbase,qtdeclarative
+            -nomake tests -nomake examples -no-feature-sql -skip qtlanguageserver,qtquicktimeline,WITH_PCH -submodules qttools
           
           cmake --build . --parallel
           cmake --install .
