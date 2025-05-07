@@ -79,7 +79,7 @@ jobs:
         shell: msys2 {0}
         run: |
           git clone ${{ env.QT_REPO }} -b  ${{ env.QT_BRANCH }} .
-          init-repository.bat --module-subset=qtbase,qtdeclarative,qtmultimedia
+          ${{ env.DEV_DRIVE_WORKSPACE }}/init-repository.bat --module-subset=qtbase,qtdeclarative,qtmultimedia
 
       - name: Configure
         working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
@@ -96,7 +96,7 @@ jobs:
           :: Use a hardcoded path relative to the checkout directory
           set "OUTPUT_DIR=%CD%\..\install"
           
-          ..\configure.bat -qt-zlib -qt-libjpeg -qt-libpng ^
+           ${{ env.DEV_DRIVE_WORKSPACE }}/configure.bat -qt-zlib -qt-libjpeg -qt-libpng ^
           -qt-freetype -no-harfbuzz -schannel -reduce-exports ^
           -prefix "%OUTPUT_DIR%" -no-feature-testlib -no-feature-sql ^
           -nomake tests -nomake examples ^
