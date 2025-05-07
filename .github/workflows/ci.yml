@@ -179,7 +179,7 @@ jobs:
             -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports \
             -nomake tests -nomake examples -no-feature-sql -skip qtlanguageserver,qtquicktimeline,WITH_PCH \
             -android-abis ${{ matrix.arch }} -android-ndk ${ANDROID_NDK_LATEST_HOME} -android-sdk ${ANDROID_HOME} \
-            -platform android-clang -xplatform android-clang -submodules qtbase,qtdeclarative -qt-host-path ${env.Qt5_DIR}
+            -platform android-clang -xplatform android-clang -submodules qtbase,qtdeclarative -qt-host-path ${QT_ROOT_DIR}
           
           cmake --build . --parallel
           cmake --install .
@@ -285,7 +285,7 @@ jobs:
           INSTALL_PATH=$PWD/install
           echo "QT_INSTALL_DIR=$INSTALL_PATH" >> $GITHUB_ENV
           
-          CONFIG_OPTIONS="-skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-feature-sql -release -nomake tests -nomake examples -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -securetransport -reduce-exports -prefix ${INSTALL_PATH} -qt-host-path ${env.Qt5_DIR}"
+          CONFIG_OPTIONS="-skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-feature-sql -release -nomake tests -nomake examples -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -securetransport -reduce-exports -prefix ${INSTALL_PATH} -qt-host-path ${QT_ROOT_DIR}"
           
           export CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH
           export CFLAGS="-O3"
