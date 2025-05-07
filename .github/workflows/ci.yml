@@ -78,8 +78,12 @@ jobs:
         working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         shell: msys2 {0}
         run: |
-          cd  ${{ env.DEV_DRIVE_WORKSPACE }}
           git clone ${{ env.QT_REPO }} -b  ${{ env.QT_BRANCH }} .
+
+      - name: Initialize Qt repository
+        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
+        shell: msys2 {0}
+        run: |
           init-repository.bat --module-subset=qtbase,qtdeclarative,qtmultimedia
 
       - name: Configure
