@@ -85,7 +85,7 @@ jobs:
         working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         shell: msys2 {0}
         run: |          
-          mkdir -p  build
+          mkdir build
           cd build
           
           set CFLAGS=-O3 -s
@@ -93,12 +93,9 @@ jobs:
           set "CC=C:\ProgramData\mingw64\mingw64\bin\gcc"
           set "CXX=C:\ProgramData\mingw64\mingw64\bin\g++"
           
-          :: Use a hardcoded path relative to the checkout directory
-          set "OUTPUT_DIR=%CD%\..\install"
-          
            ../configure.bat -qt-zlib -qt-libjpeg -qt-libpng ^
           -qt-freetype -no-harfbuzz -schannel -reduce-exports ^
-          -prefix "%OUTPUT_DIR%" -no-feature-testlib -no-feature-sql ^
+          -prefix "%CD%\..\install" -no-feature-testlib -no-feature-sql ^
           -nomake tests -nomake examples ^
           -submodules qtbase,qtdeclarative,qtmultimedia ^
           -skip qtlanguageserver,qtquicktimeline,WITH_PCH ^
