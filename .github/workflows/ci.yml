@@ -359,4 +359,4 @@ jobs:
             qt5-builds/qt5-macos-*/qt5-macos-release.zip
             qt5-builds/qt5-ios-*/qt5-ios-release.zip
           prerelease: true
-          delete_after: "3d"
+          # delete_after: "3d"
