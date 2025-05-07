@@ -114,7 +114,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: qt5-windows-mingw
-          path:  ${{ env.DEV_DRIVE_WORKSPACE }}/qt5-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}.zip
+          path: qt5-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}.zip
 
   build-android:
     needs: setup
@@ -340,7 +340,6 @@ jobs:
         with:
           tag_name: ${{ github.run_id }}
           name: "Qt5 Library - Build"
-          if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
           body: |
             Automated build of Qt5 ${{ needs.setup.outputs.qt_version }}
             
@@ -354,11 +353,11 @@ jobs:
             
             **Build Date:** $(date +'%Y-%m-%d %H:%M:%S')
           files: |
-            qt5-builds/qt5-windows-mingw/qt5-windows-mingw-*.zip
-            qt5-builds/qt5-android-armeabi-v7a/qt5-android-*.zip
-            qt5-builds/qt5-android-arm64-v8a/qt5-android-*.zip
-            qt5-builds/qt5-macos/qt5-macos-*.zip
-            qt5-builds/qt5-ios/qt5-ios-*.zip
+            qt5-builds/qt5-windows-mingw/qt5-windows-mingw.zip
+            qt5-builds/qt5-android-armeabi-v7a/qt5-android-armeabi-v7a.zip
+            qt5-builds/qt5-android-arm64-v8a/qt5-android-arm64-v8a.zip
+            qt5-builds/qt5-macos/qt5-macos.zip
+            qt5-builds/qt5-ios/qt5-ios.zip
           prerelease: true
           
       - name: Cleanup repository
