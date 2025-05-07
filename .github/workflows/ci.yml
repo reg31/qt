@@ -156,7 +156,8 @@ jobs:
         with:
           host: 'linux'
           set-env: 'true'
-          no-qt-binaries: true     
+          no-qt-binaries: true
+          version: '6.9.*'
       
       - name: Initialize Qt submodules
         run: |
@@ -271,6 +272,7 @@ jobs:
           host: 'mac'
           set-env: 'true'
           no-qt-binaries: true
+          version: '6.9.*'
 
       - name: Initialize Qt submodules
         run: |
