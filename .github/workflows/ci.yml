@@ -150,16 +150,28 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libgl1-mesa-dev libssl-dev
-
-      - name: Install Qt tools
-        uses: jurplel/install-qt-action@v4
-        with:
-          host: 'linux'
-          set-env: 'true'
       
       - name: Initialize Qt submodules
         run: |
-          perl init-repository --module-subset=qtbase,qtdeclarative
+          perl init-repository --module-subset=qtbase,qtdeclarative,qttools
+      
+      - name: Build host Qt for cross-compilation
+        run: |
+          mkdir -p host-qt
+          cd host-qt
+          
+          INSTALL_PATH=$PWD/install
+          echo "QT_HOST_PATH=$INSTALL_PATH" >> $GITHUB_ENV
+          
+          export CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH
+          export CFLAGS="-O3"
+          export CXXFLAGS="-O3 -std=c++20"
+          
+          ../configure -prefix $INSTALL_PATH -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports \
+            -nomake tests -nomake examples -no-feature-sql -skip qtlanguageserver,qtquicktimeline,WITH_PCH -submodules qttools
+          
+          cmake --build . --parallel
+          cmake --install .
           
       - name: Build Android Qt
         run: |
@@ -178,7 +190,7 @@ jobs:
             -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports \
             -nomake tests -nomake examples -no-feature-sql -skip qtlanguageserver,qtquicktimeline,WITH_PCH \
             -android-abis ${{ matrix.arch }} -android-ndk ${ANDROID_NDK_LATEST_HOME} -android-sdk ${ANDROID_HOME} \
-            -platform android-clang -xplatform android-clang -submodules qtbase,qtdeclarative -qt-host-path $RUNNER_WORKSPACE
+            -platform android-clang -xplatform android-clang -submodules qtbase,qtdeclarative -qt-host-path ${QT_HOST_PATH}
           
           cmake --build . --parallel
           cmake --install .
@@ -263,17 +275,29 @@ jobs:
           ref: ${{ needs.setup.outputs.qt_branch }}
           fetch-depth: 0
           submodules: false
-
-      - name: Install Qt tools
-        uses: jurplel/install-qt-action@v4
-        with:
-          host: 'mac'
-          set-env: 'true'
-          
+      
       - name: Initialize Qt submodules
         run: |
-          perl init-repository --module-subset=qtbase,qtdeclarative
+          perl init-repository --module-subset=qtbase,qtdeclarative,qttools
       
+      - name: Build host Qt for cross-compilation
+        run: |
+          mkdir -p host-qt
+          cd host-qt
+          
+          # Define host install path
+          HOST_INSTALL_PATH=$PWD
+          echo "QT_HOST_PATH=$HOST_INSTALL_PATH" >> $GITHUB_ENV
+          
+          export CFLAGS="-O3" 
+          export CXXFLAGS="-O3 -std=c++20"
+          
+          ../configure -prefix $HOST_INSTALL_PATH -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports \
+            -nomake tests -nomake examples -no-feature-sql -skip qtlanguageserver,qtquicktimeline,WITH_PCH -submodules qttools
+          
+          cmake --build . --parallel
+          cmake --install .
+        
       - name: Configure and build for iOS
         run: |
           mkdir -p build
@@ -283,7 +307,7 @@ jobs:
           INSTALL_PATH=$PWD/install
           echo "QT_INSTALL_DIR=$INSTALL_PATH" >> $GITHUB_ENV
           
-          CONFIG_OPTIONS="-skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-feature-sql -release -nomake tests -nomake examples -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -securetransport -reduce-exports -prefix ${INSTALL_PATH} -qt-host-path $RUNNER_WORKSPACE"
+          CONFIG_OPTIONS="-skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-feature-sql -release -nomake tests -nomake examples -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -securetransport -reduce-exports -prefix ${INSTALL_PATH} -qt-host-path ${QT_HOST_PATH}"
           
           export CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH
           export CFLAGS="-O3"
@@ -309,7 +333,8 @@ jobs:
           path: qt5-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}.zip
 
   release:
-    needs: [setup, build-windows, build-android, build-macos, build-ios]
+    #needs: [setup, build-windows, build-android, build-macos, build-ios]
+    needs: [setup, build-windows, build-macos, build-ios]
     runs-on: ubuntu-latest
     if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     steps:
