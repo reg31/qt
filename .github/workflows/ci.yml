@@ -113,7 +113,7 @@ jobs:
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: qt5-windows-mingw-${{ matrix.build_type }}
+          name: qt5-windows-mingw
           path: qt5-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}.zip
 
   build-android:
@@ -197,7 +197,7 @@ jobs:
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: qt5-android-${{ matrix.arch }}-${{ matrix.build_type }}
+          name: qt5-android-${{ matrix.android_abi }}
           path: qt5-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}.zip
 
   build-macos:
@@ -250,7 +250,7 @@ jobs:
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: qt5-macos-${{ matrix.build_type }}
+          name: qt5-macos
           path: qt5-macos-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}.zip
 
   build-ios:
@@ -321,7 +321,7 @@ jobs:
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: qt5-ios-${{ matrix.build_type }}
+          name: qt5-ios
           path: qt5-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}.zip
 
   release:
@@ -340,6 +340,7 @@ jobs:
         with:
           tag_name: ${{ github.run_id }}
           name: "Qt5 Library - Build"
+          if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
           body: |
             Automated build of Qt5 ${{ needs.setup.outputs.qt_version }}
             
@@ -353,10 +354,18 @@ jobs:
             
             **Build Date:** $(date +'%Y-%m-%d %H:%M:%S')
           files: |
-            qt5-builds/qt5-windows-*/qt5-windows-mingw-release.zip
-            qt5-builds/qt5-android-*/qt5-android-arm64-v8a-release.zip
-            qt5-builds/qt5-android-*/qt5-android-armeabi-v7a-release.zip
-            qt5-builds/qt5-macos-*/qt5-macos-release.zip
-            qt5-builds/qt5-ios-*/qt5-ios-release.zip
+            qt5-builds/qt5-windows-mingw/qt5-windows-mingw-*.zip
+            qt5-builds/qt5-android-armeabi-v7a/qt5-android-*.zip
+            qt5-builds/qt5-android-arm64-v8a/qt5-android-*.zip
+            qt5-builds/qt5-macos/qt5-macos-*.zip
+            qt5-builds/qt5-ios/qt5-ios-*.zip
           prerelease: true
-          # delete_after: "3d"
+          
+      - name: Cleanup repository
+        uses: dev-drprasad/delete-older-releases@v0.3.4
+        with:
+          keep_latest: 3
+          delete_tags: true
+          delete_prerelease_only: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
