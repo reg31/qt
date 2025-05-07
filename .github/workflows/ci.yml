@@ -150,28 +150,17 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libgl1-mesa-dev libssl-dev
+
+      - name: Install Qt tools
+        uses: jurplel/install-qt-action@v4
+        with:
+          host: 'linux'
+          set-env: 'true'
+          no-qt-binaries: true     
       
       - name: Initialize Qt submodules
         run: |
-          perl init-repository --module-subset=qtbase,qtdeclarative,qttools
-      
-      - name: Build host Qt for cross-compilation
-        run: |
-          mkdir -p host-qt
-          cd host-qt
-          
-          INSTALL_PATH=$PWD/install
-          echo "QT_HOST_PATH=$INSTALL_PATH" >> $GITHUB_ENV
-          
-          export CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH
-          export CFLAGS="-O3"
-          export CXXFLAGS="-O3 -std=c++20"
-          
-          ../configure -prefix $INSTALL_PATH -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports \
-            -nomake tests -nomake examples -no-feature-sql -skip qtlanguageserver,qtquicktimeline,WITH_PCH -submodules qttools
-          
-          cmake --build . --parallel
-          cmake --install .
+          perl init-repository --module-subset=qtbase,qtdeclarative
           
       - name: Build Android Qt
         run: |
@@ -275,29 +264,18 @@ jobs:
           ref: ${{ needs.setup.outputs.qt_branch }}
           fetch-depth: 0
           submodules: false
-      
+
+      - name: Install Qt tools
+        uses: jurplel/install-qt-action@v4
+        with:
+          host: 'mac'
+          set-env: 'true'
+          no-qt-binaries: true
+
       - name: Initialize Qt submodules
         run: |
-          perl init-repository --module-subset=qtbase,qtdeclarative,qttools
+          perl init-repository --module-subset=qtbase,qtdeclarative
       
-      - name: Build host Qt for cross-compilation
-        run: |
-          mkdir -p host-qt
-          cd host-qt
-          
-          # Define host install path
-          HOST_INSTALL_PATH=$PWD
-          echo "QT_HOST_PATH=$HOST_INSTALL_PATH" >> $GITHUB_ENV
-          
-          export CFLAGS="-O3" 
-          export CXXFLAGS="-O3 -std=c++20"
-          
-          ../configure -prefix $HOST_INSTALL_PATH -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports \
-            -nomake tests -nomake examples -no-feature-sql -skip qtlanguageserver,qtquicktimeline,WITH_PCH -submodules qttools
-          
-          cmake --build . --parallel
-          cmake --install .
-        
       - name: Configure and build for iOS
         run: |
           mkdir -p build
