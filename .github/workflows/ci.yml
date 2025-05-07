@@ -183,7 +183,7 @@ jobs:
             -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports \
             -nomake tests -nomake examples -no-feature-sql -skip qtlanguageserver,qtquicktimeline,WITH_PCH \
             -android-abis ${{ matrix.arch }} -android-ndk ${ANDROID_NDK_LATEST_HOME} -android-sdk ${ANDROID_HOME} \
-            -platform android-clang -xplatform android-clang  -openssl-runtime -submodules qtbase,qtdeclarative -qt-host-path ${QT_HOST_PATH} \
+            -platform android-clang -xplatform android-clang -openssl-runtime -submodules qtbase,qtdeclarative -qt-host-path ${QT_HOST_PATH} \
             -D QT_BUILD_EXAMPLES_BY_DEFAULT=OFF -D QT_BUILD_TESTS_BY_DEFAULT=OFF
           
           cmake --build . --parallel
