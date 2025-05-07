@@ -57,36 +57,27 @@ jobs:
       matrix:
         build_type: [release]
     steps:
-      - name: Setup RAM Disk
-        uses: samypr100/setup-dev-drive@v3
+      - name: Checkout Qt5
+        uses: actions/checkout@v4
         with:
-          drive-size: 7GB
-          workspace-copy: true
-      
-      - name: Install MSYS2
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: MINGW64
-          update: true
-          install: >-
-            mingw-w64-x86_64-toolchain
-            mingw-w64-x86_64-cmake
-            make
-            zip
-            git
+          repository: qt/qt5
+          ref: ${{ needs.setup.outputs.qt_branch }}
+          fetch-depth: 0
+          submodules: false
+
+      - name: Install dependencies
+        run: |
+          choco install -y mingw
 
       - name: Initialize Qt submodules
-        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
-        shell: msys2 {0}
+        shell: cmd
         run: |
-          git clone ${{ env.QT_REPO }} -b  ${{ env.QT_BRANCH }} .
-          ./init-repository.bat --module-subset=qtbase,qtdeclarative,qtmultimedia
+          init-repository.bat --module-subset=qtbase,qtdeclarative,qtmultimedia
 
       - name: Configure
-        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
-        shell: msys2 {0}
-        run: |          
-          mkdir -p build
+        shell: cmd
+        run: |
+          mkdir build
           cd build
           
           set CFLAGS=-O3 -s
@@ -94,24 +85,25 @@ jobs:
           set "CC=C:\ProgramData\mingw64\mingw64\bin\gcc"
           set "CXX=C:\ProgramData\mingw64\mingw64\bin\g++"
           
-           ../configure.bat -qt-zlib -qt-libjpeg -qt-libpng \
-          -qt-freetype -no-harfbuzz -schannel -reduce-exports \
-          -prefix "%CD%\..\install" -no-feature-testlib -no-feature-sql \
-          -nomake tests -nomake examples \
-          -submodules qtbase,qtdeclarative,qtmultimedia \
-          -skip qtlanguageserver,qtquicktimeline,WITH_PCH \
+          :: Use a hardcoded path relative to the checkout directory
+          set "OUTPUT_DIR=%CD%\..\install"
+          
+          ..\configure.bat -qt-zlib -qt-libjpeg -qt-libpng ^
+          -qt-freetype -no-harfbuzz -schannel -reduce-exports ^
+          -prefix "%OUTPUT_DIR%" -no-feature-testlib -no-feature-sql ^
+          -nomake tests -nomake examples ^
+          -submodules qtbase,qtdeclarative,qtmultimedia ^
+          -skip qtlanguageserver,qtquicktimeline,WITH_PCH ^
           ${{ matrix.build_type == 'debug' && '-debug' || '-release' }}
 
       - name: Build Qt
-        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
-        shell: msys2 {0}
+        shell: cmd
         run: |
           cd build
           cmake --build . --parallel
           cmake --install .
           
       - name: Package artifacts
-        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         shell: pwsh
         run: |
           $installDir = Join-Path -Path $PWD -ChildPath "install"
