@@ -205,7 +205,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: qt5-android-${{ matrix.android_abi }}
-          path: qt5-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}.zip
+          path: qt5-android-${{ matrix.android_abi }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}.zip
 
   build-macos:
     needs: setup
