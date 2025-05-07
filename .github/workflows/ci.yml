@@ -100,7 +100,7 @@ jobs:
         shell: cmd
         run: |
           cd build
-          cmake --build . --parallel
+          cmake --build . --parallel 4
           cmake --install .
           
       - name: Package artifacts
@@ -162,7 +162,7 @@ jobs:
           ../configure -prefix $INSTALL_PATH -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports \
             -nomake tests -nomake examples -no-feature-sql -skip qtlanguageserver,qtquicktimeline,WITH_PCH -submodules qttools
           
-          cmake --build . --parallel
+          cmake --build . --parallel 4
           cmake --install .
           
       - name: Build Android Qt
@@ -184,7 +184,7 @@ jobs:
             -android-abis ${{ matrix.arch }} -android-ndk ${ANDROID_NDK_LATEST_HOME} -android-sdk ${ANDROID_HOME} \
             -platform android-clang -xplatform android-clang -submodules qtbase,qtdeclarative -qt-host-path ${QT_HOST_PATH}
           
-          cmake --build . --parallel
+          cmake --build . --parallel 4
           cmake --install .
           
       - name: Package artifacts
