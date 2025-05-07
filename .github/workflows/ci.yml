@@ -60,7 +60,7 @@ jobs:
       - name: Setup RAM Disk
         uses: samypr100/setup-dev-drive@v3
         with:
-          drive-size: 4GB
+          drive-size: 7GB
           workspace-copy: true
       
       - name: Install MSYS2
