@@ -60,6 +60,7 @@ jobs:
       - name: Setup RAM Disk
         uses: samypr100/setup-dev-drive@v3
         with:
+          drive-size: 4GB
           workspace-copy: true
       
       - name: Install MSYS2
@@ -85,8 +86,8 @@ jobs:
         working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         shell: msys2 {0}
         run: |          
-          mkdir -p ./build
-          cd ./build
+          mkdir -p build
+          cd build
           
           set CFLAGS=-O3 -s
           set CXXFLAGS=-O3 -s -std=c++20
