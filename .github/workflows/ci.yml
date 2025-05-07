@@ -84,7 +84,7 @@ jobs:
         working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         shell: msys2 {0}
         run: |
-          init-repository.bat --module-subset=qtbase,qtdeclarative,qtmultimedia
+          ./init-repository.bat --module-subset=qtbase,qtdeclarative,qtmultimedia
 
       - name: Configure
         working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
