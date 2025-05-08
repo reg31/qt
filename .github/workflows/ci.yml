@@ -335,7 +335,8 @@ jobs:
           path: qt5-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}.zip
 
   release:
-    needs: [setup, build-windows, build-android, build-macos, build-ios]
+    needs: [setup, build-windows, build-macos, build-ios]
+    #needs: [setup, build-windows, build-android, build-macos, build-ios]
     runs-on: ubuntu-latest
     if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     steps:
@@ -362,11 +363,11 @@ jobs:
             
             **Build Date:** $(date +'%Y-%m-%d %H:%M:%S')
           files: |
-            qt5-builds/qt5-windows-mingw/qt5-windows-mingw.zip
-            qt5-builds/qt5-android-armeabi-v7a/qt5-android-armeabi-v7a.zip
-            qt5-builds/qt5-android-arm64-v8a/qt5-android-arm64-v8a.zip
-            qt5-builds/qt5-macos/qt5-macos.zip
-            qt5-builds/qt5-ios/qt5-ios.zip
+            qt5-builds/qt5-windows-mingw/*.zip
+            qt5-builds/qt5-android-armeabi-v7a/*.zip
+            qt5-builds/qt5-android-arm64-v8a/*.zip
+            qt5-builds/qt5-macos/*.zip
+            qt5-builds/qt5-ios/*.zip
           prerelease: true
           
       - name: Cleanup repository
