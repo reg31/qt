@@ -360,10 +360,10 @@ jobs:
             - macOS with qtbase, qtdeclarative, qtmultimedia
             
             **Build Date:** $(date +'%Y-%m-%d %H:%M:%S')
+          # qt5-builds/qt5-android-armeabi-v7a/*.zip
+          #  qt5-builds/qt5-android-arm64-v8a/*.zip
           files: |
             qt5-builds/qt5-windows-mingw/*.zip
-            qt5-builds/qt5-android-armeabi-v7a/*.zip
-            qt5-builds/qt5-android-arm64-v8a/*.zip
             qt5-builds/qt5-macos/*.zip
             qt5-builds/qt5-ios/*.zip
           prerelease: true
