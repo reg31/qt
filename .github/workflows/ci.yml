@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       qt_branch: ${{ steps.set-branch.outputs.qt_branch }}
-      qt_version: ${{ steps.get-version.outputs.qt_version }}
+      qt_branch: ${{ steps.get-version.outputs.qt_branch }}
     steps:
       - name: Set branch
         id: set-branch
@@ -34,21 +34,6 @@ jobs:
           else
             echo "qt_branch=${{ env.QT_BRANCH }}" >> $GITHUB_OUTPUT
           fi
-          
-      - name: Checkout Qt5
-        uses: actions/checkout@v4
-        with:
-          repository: qt/qt5
-          ref: ${{ steps.set-branch.outputs.qt_branch }}
-          fetch-depth: 0
-          path: qt5-src
-
-      - name: Get Qt version
-        id: get-version
-        working-directory: qt5-src
-        run: |
-          VERSION=$(git describe --tags --always 2>/dev/null || echo "unknown")
-          echo "qt_version=$VERSION" >> $GITHUB_OUTPUT
 
   build-windows:
     needs: setup
@@ -110,13 +95,13 @@ jobs:
         run: |
           $installDir = Join-Path -Path $PWD -ChildPath "install"
           Write-Host "Packaging Qt install from: $installDir"
-          Compress-Archive -Path $installDir -DestinationPath "qt5-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}.zip"
+          Compress-Archive -Path $installDir -DestinationPath "qt5-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip"
           
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: qt5-windows-mingw
-          path: qt5-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}.zip
+          path: qt5-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
 
   build-android:
     needs: setup
@@ -199,7 +184,7 @@ jobs:
           
       - name: Package artifacts
         run: |
-          OUTPUT_DIR="qt5-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}"
+          OUTPUT_DIR="qt5-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
           mkdir -p "${OUTPUT_DIR}"
           cp -r "${QT_INSTALL_DIR}"/* "${OUTPUT_DIR}/"
           zip -r "${OUTPUT_DIR}.zip" "${OUTPUT_DIR}"
@@ -208,7 +193,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: qt5-android-${{ matrix.arch }}
-          path: qt5-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}.zip
+          path: qt5-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
 
   build-macos:
     needs: setup
@@ -251,7 +236,7 @@ jobs:
           
       - name: Package artifacts
         run: |
-          OUTPUT_DIR="qt5-macos-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}"
+          OUTPUT_DIR="qt5-macos-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
           echo "Using QT_INSTALL_DIR: $QT_INSTALL_DIR"
           mkdir -p "${OUTPUT_DIR}"
           cp -r "${QT_INSTALL_DIR}"/* "${OUTPUT_DIR}/"
@@ -261,7 +246,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: qt5-macos
-          path: qt5-macos-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}.zip
+          path: qt5-macos-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
 
   build-ios:
     needs: setup
@@ -324,7 +309,7 @@ jobs:
           
       - name: Package artifacts
         run: |
-          OUTPUT_DIR="qt5-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}"
+          OUTPUT_DIR="qt5-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
           echo "Using QT_INSTALL_DIR: $QT_INSTALL_DIR"
           mkdir -p "${OUTPUT_DIR}"
           cp -r "${QT_INSTALL_DIR}"/* "${OUTPUT_DIR}/"
@@ -334,7 +319,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: qt5-ios
-          path: qt5-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_version }}.zip
+          path: qt5-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
 
   release:
     needs: [setup, build-windows, build-android, build-macos, build-ios]
@@ -352,7 +337,7 @@ jobs:
           tag_name: ${{ github.run_id }}
           name: "Qt5 Library - Build"
           body: |
-            Automated build of Qt5 ${{ needs.setup.outputs.qt_version }}
+            Automated build of Qt5 ${{ needs.setup.outputs.qt_branch }}
             
             This build includes binaries for:
             - Windows (x64) with qtbase, qtdeclarative, qtmultimedia
