@@ -73,6 +73,7 @@ jobs:
         shell: cmd
         run: |
           init-repository.bat --module-subset=qtbase,qtdeclarative,qtmultimedia
+          git submodule update --remote
 
       - name: Configure
         shell: cmd
@@ -220,6 +221,7 @@ jobs:
       - name: Initialize Qt submodules
         run: |
           perl init-repository --module-subset=qtbase,qtdeclarative,qtmultimedia
+          git submodule update --remote
         
       - name: Configure and build
         run: |
@@ -273,6 +275,7 @@ jobs:
       - name: Initialize Qt submodules
         run: |
           perl init-repository --module-subset=qtbase,qtdeclarative,qttools
+          git submodule update --remote
       
       - name: Build host Qt for cross-compilation
         run: |
