@@ -24,7 +24,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       qt_branch: ${{ steps.set-branch.outputs.qt_branch }}
-      qt_branch: ${{ steps.get-version.outputs.qt_branch }}
     steps:
       - name: Set branch
         id: set-branch
