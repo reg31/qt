@@ -3,7 +3,6 @@ env:
   QT_REPO: 'https://github.com/qt/qt5.git'
   QT_BRANCH: 'dev'
   SNAPSHOT_TAG: 'qt5-daily-snapshot'
-
 on:
   workflow_dispatch:
     inputs:
