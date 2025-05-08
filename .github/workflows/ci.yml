@@ -359,8 +359,6 @@ jobs:
             - iOS with qtbase, qtdeclarative
             - macOS with qtbase, qtdeclarative, qtmultimedia
             
-            All builds compiled with -O3 optimization level using Ninja build system.
-            
             **Build Date:** $(date +'%Y-%m-%d %H:%M:%S')
           files: |
             qt5-builds/qt5-windows-mingw/*.zip
