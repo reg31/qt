@@ -134,13 +134,7 @@ jobs:
           git submodule update --remote
       
       - name: Build host Qt for cross-compilation
-        run: |
-          mkdir -p openssl
-          cd openssl
-          git clone https://github.com/KDAB/android_openssl .
-          OPENSSL_ROOT_PATH=$PWD/ssl_3
-          cd ..
-          
+        run: |          
           mkdir -p host-qt
           cd host-qt
           
@@ -158,7 +152,13 @@ jobs:
           cmake --install .
           
       - name: Build Android Qt
-        run: |          
+        run: |
+          mkdir -p openssl
+          cd openssl
+          git clone https://github.com/KDAB/android_openssl .
+          OPENSSL_ROOT_PATH=$PWD/ssl_3
+          cd ..
+          
           mkdir -p build
           cd build
           
