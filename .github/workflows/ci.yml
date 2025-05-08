@@ -146,7 +146,7 @@ jobs:
       
       - name: Initialize Qt submodules
         run: |
-          perl init-repository --module-subset=qtbase,qtdeclarative
+          perl init-repository --module-subset=qtbase,qtdeclarative,qttools
       
       - name: Build host Qt for cross-compilation
         run: |          
