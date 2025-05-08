@@ -191,7 +191,7 @@ jobs:
             -android-abis ${{ matrix.arch }} -android-ndk ${ANDROID_NDK_LATEST_HOME} -android-sdk ${ANDROID_HOME} \
             -platform android-clang -xplatform android-clang -submodules qtbase,qtdeclarative -qt-host-path ${QT_HOST_PATH} \
             -D QT_BUILD_EXAMPLES_BY_DEFAULT=OFF -D QT_BUILD_TESTS_BY_DEFAULT=OFF -skip qtlanguageserver,qtquicktimeline,WITH_PCH \
-             -openssl-runtime -I $OPENSSL_INCLUDE_PATH
+             -openssl-runtime -I $OPENSSL_INCLUDE_PATH -D TEST_opensslv30_headers=ON
           
           cmake --build . --parallel
           cmake --install .
