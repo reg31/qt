@@ -138,8 +138,6 @@ jobs:
         run: |          
           mkdir -p host-qt
           cd host-qt
-
-          echo "QT_HOST_PATH=$PWD" >> $GITHUB_ENV
           
           export CFLAGS="-O3"
           export CXXFLAGS="-O3"
@@ -149,7 +147,7 @@ jobs:
           INSTALL_PATH=$PWD/install
           echo "QT_HOST_PATH=$INSTALL_PATH" >> $GITHUB_ENV
           
-          ../configure -prefix $INSTALL_PATH -developer-build -nomake tests -nomake examples -no-warnings-are-errors
+          ../configure -prefix $INSTALL_PATH -developer-build -nomake tests -nomake examples -no-warnings-are-errors -skip WITH_PCH
           cmake --build . --parallel --target host_tools
           cmake --install .
           
@@ -272,9 +270,7 @@ jobs:
         run: |
           mkdir -p host-qt
           cd host-qt
-          
-          echo "QT_HOST_PATH=$PWD" >> $GITHUB_ENV
-          
+        
           export CFLAGS="-O3"
           export CXXFLAGS="-O3"
           export CMAKE_CXX_STANDARD=20
@@ -283,7 +279,7 @@ jobs:
           INSTALL_PATH=$PWD/install
           echo "QT_HOST_PATH=$INSTALL_PATH" >> $GITHUB_ENV
           
-          ../configure -prefix $INSTALL_PATH-developer-build -nomake tests -nomake examples -no-warnings-are-errors
+          ../configure -prefix $INSTALL_PATH-developer-build -nomake tests -nomake examples -no-warnings-are-errors -skip WITH_PCH
           cmake --build . --parallel --target host_tools
           cmake --install .
         
