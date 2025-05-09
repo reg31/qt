@@ -164,13 +164,14 @@ jobs:
           
           # Define install path
           INSTALL_PATH=$PWD/install
+          export TEST_opensslv30="TRUE"
           echo "QT_INSTALL_DIR=$INSTALL_PATH" >> $GITHUB_ENV
 
           ../configure -prefix $INSTALL_PATH -nomake examples -nomake tests -no-feature-sql \
             -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports \
             -android-abis ${{ matrix.arch }} -android-ndk ${ANDROID_NDK_LATEST_HOME} -android-sdk ${ANDROID_HOME} \
             -platform android-clang -xplatform android-clang -submodules qtbase,qtdeclarative -qt-host-path ${QT_HOST_PATH} \
-            -D QT_BUILD_EXAMPLES_BY_DEFAULT=OFF -D QT_BUILD_TESTS_BY_DEFAULT=OFF -nomake minimal-static-tests \
+            -D QT_BUILD_EXAMPLES_BY_DEFAULT=OFF -D QT_BUILD_TESTS_BY_DEFAULT=OFF \
             -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-warnings-are-errors -openssl-linked -- -DOPENSSL_USE_STATIC_LIBS=TRUE
           
           cmake --build . --parallel
