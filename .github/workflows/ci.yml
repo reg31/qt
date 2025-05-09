@@ -65,7 +65,8 @@ jobs:
           cd build
           
           set CFLAGS=-O3 -s
-          set CXXFLAGS=-O3 -s -std=c++20
+          set CXXFLAGS=-O3 -s
+          set CMAKE_CXX_STANDARD=20
           set "CC=C:\ProgramData\mingw64\mingw64\bin\gcc"
           set "CXX=C:\ProgramData\mingw64\mingw64\bin\g++"
           
@@ -143,7 +144,8 @@ jobs:
           
           export CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH
           export CFLAGS="-O3"
-          export CXXFLAGS="-O3 -std=c++20"
+          export CXXFLAGS="-O3"
+          export CMAKE_CXX_STANDARD=20
           
           ../configure -prefix $INSTALL_PATH -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports \
             -nomake tests -nomake examples -no-feature-sql -skip qtlanguageserver,qtquicktimeline,WITH_PCH -submodules qttools -no-warnings-are-errors
@@ -158,7 +160,7 @@ jobs:
           OPENSSL_ARCHIVE=openssl-android-${{ matrix.arch }}.zip
           wget https://github.com/reg31/openssl/releases/latest/download/$OPENSSL_ARCHIVE
           unzip $OPENSSL_ARCHIVE
-          OPENSSL_ROOT_DIR=$PWD         
+          export OPENSSL_ROOT_DIR=$PWD         
           cd ..
           
           mkdir -p build
@@ -167,17 +169,13 @@ jobs:
           # Define install path
           INSTALL_PATH=$PWD/install
           echo "QT_INSTALL_DIR=$INSTALL_PATH" >> $GITHUB_ENV
-          
-          export CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH
-          export CFLAGS="-O3"
-          export CXXFLAGS="-O3 -std=c++20"
-          
+
           ../configure -prefix $INSTALL_PATH -nomake examples -nomake tests -no-feature-sql \
             -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports \
             -android-abis ${{ matrix.arch }} -android-ndk ${ANDROID_NDK_LATEST_HOME} -android-sdk ${ANDROID_HOME} \
             -platform android-clang -xplatform android-clang -submodules qtbase,qtdeclarative -qt-host-path ${QT_HOST_PATH} \
-            -D QT_BUILD_EXAMPLES_BY_DEFAULT=OFF -D QT_BUILD_TESTS_BY_DEFAULT=OFF -skip qtlanguageserver,qtquicktimeline,WITH_PCH \
-            -no-warnings-are-errors -openssl-linked -- -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR -DOPENSSL_USE_STATIC_LIBS=TRUE
+            -D QT_BUILD_EXAMPLES_BY_DEFAULT=OFF -D QT_BUILD_TESTS_BY_DEFAULT=OFF -nomake minimal-static-tests \
+            -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-warnings-are-errors -openssl-linked -- -DOPENSSL_USE_STATIC_LIBS=TRUE
           
           cmake --build . --parallel
           cmake --install .
@@ -225,7 +223,8 @@ jobs:
           echo "QT_INSTALL_DIR=$INSTALL_PATH" >> $GITHUB_ENV
           
           export CFLAGS="-O3"
-          export CXXFLAGS="-O3 -std=c++20"
+          export CXXFLAGS="-O3"
+          export CMAKE_CXX_STANDARD=20
           
           ../configure -platform macx-clang -submodules qtbase,qtdeclarative,qtmultimedia -D QT_BUILD_EXAMPLES_BY_DEFAULT=OFF -D QT_BUILD_TESTS_BY_DEFAULT=OFF \
             -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-feature-sql -release -nomake tests -nomake examples -no-warnings-are-errors \
@@ -278,7 +277,8 @@ jobs:
           echo "QT_HOST_PATH=$HOST_INSTALL_PATH" >> $GITHUB_ENV
           
           export CFLAGS="-O3" 
-          export CXXFLAGS="-O3 -std=c++20"
+          export CXXFLAGS="-O3"
+          export CMAKE_CXX_STANDARD=20
           
           ../configure -prefix $HOST_INSTALL_PATH -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports \
             -nomake tests -nomake examples -no-feature-sql -skip qtlanguageserver,qtquicktimeline,WITH_PCH -submodules qttools -no-warnings-are-errors
@@ -294,10 +294,6 @@ jobs:
           # Define iOS install path and set it as environment variable
           INSTALL_PATH=$PWD/install
           echo "QT_INSTALL_DIR=$INSTALL_PATH" >> $GITHUB_ENV
-          
-          export CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH
-          export CFLAGS="-O3"
-          export CXXFLAGS="-O3 -std=c++20"
           
           ../configure -platform macx-ios-clang -submodules qtbase,qtdeclarative -D QT_BUILD_EXAMPLES_BY_DEFAULT=OFF -D QT_BUILD_TESTS_BY_DEFAULT=OFF \
             -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-feature-sql -release -nomake tests -nomake examples -no-warnings-are-errors \
