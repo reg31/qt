@@ -138,15 +138,17 @@ jobs:
         run: |          
           mkdir -p host-qt
           cd host-qt
-          
-          echo "QT_HOST_PATH=$PWD" >> $GITHUB_ENV
+
+          INSTALL_PATH=$PWD/install
+          echo "QT_HOST_PATH=$INSTALL_PATH" >> $GITHUB_ENV
           
           export CFLAGS="-O3"
           export CXXFLAGS="-O3"
           export CMAKE_CXX_STANDARD=20
           
-          ../configure -developer-build -nomake tests -nomake examples -no-warnings-are-errors
-          cmake --build . --target host_tools
+          ../configure -prefix $INSTALL_PATH -developer-build -nomake tests -nomake examples -no-warnings-are-errors
+          cmake --build . --parallel --target host_tools
+          cmake --install .
           
       - name: Build Android Qt
         run: |
