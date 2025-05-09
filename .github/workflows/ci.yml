@@ -145,10 +145,13 @@ jobs:
           export CXXFLAGS="-O3"
           export CMAKE_CXX_STANDARD=20
           export QT_FORCE_BUILD_TOOLS=ON
-          export CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH
           
-          ../configure -developer-build -nomake tests -nomake examples -no-warnings-are-errors
+          INSTALL_PATH=$PWD/install
+          echo "QT_HOST_PATH=$INSTALL_PATH" >> $GITHUB_ENV
+          
+          ../configure -prefix $INSTALL_PATH -developer-build -nomake tests -nomake examples -no-warnings-are-errors
           cmake --build . --parallel --target host_tools
+          cmake --install .
           
       - name: Build Android Qt
         run: |
@@ -276,10 +279,13 @@ jobs:
           export CXXFLAGS="-O3"
           export CMAKE_CXX_STANDARD=20
           export QT_FORCE_BUILD_TOOLS=ON
-          export CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH
           
-          ../configure -developer-build -nomake tests -nomake examples -no-warnings-are-errors
+          INSTALL_PATH=$PWD/install
+          echo "QT_HOST_PATH=$INSTALL_PATH" >> $GITHUB_ENV
+          
+          ../configure -prefix $INSTALL_PATH-developer-build -nomake tests -nomake examples -no-warnings-are-errors
           cmake --build . --parallel --target host_tools
+          cmake --install .
         
       - name: Configure and build for iOS
         run: |
