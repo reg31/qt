@@ -127,7 +127,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgl1-mesa-dev libssl-dev unzip wget
+          sudo apt-get install -y libgl1-mesa-dev unzip wget
       
       - name: Initialize Qt submodules
         run: |
