@@ -145,6 +145,7 @@ jobs:
           export CXXFLAGS="-O3"
           export CMAKE_CXX_STANDARD=20
           export QT_FORCE_BUILD_TOOLS=ON
+          export CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH
           
           ../configure -developer-build -nomake tests -nomake examples -no-warnings-are-errors
           cmake --build . --parallel --target host_tools
@@ -275,6 +276,7 @@ jobs:
           export CXXFLAGS="-O3"
           export CMAKE_CXX_STANDARD=20
           export QT_FORCE_BUILD_TOOLS=ON
+          export CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH
           
           ../configure -developer-build -nomake tests -nomake examples -no-warnings-are-errors
           cmake --build . --parallel --target host_tools
