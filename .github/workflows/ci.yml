@@ -155,8 +155,9 @@ jobs:
         run: |
           mkdir -p openssl
           cd openssl
-          git clone https://github.com/openssl/openssl.git -b openssl-3.5 .
-          OPENSSL_INCLUDE_PATH=$PWD/include
+          git clone https://github.com/KDAB/android_openssl.git .
+          OPENSSL_LIBRARY_PATH=$PWD/ssl_3/${{ matrix.arch }}
+          OPENSSL_INCLUDE_PATH=$PWD/ssl_3/include          
           cd ..
           
           mkdir -p build
@@ -175,7 +176,7 @@ jobs:
             -android-abis ${{ matrix.arch }} -android-ndk ${ANDROID_NDK_LATEST_HOME} -android-sdk ${ANDROID_HOME} \
             -platform android-clang -xplatform android-clang -submodules qtbase,qtdeclarative -qt-host-path ${QT_HOST_PATH} \
             -D QT_BUILD_EXAMPLES_BY_DEFAULT=OFF -D QT_BUILD_TESTS_BY_DEFAULT=OFF -skip qtlanguageserver,qtquicktimeline,WITH_PCH \
-            -no-warnings-are-errors -openssl-runtime -- -D OPENSSL_INCDIR=$OPENSSL_INCLUDE_PATH
+            -no-warnings-are-errors -openssl-runtime -I $OPENSSL_INCLUDE_PATH -L $OPENSSL_LIBRARY_PATH
           
           cmake --build . --parallel
           cmake --install .
