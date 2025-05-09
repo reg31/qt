@@ -155,8 +155,8 @@ jobs:
         run: |
           mkdir -p openssl
           cd openssl
-          git clone https://github.com/KDAB/android_openssl.git .
-          OPENSSL_INCLUDE_PATH=$PWD/ssl_3/include
+          git clone https://github.com/openssl/openssl.git -b openssl-3.5 .
+          OPENSSL_INCLUDE_PATH=$PWD/include
           cd ..
           
           mkdir -p build
