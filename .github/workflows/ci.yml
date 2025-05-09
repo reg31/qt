@@ -126,7 +126,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgl1-mesa-dev libssl-dev
+          sudo apt-get install -y libgl1-mesa-dev libssl-dev unzip wget
       
       - name: Initialize Qt submodules
         run: |
@@ -155,9 +155,11 @@ jobs:
         run: |
           mkdir -p openssl
           cd openssl
-          git clone https://github.com/KDAB/android_openssl.git .
-          OPENSSL_LIBRARY_PATH=$PWD/ssl_3/${{ matrix.arch }}
-          OPENSSL_INCLUDE_PATH=$PWD/ssl_3/include          
+          OPENSSL_ARCHIVE=openssl-android-${{ matrix.arch }}.zip
+          wget https://github.com/reg31/openssl/releases/latest/download/$OPENSSL_ARCHIVE
+          unzip $OPENSSL_ARCHIVE
+          OPENSSL_LIBRARY_PATH=$PWD/lib
+          OPENSSL_INCLUDE_PATH=$PWD/include          
           cd ..
           
           mkdir -p build
@@ -350,13 +352,11 @@ jobs:
             qt5-builds/qt5-android-arm64-v8a/*.zip
             qt5-builds/qt5-macos/*.zip
             qt5-builds/qt5-ios/*.zip
-          prerelease: true
           
       - name: Cleanup repository
         uses: dev-drprasad/delete-older-releases@v0.3.4
         with:
           keep_latest: 3
           delete_tags: true
-          delete_prerelease_only: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
