@@ -164,7 +164,8 @@ jobs:
           export OPENSSL_ROOT_DIR=$PWD 
           export OPENSSL_LIBRARIES=$PWD/lib
           export OPENSSL_INCLUDE_DIR=$PWD/include
-          export OPENSSL_CRYPTO_LIBRARY=$PWD/lib/libcrypto.so
+          export OPENSSL_CRYPTO_LIBRARY=crypto
+          export OPENSSL_SSL_LIBRARY=ssl
           cd ..
           
           mkdir -p build
