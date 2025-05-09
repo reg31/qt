@@ -148,7 +148,8 @@ jobs:
           echo "QT_HOST_PATH=$INSTALL_PATH" >> $GITHUB_ENV
           
           ../configure -prefix $INSTALL_PATH -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports -no-feature-test_gui \
-            -nomake tests -nomake examples -no-feature-sql -skip qtlanguageserver,qtquicktimeline,WITH_PCH -submodules qtbase -no-warnings-are-errors
+            -nomake tests -nomake examples -no-feature-sql -skip qtlanguageserver,qtquicktimeline,qtimageformats,qtsvg,qtquick3d,WITH_PCH \
+            -submodules qtbase,qtdeclarative -no-warnings-are-errors
           
           cmake --build . --parallel
           cmake --install .
@@ -281,7 +282,8 @@ jobs:
           echo "QT_HOST_PATH=$INSTALL_PATH" >> $GITHUB_ENV
           
           ../configure -prefix $INSTALL_PATH -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports -no-feature-test_gui \
-            -nomake tests -nomake examples -no-feature-sql -skip qtlanguageserver,qtquicktimeline,WITH_PCH -submodules qtbase -no-warnings-are-errors
+            -nomake tests -nomake examples -no-feature-sql -skip qtlanguageserver,qtquicktimeline,qtimageformats,qtsvg,qtquick3d,WITH_PCH \
+            -submodules qtbase,qtdeclarative -no-warnings-are-errors
           
           cmake --build . --parallel
           cmake --install .
