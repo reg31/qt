@@ -161,7 +161,7 @@ jobs:
           OPENSSL_ARCHIVE=openssl-android-${{ matrix.arch }}.zip
           wget https://github.com/reg31/openssl/releases/latest/download/$OPENSSL_ARCHIVE
           unzip $OPENSSL_ARCHIVE
-          export PATH=$PWD:$PWD/lib:$PWD/include:$PATH
+          OPENSSL_ROOT_DIR=$PWD
           cd ..
           
           mkdir -p build
