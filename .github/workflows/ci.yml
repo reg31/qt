@@ -73,7 +73,6 @@ jobs:
           ..\configure.bat -qt-zlib -qt-libjpeg -qt-libpng ^
           -qt-freetype -qt-harfbuzz -schannel -reduce-exports -prefix "%OUTPUT_DIR%" -no-feature-testlib -no-feature-sql -no-feature-test_gui -no-feature-dtls ^
           -no-feature-calendarwidget -no-feature-jalalicalendar -no-feature-hijricalendar -no-feature-islamiccivilcalendar ^
-          -no-feature-quickcontrols2_fluentwinui3 -no-feature-quickcontrols2_imagine -no-feature-quickcontrols2_fusion ^
           -nomake tests -nomake examples -no-warnings-are-errors -submodules qtbase,qtdeclarative,qtmultimedia ^
           -skip qtlanguageserver,qtquicktimeline,WITH_PCH -c++std c++20 ^
           -D QT_BUILD_EXAMPLES_BY_DEFAULT=OFF -D QT_BUILD_TESTS_BY_DEFAULT=OFF ^
@@ -145,7 +144,6 @@ jobs:
           ../configure -prefix $INSTALL_PATH -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -qt-harfbuzz -reduce-exports -no-feature-test_gui \
             -nomake tests -nomake examples -no-feature-sql -no-feature-dtls \
             -no-feature-calendarwidget -no-feature-jalalicalendar -no-feature-hijricalendar -no-feature-islamiccivilcalendar \
-            -no-feature-quickcontrols2_fluentwinui3 -no-feature-quickcontrols2_imagine -no-feature-quickcontrols2_fusion \
             -skip qtlanguageserver,qtquicktimeline,qtimageformats,qtsvg,qtquick3d,WITH_PCH \
             -submodules qtbase,qtdeclarative -no-warnings-are-errors -feature-optimize_full -c++std c++20
 
@@ -175,7 +173,6 @@ jobs:
             -submodules qtbase,qtdeclarative -qt-host-path ${QT_HOST_PATH} -feature-optimize_full -c++std c++20 \
             -D QT_BUILD_EXAMPLES_BY_DEFAULT=OFF -D QT_BUILD_TESTS_BY_DEFAULT=OFF -no-feature-dtls \
             -no-feature-calendarwidget -no-feature-jalalicalendar -no-feature-hijricalendar -no-feature-islamiccivilcalendar \
-            -no-feature-quickcontrols2_fluentwinui3 -no-feature-quickcontrols2_imagine -no-feature-quickcontrols2_fusion \
             -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-warnings-are-errors -openssl-linked -- -D OPENSSL_ROOT_DIR=$OPENSSL_DOWNLOADED -D OPENSSL_USE_STATIC_LIBS=TRUE -D OPENSSL_VERSION=3.0.0
             # -D OPENSSL_ROOT_DIR=$OPENSSL_DOWNLOADED
 
@@ -229,10 +226,8 @@ jobs:
           echo "QT_INSTALL_DIR=$INSTALL_PATH" >> $GITHUB_ENV
           
           ../configure -platform macx-clang -submodules qtbase,qtdeclarative,qtmultimedia -D QT_BUILD_EXAMPLES_BY_DEFAULT=OFF -D QT_BUILD_TESTS_BY_DEFAULT=OFF \
-            -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-feature-sql -release -nomake tests -nomake examples -no-warnings-are-errors -no-feature-test_gui \
-            -no-feature-dtls \
+            -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-feature-sql -release -nomake tests -nomake examples -no-warnings-are-errors -no-feature-test_gui -no-feature-dtls \
             -no-feature-calendarwidget -no-feature-jalalicalendar -no-feature-hijricalendar -no-feature-islamiccivilcalendar \
-            -no-feature-quickcontrols2_fluentwinui3 -no-feature-quickcontrols2_imagine -no-feature-quickcontrols2_fusion \
             -feature-optimize_full -c++std c++20 -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -qt-harfbuzz -securetransport -reduce-exports -prefix ${INSTALL_PATH}
 
           ../configure -list-features
@@ -289,7 +284,6 @@ jobs:
           ../configure -prefix $INSTALL_PATH -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -qt-harfbuzz -reduce-exports -no-feature-test_gui \
             -nomake tests -nomake examples -no-feature-sql -skip qtlanguageserver,qtquicktimeline,qtimageformats,qtsvg,qtquick3d,WITH_PCH -no-feature-dtls \
             -no-feature-calendarwidget -no-feature-jalalicalendar -no-feature-hijricalendar -no-feature-islamiccivilcalendar \
-            -no-feature-quickcontrols2_fluentwinui3 -no-feature-quickcontrols2_imagine -no-feature-quickcontrols2_fusion \
             -feature-optimize_full -c++std c++20 -submodules qtbase,qtdeclarative -no-warnings-are-errors
 
           ../configure -list-features
@@ -312,7 +306,6 @@ jobs:
             -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-feature-sql -release -nomake tests -nomake examples -no-warnings-are-errors \
             -no-feature-dtls \
             -no-feature-calendarwidget -no-feature-jalalicalendar -no-feature-hijricalendar -no-feature-islamiccivilcalendar \
-            -no-feature-quickcontrols2_fluentwinui3 -no-feature-quickcontrols2_imagine -no-feature-quickcontrols2_fusion \
             -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -qt-harfbuzz -securetransport -reduce-exports -no-feature-test_gui \
             -feature-optimize_full -c++std c++20 -prefix ${INSTALL_PATH} -qt-host-path ${QT_HOST_PATH}            
 
