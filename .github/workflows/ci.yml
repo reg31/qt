@@ -170,7 +170,8 @@ jobs:
             -submodules qtbase,qtdeclarative -qt-host-path ${QT_HOST_PATH} -feature-optimize_full -c++std c++20 \
             -D QT_BUILD_EXAMPLES_BY_DEFAULT=OFF -D QT_BUILD_TESTS_BY_DEFAULT=OFF -no-feature-dtls \
             -no-feature-calendarwidget -no-feature-jalalicalendar -no-feature-hijricalendar -no-feature-islamiccivilcalendar \
-            -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-warnings-are-errors -openssl-linked -I $OPENSSL_DOWNLOADED/include -L $OPENSSL_DOWNLOADED/lib
+            -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-warnings-are-errors -I $OPENSSL_DOWNLOADED/include -L $OPENSSL_DOWNLOADED/lib \
+            -D INPUT_openssl=linked -no-opensslv11
             # -D OPENSSL_ROOT_DIR=$OPENSSL_DOWNLOADED
 
           ../configure -list-features
