@@ -163,6 +163,7 @@ jobs:
           export OPENSSL_INCLUDE_DIR=$PWD/include
           export OPENSSL_CRYPTO_LIBRARY=crypto
           export OPENSSL_SSL_LIBRARY=ssl
+          export OPENSSL_VERSION=3.0.0
           cd ..
           
           mkdir -p build
