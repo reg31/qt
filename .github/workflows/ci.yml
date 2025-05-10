@@ -56,7 +56,6 @@ jobs:
         shell: cmd
         run: |
           init-repository.bat --module-subset=qtbase,qtdeclarative,qtmultimedia
-          git submodule foreach 'git fetch origin --tags; git checkout ${{ needs.setup.outputs.qt_branch }}; git pull' && git pull && git submodule update --init --recursive
 
       - name: Configure
         shell: cmd
@@ -130,7 +129,6 @@ jobs:
       - name: Initialize Qt submodules
         run: |
           perl init-repository --module-subset=qtbase,qtdeclarative
-          git submodule foreach 'git fetch origin --tags; git checkout ${{ needs.setup.outputs.qt_branch }}; git pull' && git pull && git submodule update --init --recursive
       
       - name: Build host Qt for cross-compilation
         run: |          
@@ -210,7 +208,6 @@ jobs:
       - name: Initialize Qt submodules
         run: |
           perl init-repository --module-subset=qtbase,qtdeclarative,qtmultimedia
-          git submodule foreach 'git fetch origin --tags; git checkout ${{ needs.setup.outputs.qt_branch }}; git pull' && git pull && git submodule update --init --recursive
         
       - name: Configure and build
         run: |
@@ -265,7 +262,6 @@ jobs:
       - name: Initialize Qt submodules
         run: |
           perl init-repository --module-subset=qtbase,qtdeclarative
-          git submodule foreach 'git fetch origin --tags; git checkout ${{ needs.setup.outputs.qt_branch }}; git pull' && git pull && git submodule update --init --recursive
       
       - name: Build host Qt for cross-compilation
         run: |
