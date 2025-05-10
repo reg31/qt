@@ -123,7 +123,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgl1-mesa-dev cmake
+          sudo apt-get install -y libgl1-mesa-dev
       
       - name: Initialize Qt submodules
         run: |
@@ -179,7 +179,8 @@ jobs:
             -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports \
             -android-abis ${{ matrix.arch }} -android-ndk ${ANDROID_NDK_LATEST_HOME} -android-sdk ${ANDROID_HOME} \
             -submodules qtbase,qtdeclarative -qt-host-path ${QT_HOST_PATH} -feature-optimize_full \
-            -D QT_BUILD_EXAMPLES_BY_DEFAULT=OFF -D QT_BUILD_TESTS_BY_DEFAULT=OFF -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-warnings-are-errors \
+            -D QT_BUILD_EXAMPLES_BY_DEFAULT=OFF -D QT_BUILD_TESTS_BY_DEFAULT=OFF \
+            -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-warnings-are-errors \
             -openssl-linked -- -D OPENSSL_USE_STATIC_LIBS=TRUE
           
           cmake --build . --parallel
