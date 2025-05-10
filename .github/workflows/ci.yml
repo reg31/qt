@@ -151,7 +151,8 @@ jobs:
           cd openssl
           OPENSSL_ARCHIVE=openssl-android-${{ matrix.arch }}.zip
           wget https://github.com/reg31/openssl/releases/latest/download/$OPENSSL_ARCHIVE
-          OPENSSL_DOWNLOADED=$PWD
+          export OPENSSL_VERSION=3.0.0
+          OPENSSL_DOWNLOADED=$PWD          
           cd ..
           
           mkdir -p build
@@ -166,7 +167,7 @@ jobs:
             -submodules qtbase,qtdeclarative -qt-host-path ${QT_HOST_PATH} -feature-optimize_full -c++std c++20 \
             -D QT_BUILD_EXAMPLES_BY_DEFAULT=OFF -D QT_BUILD_TESTS_BY_DEFAULT=OFF \
             -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-warnings-are-errors \
-            -DOPENSSL_ROOT_DIR=$OPENSSL_DOWNLOADED
+            -D OPENSSL_ROOT_DIR=$OPENSSL_DOWNLOADED
             # -openssl-linked -- -D OPENSSL_USE_STATIC_LIBS=TRUE
           
           cmake --build . --parallel
