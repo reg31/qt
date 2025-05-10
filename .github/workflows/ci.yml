@@ -166,9 +166,9 @@ jobs:
             -android-abis ${{ matrix.arch }} -android-ndk ${ANDROID_NDK_LATEST_HOME} -android-sdk ${ANDROID_HOME} \
             -submodules qtbase,qtdeclarative -qt-host-path ${QT_HOST_PATH} -feature-optimize_full -c++std c++20 \
             -D QT_BUILD_EXAMPLES_BY_DEFAULT=OFF -D QT_BUILD_TESTS_BY_DEFAULT=OFF \
-            -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-warnings-are-errors \
-            -D OPENSSL_ROOT_DIR=$OPENSSL_DOWNLOADED
-            # -openssl-linked -- -D OPENSSL_USE_STATIC_LIBS=TRUE
+            -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-warnings-are-errors \            
+            -openssl-linked -- -D OPENSSL_ROOT_DIR=$OPENSSL_DOWNLOADED -D OPENSSL_USE_STATIC_LIBS=TRUE -D OPENSSL_VERSION=3.0.0
+            # -D OPENSSL_ROOT_DIR=$OPENSSL_DOWNLOADED
           
           cmake --build . --parallel
           cmake --install .
