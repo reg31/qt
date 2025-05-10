@@ -178,7 +178,7 @@ jobs:
 
           ../configure -list-features
           cmake --build . --parallel
-          cmake --install .
+          cmake --install . --strip
           
       - name: Package artifacts
         run: |
@@ -232,7 +232,7 @@ jobs:
 
           ../configure -list-features
           cmake --build . --parallel
-          cmake --install .
+          cmake --install . --strip
           
       - name: Package artifacts
         run: |
@@ -311,7 +311,7 @@ jobs:
 
           ../configure -list-features
           cmake --build . --parallel
-          cmake --install .
+          cmake --install . --strip
           
       - name: Package artifacts
         run: |
