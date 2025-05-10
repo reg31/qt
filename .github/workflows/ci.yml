@@ -171,7 +171,7 @@ jobs:
             -D QT_BUILD_EXAMPLES_BY_DEFAULT=OFF -D QT_BUILD_TESTS_BY_DEFAULT=OFF -no-feature-dtls \
             -no-feature-calendarwidget -no-feature-jalalicalendar -no-feature-hijricalendar -no-feature-islamiccivilcalendar \
             -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-warnings-are-errors -I $OPENSSL_DOWNLOADED/include -L $OPENSSL_DOWNLOADED/lib \
-            --openssl linked --ssl yes
+            -- -D openssl=linked -- -D ssl=yes
             # -D OPENSSL_ROOT_DIR=$OPENSSL_DOWNLOADED
 
           ../configure -list-features
