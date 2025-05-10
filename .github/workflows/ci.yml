@@ -176,8 +176,7 @@ jobs:
             -D QT_BUILD_EXAMPLES_BY_DEFAULT=OFF -D QT_BUILD_TESTS_BY_DEFAULT=OFF -no-feature-quick_sprite -no-feature-dtls \
             -no-feature-calendarwidget -no-feature-quicktemplates2_calendar -no-feature-jalalicalendar -no-feature-hijricalendar -no-feature-islamiccivilcalendar \
             -no-feature-style_windowsvista -no-feature-quickcontrols2_fluentwinui3 -no-feature-quickcontrols2_imagine -no-feature-style_fusion -no-feature-quickcontrols2_fusion \
-            -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-warnings-are-errors \   
-            -openssl-linked -- -D OPENSSL_ROOT_DIR=$OPENSSL_DOWNLOADED -D OPENSSL_USE_STATIC_LIBS=TRUE -D OPENSSL_VERSION=3.0.0
+            -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-warnings-are-errors -openssl-linked -- -D OPENSSL_ROOT_DIR=$OPENSSL_DOWNLOADED -D OPENSSL_USE_STATIC_LIBS=TRUE -D OPENSSL_VERSION=3.0.0
             # -D OPENSSL_ROOT_DIR=$OPENSSL_DOWNLOADED
 
           ../configure -list-features
