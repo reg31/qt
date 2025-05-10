@@ -1,8 +1,8 @@
-name: Build Qt5 Library
+name: Build Qt Library
 env:
   QT_REPO: 'https://github.com/qt/qt5.git'
   QT_BRANCH: 'dev'
-  SNAPSHOT_TAG: 'qt5-daily-snapshot'
+  SNAPSHOT_TAG: 'qt-daily-snapshot'
 on:
   workflow_dispatch:
     inputs:
@@ -40,7 +40,7 @@ jobs:
       matrix:
         build_type: [release]
     steps:
-      - name: Checkout Qt5
+      - name: Checkout Qt
         uses: actions/checkout@v4
         with:
           repository: qt/qt5
@@ -92,13 +92,13 @@ jobs:
         run: |
           $installDir = Join-Path -Path $PWD -ChildPath "install"
           Write-Host "Packaging Qt install from: $installDir"
-          Compress-Archive -Path $installDir -DestinationPath "qt5-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip"
+          Compress-Archive -Path $installDir -DestinationPath "qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip"
           
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: qt5-windows-mingw
-          path: qt5-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
+          name: qt-windows-mingw
+          path: qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
 
   build-android:
     needs: setup
@@ -108,7 +108,7 @@ jobs:
         build_type: [release]
         arch: [arm64-v8a, armeabi-v7a]
     steps:
-      - name: Checkout Qt5
+      - name: Checkout Qt
         uses: actions/checkout@v4
         with:
           repository: qt/qt5
@@ -157,7 +157,6 @@ jobs:
           cd openssl
           OPENSSL_ARCHIVE=openssl-android-${{ matrix.arch }}.zip
           wget https://github.com/reg31/openssl/releases/latest/download/$OPENSSL_ARCHIVE
-          export OPENSSL_VERSION=3.0.0
           OPENSSL_DOWNLOADED=$PWD          
           cd ..
           
@@ -173,7 +172,7 @@ jobs:
             -submodules qtbase,qtdeclarative -qt-host-path ${QT_HOST_PATH} -feature-optimize_full -c++std c++20 \
             -D QT_BUILD_EXAMPLES_BY_DEFAULT=OFF -D QT_BUILD_TESTS_BY_DEFAULT=OFF -no-feature-dtls \
             -no-feature-calendarwidget -no-feature-jalalicalendar -no-feature-hijricalendar -no-feature-islamiccivilcalendar \
-            -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-warnings-are-errors -openssl-linked -- -D OPENSSL_ROOT_DIR=$OPENSSL_DOWNLOADED -D OPENSSL_USE_STATIC_LIBS=TRUE -D OPENSSL_VERSION=3.0.0
+            -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-warnings-are-errors -openssl-linked -I $OPENSSL_DOWNLOADED/include -L $OPENSSL_DOWNLOADED/lib
             # -D OPENSSL_ROOT_DIR=$OPENSSL_DOWNLOADED
 
           ../configure -list-features
@@ -182,7 +181,7 @@ jobs:
           
       - name: Package artifacts
         run: |
-          OUTPUT_DIR="qt5-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
+          OUTPUT_DIR="qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
           mkdir -p "${OUTPUT_DIR}"
           cp -r "${QT_INSTALL_DIR}"/* "${OUTPUT_DIR}/"
           zip -r "${OUTPUT_DIR}.zip" "${OUTPUT_DIR}"
@@ -190,8 +189,8 @@ jobs:
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: qt5-android-${{ matrix.arch }}
-          path: qt5-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
+          name: qt-android-${{ matrix.arch }}
+          path: qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
 
   build-macos:
     needs: setup
@@ -200,7 +199,7 @@ jobs:
       matrix:
         build_type: [release]
     steps:
-      - name: Checkout Qt5
+      - name: Checkout Qt
         uses: actions/checkout@v4
         with:
           repository: qt/qt5
@@ -236,7 +235,7 @@ jobs:
           
       - name: Package artifacts
         run: |
-          OUTPUT_DIR="qt5-macos-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
+          OUTPUT_DIR="qt-macos-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
           echo "Using QT_INSTALL_DIR: $QT_INSTALL_DIR"
           mkdir -p "${OUTPUT_DIR}"
           cp -r "${QT_INSTALL_DIR}"/* "${OUTPUT_DIR}/"
@@ -245,8 +244,8 @@ jobs:
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: qt5-macos
-          path: qt5-macos-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
+          name: qt-macos
+          path: qt-macos-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
 
   build-ios:
     needs: setup
@@ -255,7 +254,7 @@ jobs:
       matrix:
         build_type: [release]
     steps:
-      - name: Checkout Qt5
+      - name: Checkout Qt
         uses: actions/checkout@v4
         with:
           repository: qt/qt5
@@ -315,7 +314,7 @@ jobs:
           
       - name: Package artifacts
         run: |
-          OUTPUT_DIR="qt5-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
+          OUTPUT_DIR="qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
           echo "Using QT_INSTALL_DIR: $QT_INSTALL_DIR"
           mkdir -p "${OUTPUT_DIR}"
           cp -r "${QT_INSTALL_DIR}"/* "${OUTPUT_DIR}/"
@@ -324,8 +323,8 @@ jobs:
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: qt5-ios
-          path: qt5-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
+          name: qt-ios
+          path: qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
 
   release:
     needs: [setup, build-windows, build-android, build-macos, build-ios]
@@ -335,15 +334,15 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          path: qt5-builds
+          path: qt-builds
           
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.run_id }}
-          name: "Qt5 Library - Build"
+          name: "Qt Library - Build"
           body: |
-            Automated build of Qt5 ${{ needs.setup.outputs.qt_branch }}
+            Automated build of Qt ${{ needs.setup.outputs.qt_branch }} branch
             
             This build includes binaries for:
             - Windows (x64) with qtbase, qtdeclarative, qtmultimedia
@@ -352,11 +351,11 @@ jobs:
             - macOS with qtbase, qtdeclarative, qtmultimedia
             
           files: |
-            qt5-builds/qt5-windows-mingw/*.zip
-            qt5-builds/qt5-android-armeabi-v7a/*.zip
-            qt5-builds/qt5-android-arm64-v8a/*.zip
-            qt5-builds/qt5-macos/*.zip
-            qt5-builds/qt5-ios/*.zip
+            qt-builds/qt-windows-mingw/*.zip
+            qt-builds/qt-android-armeabi-v7a/*.zip
+            qt-builds/qt-android-arm64-v8a/*.zip
+            qt-builds/qt-macos/*.zip
+            qt-builds/qt-ios/*.zip
           
       - name: Cleanup repository
         uses: dev-drprasad/delete-older-releases@v0.3.4
