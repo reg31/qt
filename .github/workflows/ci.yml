@@ -123,8 +123,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgl1-mesa-dev unzip wget
-          sudo apt-get --only-upgrade true install cmake
+          sudo apt-get install -y libgl1-mesa-dev cmake
       
       - name: Initialize Qt submodules
         run: |
