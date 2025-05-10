@@ -160,7 +160,8 @@ jobs:
           
           mkdir -p build
           cd build
-               
+          export INPUT_openssl=linked
+          export INPUT_ssl=yes     
           INSTALL_PATH=$PWD/install
           echo "QT_INSTALL_DIR=$INSTALL_PATH" >> $GITHUB_ENV
 
@@ -170,8 +171,8 @@ jobs:
             -submodules qtbase,qtdeclarative -qt-host-path ${QT_HOST_PATH} -feature-optimize_full -c++std c++20 \
             -D QT_BUILD_EXAMPLES_BY_DEFAULT=OFF -D QT_BUILD_TESTS_BY_DEFAULT=OFF -no-feature-dtls \
             -no-feature-calendarwidget -no-feature-jalalicalendar -no-feature-hijricalendar -no-feature-islamiccivilcalendar \
-            -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-warnings-are-errors -I $OPENSSL_DOWNLOADED/include -L $OPENSSL_DOWNLOADED/lib \
-            -D INPUT_openssl=linked -D INPUT_ssl=yes
+            -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-warnings-are-errors -I $OPENSSL_DOWNLOADED/include -L $OPENSSL_DOWNLOADED/lib
+            
             # -D OPENSSL_ROOT_DIR=$OPENSSL_DOWNLOADED
 
           ../configure -list-features
