@@ -63,15 +63,10 @@ jobs:
         run: |
           mkdir build
           cd build
-          
-          set CFLAGS=-O3 -s
-          set CXXFLAGS=-O3 -s
-          set CMAKE_CXX_STANDARD=20
+
+          set "OUTPUT_DIR=%CD%\..\install"
           set "CC=C:\ProgramData\mingw64\mingw64\bin\gcc"
           set "CXX=C:\ProgramData\mingw64\mingw64\bin\g++"
-          
-          :: Use a hardcoded path relative to the checkout directory
-          set "OUTPUT_DIR=%CD%\..\install"
           
           ..\configure.bat -qt-zlib -qt-libjpeg -qt-libpng ^
           -qt-freetype -no-harfbuzz -schannel -reduce-exports -prefix "%OUTPUT_DIR%" -no-feature-testlib -no-feature-sql -no-feature-test_gui ^
@@ -126,6 +121,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libgl1-mesa-dev unzip wget
+          sudo apt-get --only-upgrade true install cmake
       
       - name: Initialize Qt submodules
         run: |
@@ -136,13 +132,9 @@ jobs:
         run: |          
           mkdir -p host-qt
           cd host-qt
-          
-          export CFLAGS="-O3"
-          export CXXFLAGS="-O3"
-          export CMAKE_CXX_STANDARD=20
-          export QT_FORCE_BUILD_TOOLS=ON
-          
+
           INSTALL_PATH=$PWD/install
+          export QT_FORCE_BUILD_TOOLS=ON
           echo "QT_HOST_PATH=$INSTALL_PATH" >> $GITHUB_ENV
           
           ../configure -prefix $INSTALL_PATH -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports -no-feature-test_gui \
@@ -159,7 +151,11 @@ jobs:
           OPENSSL_ARCHIVE=openssl-android-${{ matrix.arch }}.zip
           wget https://github.com/reg31/openssl/releases/latest/download/$OPENSSL_ARCHIVE
           unzip $OPENSSL_ARCHIVE
-          OPENSSL_DIR=$PWD
+          export OPENSSL_ROOT_DIR=$PWD 
+          export OPENSSL_LIBRARIES=$PWD/lib
+          export OPENSSL_INCLUDE_DIR=$PWD/include
+          export OPENSSL_CRYPTO_LIBRARY=crypto
+          export OPENSSL_SSL_LIBRARY=ssl
           cd ..
           
           mkdir -p build
@@ -174,7 +170,7 @@ jobs:
             -android-abis ${{ matrix.arch }} -android-ndk ${ANDROID_NDK_LATEST_HOME} -android-sdk ${ANDROID_HOME} \
             -submodules qtbase,qtdeclarative -qt-host-path ${QT_HOST_PATH} -feature-optimize_full -feature-cxx20 \
             -D QT_BUILD_EXAMPLES_BY_DEFAULT=OFF -D QT_BUILD_TESTS_BY_DEFAULT=OFF -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-warnings-are-errors
-            # -openssl-linked -- -D OPENSSL_ROOT_DIR=$OPENSSL_DIR -D OPENSSL_USE_STATIC_LIBS=TRUE
+            -openssl-linked -- -D OPENSSL_USE_STATIC_LIBS=TRUE
           
           cmake --build . --parallel
           cmake --install .
@@ -217,13 +213,8 @@ jobs:
           mkdir -p build
           cd build
           
-          # Define install path and set it as environment variable
           INSTALL_PATH=$PWD/install
           echo "QT_INSTALL_DIR=$INSTALL_PATH" >> $GITHUB_ENV
-          
-          export CFLAGS="-O3"
-          export CXXFLAGS="-O3"
-          export CMAKE_CXX_STANDARD=20
           
           ../configure -platform macx-clang -submodules qtbase,qtdeclarative,qtmultimedia -D QT_BUILD_EXAMPLES_BY_DEFAULT=OFF -D QT_BUILD_TESTS_BY_DEFAULT=OFF \
             -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-feature-sql -release -nomake tests -nomake examples -no-warnings-are-errors -no-feature-test_gui \
@@ -270,13 +261,9 @@ jobs:
         run: |
           mkdir -p host-qt
           cd host-qt
-        
-          export CFLAGS="-O3"
-          export CXXFLAGS="-O3"
-          export CMAKE_CXX_STANDARD=20
-          export QT_FORCE_BUILD_TOOLS=ON
-          
+
           INSTALL_PATH=$PWD/install
+          export QT_FORCE_BUILD_TOOLS=ON
           echo "QT_HOST_PATH=$INSTALL_PATH" >> $GITHUB_ENV
           
           ../configure -prefix $INSTALL_PATH -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports -no-feature-test_gui \
