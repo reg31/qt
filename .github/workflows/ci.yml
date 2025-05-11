@@ -165,8 +165,8 @@ jobs:
             -submodules qtbase,qtdeclarative,qtmultimedia -qt-host-path "%QT_ROOT_DIR%" -feature-optimize_full -DFEATURE_cxx20=ON ^
             -DQT_BUILD_EXAMPLES_BY_DEFAULT=OFF -DQT_BUILD_TESTS_BY_DEFAULT=OFF -no-feature-dtls -no-feature-testlib ^
             -no-feature-calendarwidget -no-feature-jalalicalendar -no-feature-hijricalendar -no-feature-islamiccivilcalendar ^
-            -DINPUT_openssl=linked -DINPUT_ssl=yes -DOPENSSL_USE_STATIC_LIBS=TRUE -DOPENSSL_ROOT_DIR="%OPENSSL_DOWNLOADED%" ^
-            -DQT_FEATURE_openssl_runtime=ON -DQT_FEATURE_openssl_linked=ON -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-warnings-are-errors
+            -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-warnings-are-errors ^
+            -openssl-linked -- -DOPENSSL_ROOT_DIR="%OPENSSL_DOWNLOADED%" -DOPENSSL_USE_STATIC_LIBS=TRUE
 
       - name: List features
         shell: cmd
