@@ -149,7 +149,7 @@ jobs:
           set OPENSSL_ARCHIVE=openssl-android-${{ matrix.arch }}.zip
           wget https://github.com/reg31/openssl/releases/latest/download/%OPENSSL_ARCHIVE%
           7z x %OPENSSL_ARCHIVE%
-          set OPENSSL_DOWNLOADED=%~dp0         
+          set OPENSSL_DOWNLOADED=%CD%       
           cd ..
           
           mkdir build
@@ -163,7 +163,8 @@ jobs:
             -DQT_BUILD_EXAMPLES_BY_DEFAULT=OFF -DQT_BUILD_TESTS_BY_DEFAULT=OFF -no-feature-dtls -no-feature-testlib ^
             -no-feature-calendarwidget -no-feature-jalalicalendar -no-feature-hijricalendar -no-feature-islamiccivilcalendar ^
             -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-warnings-are-errors ^
-            -DINPUT_openssl=linked -DINPUT_ssl=yes -DOPENSSL_ROOT_DIR=%OPENSSL_DOWNLOADED% -DOPENSSL_USE_STATIC_LIBS=TRUE
+            -DINPUT_openssl=linked -DINPUT_ssl=yes -DOPENSSL_ROOT_DIR=%OPENSSL_DOWNLOADED% -DOPENSSL_USE_STATIC_LIBS=TRUE ^
+            -DQT_NO_PACKAGE_VERSION_CHECK=TRUE -DQT_NO_PACKAGE_VERSION_INCOMPATIBLE_WARNING=TRUE
 
           ../configure.bat -list-features
           cmake --build . --parallel
