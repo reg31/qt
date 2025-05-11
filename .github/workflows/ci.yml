@@ -150,10 +150,8 @@ jobs:
             -submodules qtbase,qtdeclarative -no-warnings-are-errors -DFEATURE_cxx20=ON
 
           ../configure.bat -list-features
-          make -C "%OUTPUT_DIR%/qtbase/src" sub-bootstrap qmake sub-moc sub-rcc sub-uic -j$(sysctl -n hw.ncpu)
-          make install
-          #cmake --build . --parallel
-          #cmake --install .
+          cmake --build . --parallel --target moc qlalr rcc tracegen cmake_automoc_parser qmake qtpaths syncqt tracepointgen
+          cmake --install .
           
       - name: Build Android Qt
         shell: cmd
