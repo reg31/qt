@@ -149,7 +149,10 @@ jobs:
             -skip qtlanguageserver,qtquicktimeline,qtimageformats,qtsvg,qtquick3d,WITH_PCH \
             -submodules qtbase,qtdeclarative -no-warnings-are-errors -DFEATURE_cxx20=ON
 
-          ../configure.bat -list-features
+      - name: Build Qt host
+        shell: cmd
+        run: |
+          cd host-qt
           cmake --build . --parallel --target moc qlalr rcc tracegen cmake_automoc_parser qmake qtpaths syncqt tracepointgen
           cmake --install .
           
