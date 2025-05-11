@@ -73,9 +73,8 @@ jobs:
           -qt-freetype -no-harfbuzz -schannel -reduce-exports -prefix "%OUTPUT_DIR%" -no-feature-testlib -no-feature-sql -no-feature-test_gui -no-feature-dtls ^
           -no-feature-calendarwidget -no-feature-jalalicalendar -no-feature-hijricalendar -no-feature-islamiccivilcalendar ^
           -nomake tests -nomake examples -no-warnings-are-errors -submodules qtbase,qtdeclarative,qtmultimedia ^
-          -skip qtlanguageserver,qtquicktimeline,WITH_PCH -DFEATURE_cxx20=ON ^
-          -DQT_BUILD_EXAMPLES_BY_DEFAULT=OFF -DQT_BUILD_TESTS_BY_DEFAULT=OFF ^
-          ${{ matrix.build_type == 'debug' && '-debug' || '-release' }}
+          -skip qtlanguageserver,qtquicktimeline,WITH_PCH -DFEATURE_cxx20=ON -release ^
+          -DQT_BUILD_EXAMPLES_BY_DEFAULT=OFF -DQT_BUILD_TESTS_BY_DEFAULT=OFF 
 
           ..\configure.bat -list-features
 
@@ -130,7 +129,7 @@ jobs:
         run: |
           init-repository.bat --module-subset=qtbase,qtdeclarative
 
-      - name: Build host Qt for cross-compilation
+      - name: Configure host Qt for cross-compilation
         shell: cmd
         run: |          
           mkdir host-qt
@@ -152,7 +151,7 @@ jobs:
         shell: cmd
         run: |
           cd host-qt
-          cmake --build . --parallel --target moc qlalr rcc tracegen cmake_automoc_parser qmake qtpaths syncqt tracepointgen
+          cmake --build . --parallel --target moc qlalr rcc tracegen cmake_automoc_parser qmake qtpaths syncqt tracepointgen entrypoint
           cmake --install .
           
       - name: Build Android Qt
