@@ -176,7 +176,7 @@ jobs:
       - name: Package artifacts
         shell: cmd
         run: |
-          7z a "qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip" .\install\*
+          7z a "qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip" .\build\*
           
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -226,11 +226,8 @@ jobs:
           
       - name: Package artifacts
         run: |
-          OUTPUT_DIR="qt-macos-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
           echo "Using QT_INSTALL_DIR: $QT_INSTALL_DIR"
-          mkdir -p "${OUTPUT_DIR}"
-          cp -r "${QT_INSTALL_DIR}"/* "${OUTPUT_DIR}/"
-          zip -r "${OUTPUT_DIR}.zip" "${OUTPUT_DIR}"
+          zip -r "qt-macos-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip" "${QT_INSTALL_DIR}"/*
           
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -304,11 +301,8 @@ jobs:
           
       - name: Package artifacts
         run: |
-          OUTPUT_DIR="qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
           echo "Using QT_INSTALL_DIR: $QT_INSTALL_DIR"
-          mkdir -p "${OUTPUT_DIR}"
-          cp -r "${QT_INSTALL_DIR}"/* "${OUTPUT_DIR}/"
-          zip -r "${OUTPUT_DIR}.zip" "${OUTPUT_DIR}"
+          zip -r "qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip" "${QT_INSTALL_DIR}"/*
           
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
