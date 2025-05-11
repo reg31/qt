@@ -132,8 +132,9 @@ jobs:
           host: 'windows'
           target: 'desktop'
           arch: 'win64_mingw'
-          dir: '${{ github.workspace }}'
+          setup-python: 'false'          
           archives: 'qtdeclarative qtbase'
+          dir: '${{ github.workspace }}/qt_host'
       
       - name: Initialize Qt submodules
         run: |
