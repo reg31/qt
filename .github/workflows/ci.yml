@@ -151,8 +151,9 @@ jobs:
         shell: cmd
         run: |
           set "OUTPUT_DIR=%CD%/install"
-          set "QT_ROOT_DIR=%CD%/host-qt"
+          set "QT_ROOT_DIR=%CD%/host-qt/install"
           set "OPENSSL_DOWNLOADED=%CD%/openssl"
+          # set "Qt6HostInfo_DIR=%QT_ROOT_DIR%/openssl"
           
           mkdir build
           cd build
