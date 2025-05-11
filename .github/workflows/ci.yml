@@ -132,7 +132,7 @@ jobs:
           host: 'windows'
           target: 'desktop'
           arch: 'win64_mingw'
-          setup-python: 'false'          
+          setup-python: 'true'          
           archives: 'qtdeclarative qtbase'
           dir: '${{ github.workspace }}/qt_host'
       
