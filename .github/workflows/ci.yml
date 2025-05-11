@@ -149,7 +149,7 @@ jobs:
           set OPENSSL_ARCHIVE=openssl-android-${{ matrix.arch }}.zip
           wget https://github.com/reg31/openssl/releases/latest/download/%OPENSSL_ARCHIVE%
           7z x %OPENSSL_ARCHIVE%
-          set OPENSSL_DOWNLOADED=%CD%       
+          set "OPENSSL_DOWNLOADED=%CD%"     
           cd ..
           
           mkdir build
@@ -159,7 +159,7 @@ jobs:
           ../configure.bat -prefix "%OUTPUT_DIR%" -nomake examples -nomake tests -no-feature-sql -no-feature-test_gui ^
             -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports ^
             -android-abis ${{ matrix.arch }} -android-ndk "%ANDROID_NDK_LATEST_HOME%" -android-sdk "%ANDROID_HOME%" ^
-            -submodules qtbase,qtdeclarative -qt-host-path %QT_ROOT_DIR% -feature-optimize_full -DFEATURE_cxx20=ON ^
+            -submodules qtbase,qtdeclarative -qt-host-path "%QT_ROOT_DIR%" -feature-optimize_full -DFEATURE_cxx20=ON ^
             -DQT_BUILD_EXAMPLES_BY_DEFAULT=OFF -DQT_BUILD_TESTS_BY_DEFAULT=OFF -no-feature-dtls -no-feature-testlib ^
             -no-feature-calendarwidget -no-feature-jalalicalendar -no-feature-hijricalendar -no-feature-islamiccivilcalendar ^
             -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-warnings-are-errors ^
