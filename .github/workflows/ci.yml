@@ -137,6 +137,7 @@ jobs:
           dir: '${{ github.workspace }}/qt_host'
       
       - name: Initialize Qt submodules
+        shell: cmd
         run: |
           init-repository.bat --module-subset=qtbase,qtdeclarative
           
