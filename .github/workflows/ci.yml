@@ -76,6 +76,10 @@ jobs:
           -skip qtlanguageserver,qtquicktimeline,WITH_PCH -DFEATURE_cxx20=ON -release ^
           -DQT_BUILD_EXAMPLES_BY_DEFAULT=OFF -DQT_BUILD_TESTS_BY_DEFAULT=OFF 
 
+      - name: List features
+        shell: cmd
+        run: |
+          cd build
           ..\configure.bat -list-features
 
       - name: Build Qt
@@ -168,11 +172,16 @@ jobs:
             #tc.variables["INPUT_openssl"] = "linked"
             #tc.variables["QT_FEATURE_openssl_linked"] = "ON"
 
+      - name: List features
+        shell: cmd
+        run: |
+          cd build
+          ../configure.bat -list-features          
+
       - name: Build Android Qt
         shell: cmd
         run: |
           cd build
-          ../configure.bat -list-features
           cmake --build . --parallel
           cmake --install . --strip
           
