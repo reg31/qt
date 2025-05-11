@@ -132,8 +132,8 @@ jobs:
       - name: Download prebuild Qt Host
         shell: cmd
         run: |
-          mkdir install
-          cd install
+          mkdir host-qt
+          cd host-qt
           set QT_ARCHIVE=qt-windows-mingw-release-dev.zip
           wget https://github.com/reg31/qt/releases/latest/download/%QT_ARCHIVE%
           7z x %QT_ARCHIVE%
@@ -151,6 +151,7 @@ jobs:
         shell: cmd
         run: |
           set "OUTPUT_DIR=%CD%/install"
+          set "QT_ROOT_DIR=%CD%/host-qt"
           set "OPENSSL_DOWNLOADED=%CD%/openssl"
           
           mkdir build
