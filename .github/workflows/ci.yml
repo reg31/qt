@@ -145,14 +145,13 @@ jobs:
             -nomake tests -nomake examples -no-feature-sql -no-feature-dtls -DQT_BUILD_EXAMPLES_BY_DEFAULT=OFF -DQT_BUILD_TESTS_BY_DEFAULT=OFF \
             -no-feature-calendarwidget -no-feature-jalalicalendar -no-feature-hijricalendar -no-feature-islamiccivilcalendar \
             -skip qtlanguageserver,qtquicktimeline,qtimageformats,qtsvg,qtquick3d,WITH_PCH -DQT_FORCE_BUILD_TOOLS=ON \
-            -submodules qtbase,qtdeclarative -no-warnings-are-errors -DFEATURE_cxx20=ON -Dqt_no_entrypoint=ON
+            -submodules qtbase,qtdeclarative -no-warnings-are-errors -DFEATURE_cxx20=ON
 
       - name: Build Qt host
         shell: cmd
         run: |
           cd host-qt
-          cmake --build . --parallel --target moc qlalr rcc tracegen cmake_automoc_parser qmake qtpaths syncqt tracepointgen
-          cmake --install .
+          cmake --build . --parallel --target core
           
       - name: Build Android Qt
         shell: cmd
