@@ -152,9 +152,9 @@ jobs:
       - name: Configure Android Qt
         shell: cmd
         run: |
-          set "OUTPUT_DIR=%CD:\=/%/install"          
+          set "OUTPUT_DIR=%CD:\=/%/install"   
+          set "QT_ROOT_DIR=%CD:\=/%/host-qt"
           set "OPENSSL_DOWNLOADED=%CD:\=/%/openssl"
-          set "QT_ROOT_DIR=%CD:\=/%/host-qt/install"
           
           mkdir build
           cd build
@@ -165,7 +165,7 @@ jobs:
             -submodules qtbase,qtdeclarative -qt-host-path "%QT_ROOT_DIR%" -feature-optimize_full -DFEATURE_cxx20=ON ^
             -DQT_BUILD_EXAMPLES_BY_DEFAULT=OFF -DQT_BUILD_TESTS_BY_DEFAULT=OFF -no-feature-dtls -no-feature-testlib ^
             -no-feature-calendarwidget -no-feature-jalalicalendar -no-feature-hijricalendar -no-feature-islamiccivilcalendar ^
-            -DINPUT_openssl=linked -DINPUT_ssl=yes DOPENSSL_USE_STATIC_LIBS=TRUE -DOPENSSL_ROOT_DIR="%OPENSSL_DOWNLOADED%" ^
+            -DINPUT_openssl=linked -DINPUT_ssl=yes -DOPENSSL_USE_STATIC_LIBS=TRUE -DOPENSSL_ROOT_DIR="%OPENSSL_DOWNLOADED%" ^
             -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-warnings-are-errors
             #tc.variables["INPUT_openssl"] = "runtime"
             #tc.variables["QT_FEATURE_openssl_runtime"] = "ON"
@@ -266,28 +266,15 @@ jobs:
         run: |
           perl init-repository --module-subset=qtbase,qtdeclarative
       
-      - name: Build host Qt for cross-compilation
+
+      - name: Download prebuild Qt Host
+        shell: cmd
         run: |
-          mkdir -p host-qt
+          mkdir host-qt
           cd host-qt
-
-          export CFLAGS="-O3"
-          export CXXFLAGS="-O3"
-          export CMAKE_CXX_STANDARD=20
-          export QT_FORCE_BUILD_TOOLS=ON
-          
-          INSTALL_PATH=$PWD/install
-          echo "QT_HOST_PATH=$INSTALL_PATH" >> $GITHUB_ENV
-          
-          ../configure -prefix $INSTALL_PATH -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports -no-feature-test_gui \
-            -nomake tests -nomake examples -no-feature-sql -skip qtlanguageserver,qtquicktimeline,qtimageformats,qtsvg,qtquick3d,WITH_PCH -no-feature-dtls \
-            -no-feature-calendarwidget -no-feature-jalalicalendar -no-feature-hijricalendar -no-feature-islamiccivilcalendar -no-feature-testlib \
-            -feature-optimize_full -DFEATURE_cxx20=ON -submodules qtbase,qtdeclarative -no-warnings-are-errors \
-            -DQT_BUILD_EXAMPLES_BY_DEFAULT=OFF -DQT_BUILD_TESTS_BY_DEFAULT=OFF
-
-          ../configure -list-features
-          cmake --build . --parallel
-          cmake --install .
+          set QT_ARCHIVE=qt-windows-mingw-release-dev.zip
+          wget https://github.com/reg31/qt/releases/latest/download/%QT_ARCHIVE%
+          7z x %QT_ARCHIVE%
         
       - name: Configure and build for iOS
         run: |
@@ -297,7 +284,8 @@ jobs:
           export CFLAGS="-O3"
           export CXXFLAGS="-O3"
           export CMAKE_CXX_STANDARD=20
-          
+
+          QT_HOST_PATH=$PWD/host-qt
           INSTALL_PATH=$PWD/install
           echo "QT_INSTALL_DIR=$INSTALL_PATH" >> $GITHUB_ENV
           
