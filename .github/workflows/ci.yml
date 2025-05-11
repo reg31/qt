@@ -150,24 +150,23 @@ jobs:
         run: |
           set "OUTPUT_DIR=%CD%\install"          
           set "OPENSSL_DOWNLOADED=%CD%\openssl"
-          set "QT_ROOT_DIR=%CD%/host-qt\install"
+          set "QT_ROOT_DIR=%CD%\host-qt\install"
           
           mkdir build
           cd build
 
-          ../configure.bat -prefix "%OUTPUT_DIR%" -nomake examples -nomake tests -no-feature-sql -no-feature-test_gui ^
+          ..\configure.bat -prefix "%OUTPUT_DIR%" -nomake examples -nomake tests -no-feature-sql -no-feature-test_gui ^
             -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports ^
             -android-abis ${{ matrix.arch }} -android-ndk "%ANDROID_NDK_LATEST_HOME%" -android-sdk "%ANDROID_HOME%" ^
             -submodules qtbase,qtdeclarative -qt-host-path "%QT_ROOT_DIR%" -feature-optimize_full -DFEATURE_cxx20=ON ^
             -DQT_BUILD_EXAMPLES_BY_DEFAULT=OFF -DQT_BUILD_TESTS_BY_DEFAULT=OFF -no-feature-dtls -no-feature-testlib ^
             -no-feature-calendarwidget -no-feature-jalalicalendar -no-feature-hijricalendar -no-feature-islamiccivilcalendar ^
-            -DINPUT_openssl=linked -DINPUT_ssl=yes DOPENSSL_USE_STATIC_LIBS=TRUE -DOPENSSL_ROOT_DIR="%OPENSSL_DOWNLOADED%" ^
+            -DINPUT_openssl=linked -DINPUT_ssl=yes DOPENSSL_USE_STATIC_LIBS=TRUE -DOPENSSL_ROOT_DIR="D:/a/qt/qt/openssl" ^
             -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-warnings-are-errors
             #tc.variables["INPUT_openssl"] = "runtime"
             #tc.variables["QT_FEATURE_openssl_runtime"] = "ON"
             #tc.variables["INPUT_openssl"] = "linked"
             #tc.variables["QT_FEATURE_openssl_linked"] = "ON"
-
 
           ../configure.bat -list-features
           cmake --build . --parallel
@@ -176,7 +175,7 @@ jobs:
       - name: Package artifacts
         shell: cmd
         run: |
-          7z a "qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip" .\build\*
+          7z a "qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip" .\install\*
           
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
