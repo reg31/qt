@@ -88,7 +88,7 @@ jobs:
       - name: Package artifacts
         shell: cmd
         run: |
-          7za.exe a "qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip" .\install\*
+          7z a "qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip" .\install\*
           
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -148,9 +148,9 @@ jobs:
       - name: Build Android Qt
         shell: cmd
         run: |
-          set "OUTPUT_DIR=%CD%\install:\=/"          
-          set "OPENSSL_DOWNLOADED=%CD%/openssl:\=/"
-          set "QT_ROOT_DIR=%CD%/host-qt/install:\=/"
+          set "OUTPUT_DIR=%CD%\install"          
+          set "OPENSSL_DOWNLOADED=%CD%\openssl"
+          set "QT_ROOT_DIR=%CD%/host-qt\install"
           
           mkdir build
           cd build
@@ -176,7 +176,7 @@ jobs:
       - name: Package artifacts
         shell: cmd
         run: |
-          7za.exe a "qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip" .\install\*
+          7z a "qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip" .\install\*
           
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
