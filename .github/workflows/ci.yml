@@ -152,9 +152,9 @@ jobs:
       - name: Configure Android Qt
         shell: cmd
         run: |
-          set "OUTPUT_DIR=%CD%\install"          
-          set "OPENSSL_DOWNLOADED=%CD%\openssl"
-          set "QT_ROOT_DIR=%CD%\host-qt\install"
+          set "OUTPUT_DIR=%CD:\=/%/install"          
+          set "OPENSSL_DOWNLOADED=%CD:\=/%/openssl"
+          set "QT_ROOT_DIR=%CD:\=/%/host-qt/install"
           
           mkdir build
           cd build
@@ -165,7 +165,7 @@ jobs:
             -submodules qtbase,qtdeclarative -qt-host-path "%QT_ROOT_DIR%" -feature-optimize_full -DFEATURE_cxx20=ON ^
             -DQT_BUILD_EXAMPLES_BY_DEFAULT=OFF -DQT_BUILD_TESTS_BY_DEFAULT=OFF -no-feature-dtls -no-feature-testlib ^
             -no-feature-calendarwidget -no-feature-jalalicalendar -no-feature-hijricalendar -no-feature-islamiccivilcalendar ^
-            -DINPUT_openssl=linked -DINPUT_ssl=yes DOPENSSL_USE_STATIC_LIBS=TRUE -DOPENSSL_ROOT_DIR="D:/a/qt/qt/openssl" ^
+            -DINPUT_openssl=linked -DINPUT_ssl=yes DOPENSSL_USE_STATIC_LIBS=TRUE -DOPENSSL_ROOT_DIR="%OPENSSL_DOWNLOADED%" ^
             -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-warnings-are-errors
             #tc.variables["INPUT_openssl"] = "runtime"
             #tc.variables["QT_FEATURE_openssl_runtime"] = "ON"
