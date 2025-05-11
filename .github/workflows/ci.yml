@@ -140,7 +140,7 @@ jobs:
           echo "QT_HOST_PATH=$INSTALL_PATH" >> $GITHUB_ENV
           
           ../configure -prefix $INSTALL_PATH -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -qt-harfbuzz -reduce-exports -no-feature-test_gui \
-            -nomake tests -nomake examples -no-feature-sql -no-feature-dtls \
+            -nomake tests -nomake examples -no-feature-sql -no-feature-dtls - D QT_BUILD_EXAMPLES_BY_DEFAULT=OFF -D QT_BUILD_TESTS_BY_DEFAULT=OFF \
             -no-feature-calendarwidget -no-feature-jalalicalendar -no-feature-hijricalendar -no-feature-islamiccivilcalendar \
             -skip qtlanguageserver,qtquicktimeline,qtimageformats,qtsvg,qtquick3d,WITH_PCH \
             -submodules qtbase,qtdeclarative -no-warnings-are-errors -feature-optimize_full -c++std c++20
@@ -159,9 +159,7 @@ jobs:
           cd ..
           
           mkdir -p build
-          cd build
-          export INPUT_openssl=linked
-          export INPUT_ssl=yes     
+          cd build     
           INSTALL_PATH=$PWD/install
           echo "QT_INSTALL_DIR=$INSTALL_PATH" >> $GITHUB_ENV
 
@@ -172,7 +170,7 @@ jobs:
             -D QT_BUILD_EXAMPLES_BY_DEFAULT=OFF -D QT_BUILD_TESTS_BY_DEFAULT=OFF -no-feature-dtls \
             -no-feature-calendarwidget -no-feature-jalalicalendar -no-feature-hijricalendar -no-feature-islamiccivilcalendar \
             -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-warnings-are-errors \
-            -- -D OPENSSL_ROOT_DIR=$OPENSSL_DOWNLOADED -- -D OPENSSL_USE_STATIC_LIBS=TRUE
+            -D INPUT_openssl=linked -D INPUT_ssl=yes -D OPENSSL_ROOT_DIR=$OPENSSL_DOWNLOADED -D OPENSSL_USE_STATIC_LIBS=TRUE
 
           ../configure -list-features
           cmake --build . --parallel
