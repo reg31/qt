@@ -141,12 +141,11 @@ jobs:
           set "OUTPUT_DIR=%CD%\..\install"
           set "CC=C:\ProgramData\mingw64\mingw64\bin\gcc"
           set "CXX=C:\ProgramData\mingw64\mingw64\bin\g++"
-          set QT_FORCE_BUILD_TOOLS=ON
           
           ../configure.bat -prefix "%OUTPUT_DIR%" -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports -no-feature-test_gui \
             -nomake tests -nomake examples -no-feature-sql -no-feature-dtls -DQT_BUILD_EXAMPLES_BY_DEFAULT=OFF -DQT_BUILD_TESTS_BY_DEFAULT=OFF \
             -no-feature-calendarwidget -no-feature-jalalicalendar -no-feature-hijricalendar -no-feature-islamiccivilcalendar \
-            -skip qtlanguageserver,qtquicktimeline,qtimageformats,qtsvg,qtquick3d,WITH_PCH \
+            -skip qtlanguageserver,qtquicktimeline,qtimageformats,qtsvg,qtquick3d,WITH_PCH -DQT_FORCE_BUILD_TOOLS=ON \
             -submodules qtbase,qtdeclarative -no-warnings-are-errors -DFEATURE_cxx20=ON
 
       - name: Build Qt host
