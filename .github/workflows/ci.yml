@@ -158,12 +158,12 @@ jobs:
 
           ../configure.bat -prefix "%OUTPUT_DIR%" -nomake examples -nomake tests -no-feature-sql -no-feature-test_gui ^
             -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports ^
-            -android-abis ${{ matrix.arch }} -android-ndk %ANDROID_NDK_LATEST_HOME% -android-sdk %ANDROID_HOME% ^
+            -android-abis ${{ matrix.arch }} -android-ndk "%ANDROID_NDK_LATEST_HOME%" -android-sdk "%ANDROID_HOME%" ^
             -submodules qtbase,qtdeclarative -qt-host-path %QT_ROOT_DIR% -feature-optimize_full -DFEATURE_cxx20=ON ^
             -DQT_BUILD_EXAMPLES_BY_DEFAULT=OFF -DQT_BUILD_TESTS_BY_DEFAULT=OFF -no-feature-dtls -no-feature-testlib ^
             -no-feature-calendarwidget -no-feature-jalalicalendar -no-feature-hijricalendar -no-feature-islamiccivilcalendar ^
             -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-warnings-are-errors ^
-            -DINPUT_openssl=linked -DINPUT_ssl=yes -DOPENSSL_ROOT_DIR=%OPENSSL_DOWNLOADED% -DOPENSSL_USE_STATIC_LIBS=TRUE ^
+            -DINPUT_openssl=linked -DINPUT_ssl=yes -DOPENSSL_ROOT_DIR="%OPENSSL_DOWNLOADED%" -DOPENSSL_USE_STATIC_LIBS=TRUE ^
             -DQT_NO_PACKAGE_VERSION_CHECK=TRUE -DQT_NO_PACKAGE_VERSION_INCOMPATIBLE_WARNING=TRUE
 
           ../configure.bat -list-features
