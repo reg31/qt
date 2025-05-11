@@ -122,7 +122,7 @@ jobs:
       
       - name: Install dependencies
         run: |
-          choco install -y mingw wget
+          choco install -y wget
       
       - name: Initialize Qt submodules
         shell: cmd
