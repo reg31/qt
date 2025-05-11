@@ -145,7 +145,7 @@ jobs:
           wget https://github.com/reg31/openssl/releases/latest/download/%OPENSSL_ARCHIVE%
           7z x %OPENSSL_ARCHIVE%
           
-      - name: Build Android Qt
+      - name: Configure Android Qt
         shell: cmd
         run: |
           set "OUTPUT_DIR=%CD%\install"          
@@ -168,6 +168,10 @@ jobs:
             #tc.variables["INPUT_openssl"] = "linked"
             #tc.variables["QT_FEATURE_openssl_linked"] = "ON"
 
+      - name: Build Android Qt
+        shell: cmd
+        run: |
+          cd build
           ../configure.bat -list-features
           cmake --build . --parallel
           cmake --install . --strip
