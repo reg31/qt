@@ -151,7 +151,7 @@ jobs:
         shell: cmd
         run: |
           cd host-qt
-          cmake --build . --parallel --target core
+          cmake --build . --parallel --target moc qlalr rcc tracegen cmake_automoc_parser qmake qtpaths syncqt tracepointgen EntryPointPrivate EntryPointImplementation EntryPointMinGW32
           
       - name: Build Android Qt
         shell: cmd
