@@ -131,7 +131,7 @@ jobs:
         run: |
           init-repository.bat --module-subset=qtbase,qtdeclarative,qtmultimedia
 
-      - name: Download prebuild Qt Host
+      - name: Download prebuilt Qt Host
         shell: cmd
         run: |
           mkdir host-qt
@@ -140,7 +140,7 @@ jobs:
           wget https://github.com/reg31/qt/releases/latest/download/%QT_ARCHIVE%
           7z x %QT_ARCHIVE%
 
-      - name: Download prebuild openssl
+      - name: Download prebuilt openssl
         shell: cmd
         run: |
           mkdir openssl
@@ -262,8 +262,7 @@ jobs:
         run: |
           perl init-repository --module-subset=qtbase,qtdeclarative,qtmultimedia
       
-      - name: Download prebuild Qt Host
-        shell: cmd
+      - name: Download prebuilt Qt Host
         run: |
           mkdir host-qt
           cd host-qt
