@@ -151,7 +151,8 @@ jobs:
         shell: cmd
         run: |
           cd host-qt
-          cmake --build . --parallel --target moc qlalr rcc tracegen cmake_automoc_parser qmake qtpaths syncqt tracepointgen entrypoint
+          #cmake --build . --parallel --target moc qlalr rcc tracegen cmake_automoc_parser qmake qtpaths syncqt tracepointgen entrypoint
+          cmake --build . --parallel --target moc rcc cmake_automoc_parser qmake qtpaths syncqt
           cmake --install .
           
       - name: Build Android Qt
@@ -177,6 +178,11 @@ jobs:
             -no-feature-calendarwidget -no-feature-jalalicalendar -no-feature-hijricalendar -no-feature-islamiccivilcalendar ^
             -DINPUT_openssl=linked -DINPUT_ssl=yes DOPENSSL_USE_STATIC_LIBS=TRUE -DOPENSSL_ROOT_DIR="%OPENSSL_DOWNLOADED%" ^
             -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-warnings-are-errors
+            #tc.variables["INPUT_openssl"] = "runtime"
+            #tc.variables["QT_FEATURE_openssl_runtime"] = "ON"
+            #tc.variables["INPUT_openssl"] = "linked"
+            #tc.variables["QT_FEATURE_openssl_linked"] = "ON"
+
 
           ../configure.bat -list-features
           cmake --build . --parallel
