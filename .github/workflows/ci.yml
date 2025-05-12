@@ -261,8 +261,8 @@ jobs:
           mkdir -p host-qt
           cd host-qt
           echo "QT_ARCHIVE=qt-macos-release-dev.zip" >> $GITHUB_ENV
-          curl -O "https://github.com/reg31/qt/releases/latest/download/${{env.QT_ARCHIVE}}"
-          unzip "${{env.QT_ARCHIVE}}"
+          curl -O https://github.com/reg31/qt/releases/latest/download/${{ env.QT_ARCHIVE }}
+          unzip ${{ env.QT_ARCHIVE }}
         
       - name: Configure and build for iOS
         run: |
