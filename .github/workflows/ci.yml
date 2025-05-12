@@ -195,8 +195,8 @@ jobs:
       - name: Configure and build
         run: |
           mkdir -p build    
-          configure -platform macx-clang -${{ env.SHARED_FLAGS }} -securetransport -prefix $(pwd)/install
-          configure -list-features
+          perl configure -platform macx-clang -${{ env.SHARED_FLAGS }} -securetransport -prefix $(pwd)/install
+          perl configure -list-features
 
           cd build
           cmake --build . --parallel
@@ -242,8 +242,8 @@ jobs:
       - name: Configure and build for iOS
         run: |
           mkdir -p build          
-          configure -platform macx-ios-clang -${{ env.SHARED_FLAGS }} -securetransport -prefix $(pwd)/install -qt-host-path $(pwd)/host-qt
-          configure -list-features
+          perl configure -platform macx-ios-clang -${{ env.SHARED_FLAGS }} -securetransport -prefix $(pwd)/install -qt-host-path $(pwd)/host-qt
+          perl configure -list-features
 
           cd build
           cmake --build . --parallel
