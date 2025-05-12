@@ -65,14 +65,17 @@ jobs:
 
       - name: Configure
         shell: cmd
-        run: |
-          mkdir build
+        run: |         
           set CFLAGS=-O3 -s
           set CXXFLAGS=-O3 -s
+          set "OUTPUT_DIR=%CD%\install"
           set "CC=C:\ProgramData\mingw64\mingw64\bin\gcc"
-          set "CXX=C:\ProgramData\mingw64\mingw64\bin\g++"
+          set "CXX=C:\ProgramData\mingw64\mingw64\bin\g++"          
+
+          mkdir build
+          cd build
           
-          configure.bat -schannel -prefix "%CD%\..\install" -${{ env.SHARED_FLAGS }}
+          ..\configure.bat -schannel -prefix "%OUTPUT_DIR%" -${{ env.SHARED_FLAGS }}
 
       - name: List features
         shell: cmd
@@ -150,7 +153,9 @@ jobs:
           set "OPENSSL_DOWNLOADED=%CD:\=/%/openssl"
           
           mkdir build
-          configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" -${{ env.SHARED_FLAGS }} ^
+          cd build
+          
+          ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" -${{ env.SHARED_FLAGS }} ^
             -android-abis ${{ matrix.arch }} -android-ndk "%ANDROID_NDK_LATEST_HOME%" -android-sdk "%ANDROID_HOME%"      
             
       - name: List features
@@ -194,9 +199,12 @@ jobs:
         
       - name: Configure and build
         run: |
-          mkdir -p build    
-          perl configure -platform macx-clang -${{ env.SHARED_FLAGS }} -securetransport -prefix $(pwd)/install
-          perl configure -list-features
+          OUTPUT_DIR=$(pwd)/install
+          mkdir -p build
+          cd build
+          
+          ../configure -platform macx-clang -${{ env.SHARED_FLAGS }} -securetransport -prefix $OUTPUT_DIR
+          ../configure -list-features
 
           cd build
           cmake --build . --parallel
@@ -241,11 +249,13 @@ jobs:
         
       - name: Configure and build for iOS
         run: |
-          mkdir -p build          
-          perl configure -platform macx-ios-clang -${{ env.SHARED_FLAGS }} -securetransport -prefix $(pwd)/install -qt-host-path $(pwd)/host-qt
-          perl configure -list-features
-
+          OUTPUT_DIR=$(pwd)/install
+          mkdir -p build
           cd build
+          
+          ../configure -platform macx-ios-clang -${{ env.SHARED_FLAGS }} -securetransport -prefix $(pwd)/install -qt-host-path $OUTPUT_DIR
+          ../perl configure -list-features
+
           cmake --build . --parallel
           cmake --install . --strip
           
