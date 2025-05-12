@@ -221,12 +221,12 @@ jobs:
           export CMAKE_CXX_STANDARD=20
           
           INSTALL_PATH=$PWD/install
-          echo "QT_INSTALL_DIR=$INSTALL_PATH" >> $GITHUB_ENV
+          echo "QT_INSTALL_DIR=${INSTALL_PATH}" >> $GITHUB_ENV
           
           ../configure -platform macx-clang -submodules qtbase,qtdeclarative,qtmultimedia -DQT_BUILD_EXAMPLES_BY_DEFAULT=OFF -DQT_BUILD_TESTS_BY_DEFAULT=OFF \
             -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-feature-sql -release -nomake tests -nomake examples -no-warnings-are-errors -no-feature-test_gui -no-feature-dtls \
             -no-feature-calendarwidget -no-feature-jalalicalendar -no-feature-hijricalendar -no-feature-islamiccivilcalendar -no-feature-testlib \
-            -feature-optimize_full -DFEATURE_cxx20=ON -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -securetransport -reduce-exports -prefix ${INSTALL_PATH}
+            -feature-optimize_full -DFEATURE_cxx20=ON -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -securetransport -reduce-exports -prefix "${INSTALL_PATH}"
 
           ../configure -list-features
           cmake --build . --parallel
@@ -267,8 +267,8 @@ jobs:
           mkdir host-qt
           cd host-qt
           QT_ARCHIVE=qt-macos-release-dev.zip
-          curl -O https://github.com/reg31/qt/releases/latest/download/$QT_ARCHIVE
-          unzip $QT_ARCHIVE
+          curl -O "https://github.com/reg31/qt/releases/latest/download/${QT_ARCHIVE}"
+          unzip "${QT_ARCHIVE}"
         
       - name: Configure and build for iOS
         run: |
@@ -279,15 +279,15 @@ jobs:
           export CXXFLAGS="-O3"
           export CMAKE_CXX_STANDARD=20
 
-          QT_HOST_PATH=$PWD/host-qt
-          INSTALL_PATH=$PWD/install
-          echo "QT_INSTALL_DIR=$INSTALL_PATH" >> $GITHUB_ENV
+          QT_HOST_PATH="$PWD/host-qt"
+          INSTALL_PATH="$PWD/install"
+          echo "QT_INSTALL_DIR=${INSTALL_PATH}" >> $GITHUB_ENV
           
           ../configure -platform macx-ios-clang -submodules qtbase,qtdeclarative,qtmultimedia -DQT_BUILD_EXAMPLES_BY_DEFAULT=OFF -DQT_BUILD_TESTS_BY_DEFAULT=OFF \
             -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-feature-sql -release -nomake tests -nomake examples -no-warnings-are-errors \
             -no-feature-calendarwidget -no-feature-jalalicalendar -no-feature-hijricalendar -no-feature-islamiccivilcalendar -no-feature-testlib \
             -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -securetransport -reduce-exports -no-feature-test_gui \
-            -no-feature-dtls -feature-optimize_full -DFEATURE_cxx20=ON -prefix ${INSTALL_PATH} -qt-host-path ${QT_HOST_PATH}            
+            -no-feature-dtls -feature-optimize_full -DFEATURE_cxx20=ON -prefix "${INSTALL_PATH}" -qt-host-path "${QT_HOST_PATH}"           
 
           ../configure -list-features
           cmake --build . --parallel
@@ -295,7 +295,7 @@ jobs:
           
       - name: Package artifacts
         run: |
-          echo "Using QT_INSTALL_DIR: $QT_INSTALL_DIR"
+          echo "Using QT_INSTALL_DIR: ${QT_INSTALL_DIR}"
           zip -r "qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip" "${QT_INSTALL_DIR}"/*
           
       - name: Upload build artifact
