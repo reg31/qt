@@ -215,13 +215,12 @@ jobs:
           mkdir -p build
           cd build
           
-          export INSTALL_PATH=$PWD/install
-          export "QT_INSTALL_DIR=$INSTALL_PATH"
+          echo "QT_INSTALL_DIR=$PWD/install" >> $GITHUB_ENV
           
           ../configure -platform macx-clang -submodules qtbase,qtdeclarative,qtmultimedia -DQT_BUILD_EXAMPLES_BY_DEFAULT=OFF -DQT_BUILD_TESTS_BY_DEFAULT=OFF \
             -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-feature-sql -release -nomake tests -nomake examples -no-warnings-are-errors -no-feature-test_gui -no-feature-dtls \
             -no-feature-calendarwidget -no-feature-jalalicalendar -no-feature-hijricalendar -no-feature-islamiccivilcalendar -no-feature-testlib \
-            -feature-optimize_full -DFEATURE_cxx20=ON -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -securetransport -reduce-exports -prefix "$INSTALL_PATH"
+            -feature-optimize_full -DFEATURE_cxx20=ON -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -securetransport -reduce-exports -prefix "${QT_INSTALL_DIR}"
 
           ../configure -list-features
           cmake --build . --parallel
@@ -229,8 +228,8 @@ jobs:
           
       - name: Package artifacts
         run: |
-          echo "Using QT_INSTALL_DIR: $QT_INSTALL_DIR"
-          zip -r "qt-macos-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip" "$QT_INSTALL_DIR"/*
+          echo "Using QT_INSTALL_DIR: ${QT_INSTALL_DIR}"
+          zip -r "qt-macos-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip" "${QT_INSTALL_DIR}"/*
           
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -258,28 +257,26 @@ jobs:
           perl init-repository --module-subset=qtbase,qtdeclarative,qtmultimedia
       
       - name: Download prebuilt Qt Host
-        shell: cmd
         run: |
-          mkdir host-qt
+          mkdir -p host-qt
           cd host-qt
-          export QT_ARCHIVE=qt-macos-release-dev.zip
-          curl -O "https://github.com/reg31/qt/releases/latest/download/$QT_ARCHIVE"
-          unzip "$QT_ARCHIVE"
+          echo "QT_ARCHIVE=qt-macos-release-dev.zip" >> $GITHUB_ENV
+          curl -O "https://github.com/reg31/qt/releases/latest/download/${QT_ARCHIVE}"
+          unzip "${QT_ARCHIVE}"
         
       - name: Configure and build for iOS
         run: |
           mkdir -p build
           cd build
 
-          export QT_HOST_PATH="$PWD/host-qt"
-          export INSTALL_PATH="$PWD/install"
-          export QT_INSTALL_DIR="$INSTALL_PATH"
+          echo "QT_HOST_PATH=$PWD/host-qt" >> $GITHUB_ENV
+          echo "QT_INSTALL_DIR=$PWD/install" >> $GITHUB_ENV
           
           ../configure -platform macx-ios-clang -submodules qtbase,qtdeclarative,qtmultimedia -DQT_BUILD_EXAMPLES_BY_DEFAULT=OFF -DQT_BUILD_TESTS_BY_DEFAULT=OFF \
             -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-feature-sql -release -nomake tests -nomake examples -no-warnings-are-errors \
             -no-feature-calendarwidget -no-feature-jalalicalendar -no-feature-hijricalendar -no-feature-islamiccivilcalendar -no-feature-testlib \
             -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -securetransport -reduce-exports -no-feature-test_gui \
-            -no-feature-dtls -feature-optimize_full -DFEATURE_cxx20=ON -prefix "$INSTALL_PATH" -qt-host-path "$QT_HOST_PATH"           
+            -no-feature-dtls -feature-optimize_full -DFEATURE_cxx20=ON -prefix "${QT_INSTALL_DIR}" -qt-host-path "${QT_HOST_PATH}"           
 
           ../configure -list-features
           cmake --build . --parallel
@@ -288,7 +285,7 @@ jobs:
       - name: Package artifacts
         run: |
           echo "Using QT_INSTALL_DIR: $QT_INSTALL_DIR"
-          zip -r "qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip" "$QT_INSTALL_DIR"/*
+          zip -r "qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip" "${QT_INSTALL_DIR}"/*
           
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -298,7 +295,7 @@ jobs:
 
   release:
     #needs: [setup, build-windows, build-android, build-macos, build-ios]
-    needs: [setup, build-windows, build-android, build-macos]
+    needs: [setup, build-windows, build-macos]
     runs-on: ubuntu-latest
     if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     steps:
