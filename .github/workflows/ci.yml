@@ -3,6 +3,7 @@ env:
   QT_REPO: 'https://github.com/qt/qt5.git'
   QT_BRANCH: 'dev'
   SNAPSHOT_TAG: 'qt-daily-snapshot'
+  MODULE_SUBSET: 'qtbase,qtdeclarative,qtmultimedia'
   SHARED_FLAGS: -no-feature-testlib -no-feature-sql -no-feature-test_gui -no-feature-dtls -no-feature-calendarwidget -no-feature-jalalicalendar
     -no-feature-hijricalendar -no-feature-islamiccivilcalendar -nomake tests -nomake examples -no-warnings-are-errors -submodules qtbase,qtdeclarative,qtmultimedia
     -skip qtlanguageserver,qtquicktimeline,WITH_PCH -release -qt-zlib -qt-libjpeg -qt-libpng -no-harfbuzz -reduce-exports -no-feature-sctp
@@ -62,7 +63,7 @@ jobs:
       - name: Initialize Qt submodules
         shell: cmd
         run: |
-          init-repository.bat --module-subset=qtbase,qtdeclarative,qtmultimedia
+          init-repository.bat --module-subset=${{ env.MODULE_SUBSET }}
 
       - name: Configure
         shell: cmd
@@ -131,7 +132,7 @@ jobs:
       - name: Initialize Qt submodules
         shell: cmd
         run: |
-          init-repository.bat --module-subset=qtbase,qtdeclarative,qtmultimedia
+          init-repository.bat --module-subset=${{ env.MODULE_SUBSET }}
 
       - name: Download prebuilt Qt Host
         shell: cmd
@@ -161,9 +162,8 @@ jobs:
           mkdir build
           cd build
 
-          ..\configure.bat -prefix "%OUTPUT_DIR%" ^
-            -android-abis ${{ matrix.arch }} -android-ndk "%ANDROID_NDK_LATEST_HOME%" -android-sdk "%ANDROID_HOME%" ^
-            -qt-host-path "%QT_ROOT_DIR%" rors -${{ env.SHARED_FLAGS }} -${{ env.SHARED_FLAGS }}
+          ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" -${{ env.SHARED_FLAGS }} ^
+            -android-abis ${{ matrix.arch }} -android-ndk "%ANDROID_NDK_LATEST_HOME%" -android-sdk "%ANDROID_HOME%"      
             
       - name: List features
         shell: cmd
@@ -206,7 +206,7 @@ jobs:
       
       - name: Initialize Qt submodules
         run: |
-          perl init-repository --module-subset=qtbase,qtdeclarative,qtmultimedia
+          perl init-repository --module-subset=${{ env.MODULE_SUBSET }}
         
       - name: Configure and build
         run: |
@@ -215,7 +215,7 @@ jobs:
           
           export QT_INSTALL_DIR=$(pwd)/install
           
-          ../configure -platform macx-clang --${{ env.SHARED_FLAGS }} -securetransport -prefix $QT_INSTALL_DIR
+          ../configure -platform macx-clang -${{ env.SHARED_FLAGS }} -securetransport -prefix $QT_INSTALL_DIR
 
           ../configure -list-features
           cmake --build . --parallel
@@ -249,7 +249,7 @@ jobs:
       
       - name: Initialize Qt submodules
         run: |
-          perl init-repository --module-subset=qtbase,qtdeclarative,qtmultimedia
+          perl init-repository --module-subset=${{ env.MODULE_SUBSET }}
       
       - name: Download prebuilt Qt Host
         run: |
@@ -267,7 +267,7 @@ jobs:
           QT_HOST_PATH=$(pwd)/host-qt
           export QT_INSTALL_DIR=$(pwd)/install
           
-          ../configure -platform macx-ios-clang -securetransport -prefix $QT_INSTALL_DIR -qt-host-path $QT_HOST_PATH         
+          ../configure -platform macx-ios-clang -${{ env.SHARED_FLAGS }} -securetransport -prefix $QT_INSTALL_DIR -qt-host-path $QT_HOST_PATH         
 
           ../configure -list-features
           cmake --build . --parallel
