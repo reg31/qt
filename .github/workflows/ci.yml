@@ -266,8 +266,8 @@ jobs:
         run: |
           mkdir host-qt
           cd host-qt
-          QT_ARCHIVE="qt-macos-release-dev.zip"
-          curl -O "https://github.com/reg31/qt/releases/latest/download/$QT_ARCHIVE"
+          QT_ARCHIVE=qt-macos-release-dev.zip
+          curl -O https://github.com/reg31/qt/releases/latest/download/"$QT_ARCHIVE"
           unzip "$QT_ARCHIVE"
         
       - name: Configure and build for iOS
