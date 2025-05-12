@@ -57,33 +57,26 @@ jobs:
           submodules: false
 
       - name: Install dependencies
-        run: |
-          choco install -y mingw
+        run: choco install -y mingw
 
       - name: Initialize Qt submodules
         shell: cmd
-        run: |
-          init-repository.bat --module-subset=${{ env.MODULE_SUBSET }}
+        run: init-repository.bat --module-subset=${{ env.MODULE_SUBSET }}
 
       - name: Configure
         shell: cmd
         run: |
           mkdir build
-          cd build
-
           set CFLAGS=-O3 -s
           set CXXFLAGS=-O3 -s
-          set "OUTPUT_DIR=%CD%\..\install"
           set "CC=C:\ProgramData\mingw64\mingw64\bin\gcc"
           set "CXX=C:\ProgramData\mingw64\mingw64\bin\g++"
           
-          ..\configure.bat -schannel -prefix "%OUTPUT_DIR%" -${{ env.SHARED_FLAGS }}
+          .\configure.bat -schannel -prefix "%CD%\..\install" -${{ env.SHARED_FLAGS }}
 
       - name: List features
         shell: cmd
-        run: |
-          cd build
-          ..\configure.bat -list-features
+        run: .\configure.bat -list-features
 
       - name: Build Qt
         shell: cmd
@@ -94,8 +87,7 @@ jobs:
           
       - name: Package artifacts
         shell: cmd
-        run: |
-          7z a "qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip" .\install\*
+        run: 7z a "qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip" .\install\*
           
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -126,13 +118,11 @@ jobs:
           java-version: '24'
       
       - name: Install dependencies
-        run: |
-          choco install -y wget
+        run: choco install -y wget
       
       - name: Initialize Qt submodules
         shell: cmd
-        run: |
-          init-repository.bat --module-subset=${{ env.MODULE_SUBSET }}
+        run: init-repository.bat --module-subset=${{ env.MODULE_SUBSET }}
 
       - name: Download prebuilt Qt Host
         shell: cmd
@@ -160,16 +150,12 @@ jobs:
           set "OPENSSL_DOWNLOADED=%CD:\=/%/openssl"
           
           mkdir build
-          cd build
-
-          ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" -${{ env.SHARED_FLAGS }} ^
+          .\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" -${{ env.SHARED_FLAGS }} ^
             -android-abis ${{ matrix.arch }} -android-ndk "%ANDROID_NDK_LATEST_HOME%" -android-sdk "%ANDROID_HOME%"      
             
       - name: List features
         shell: cmd
-        run: |
-          cd build
-          ../configure.bat -list-features          
+        run: .\configure.bat -list-features          
 
       - name: Build Android Qt
         shell: cmd
@@ -180,8 +166,7 @@ jobs:
           
       - name: Package artifacts
         shell: cmd
-        run: |
-          7z a "qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip" .\install\*
+        run: 7z a "qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip" .\install\*
           
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -205,26 +190,23 @@ jobs:
           submodules: false
       
       - name: Initialize Qt submodules
-        run: |
-          perl init-repository --module-subset=${{ env.MODULE_SUBSET }}
+        run: perl init-repository --module-subset=${{ env.MODULE_SUBSET }}
         
       - name: Configure and build
         run: |
-          mkdir -p build
-          cd build
-          
-          export QT_INSTALL_DIR=$(pwd)/install
-          
-          ../configure -platform macx-clang -${{ env.SHARED_FLAGS }} -securetransport -prefix $QT_INSTALL_DIR
+          mkdir -p build    
+          ./configure -platform macx-clang -${{ env.SHARED_FLAGS }} -securetransport -prefix $(pwd)/install
 
-          ../configure -list-features
+          ./configure -list-features
+
+          cd build
           cmake --build . --parallel
           cmake --install . --strip
           
       - name: Package artifacts
         run: |
-          echo "Using QT_INSTALL_DIR: $QT_INSTALL_DIR"
-          zip -r "qt-macos-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip" "$QT_INSTALL_DIR"/*
+          echo "Using QT_INSTALL_DIR: $(pwd)/install"
+          zip -r "qt-macos-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip" $(pwd)/install/*
           
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -248,8 +230,7 @@ jobs:
           submodules: false
       
       - name: Initialize Qt submodules
-        run: |
-          perl init-repository --module-subset=${{ env.MODULE_SUBSET }}
+        run: perl init-repository --module-subset=${{ env.MODULE_SUBSET }}
       
       - name: Download prebuilt Qt Host
         run: |
@@ -261,22 +242,19 @@ jobs:
         
       - name: Configure and build for iOS
         run: |
-          mkdir -p build
+          mkdir -p build          
+          ./configure -platform macx-ios-clang -${{ env.SHARED_FLAGS }} -securetransport -prefix $(pwd)/install -qt-host-path $(pwd)/host-qt      
+
+          ./configure -list-features
+
           cd build
-
-          QT_HOST_PATH=$(pwd)/host-qt
-          export QT_INSTALL_DIR=$(pwd)/install
-          
-          ../configure -platform macx-ios-clang -${{ env.SHARED_FLAGS }} -securetransport -prefix $QT_INSTALL_DIR -qt-host-path $QT_HOST_PATH         
-
-          ../configure -list-features
           cmake --build . --parallel
           cmake --install . --strip
           
       - name: Package artifacts
         run: |
-          echo "Using QT_INSTALL_DIR: $QT_INSTALL_DIR"
-          zip -r "qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip" "$QT_INSTALL_DIR"/*
+          echo "Using QT_INSTALL_DIR: $(pwd)/install"
+          zip -r "qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip" $(pwd)/install/*
           
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
