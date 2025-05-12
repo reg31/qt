@@ -159,7 +159,11 @@ jobs:
         shell: cmd
         run: |
           set "OUTPUT_DIR=%CD:\=/%/install"
-          set "QT_ROOT_DIR=%CD:\=/%/host-qt"          
+          set "QT_ROOT_DIR=%CD:\=/%/host-qt"
+          set "OPENSSL_ROOT_DIR=%CD:\=/%/openssl"
+          set "OPENSSL_INCLUDE_DIR=%CD:\=/%/openssl/include"
+          set "OPENSSL_LIBRARIES=%CD:\=/%/openssl/lib"
+          set "OPENSSL_USE_STATIC_LIBS=TRUE"
           
           mkdir build
           cd build
