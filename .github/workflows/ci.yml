@@ -9,7 +9,7 @@ env:
     -skip qtlanguageserver,qtquicktimeline,WITH_PCH -qt-zlib -qt-libjpeg -qt-libpng -no-harfbuzz -reduce-exports -no-feature-sctp
     -DQT_BUILD_EXAMPLES_BY_DEFAULT=OFF -DQT_BUILD_TESTS_BY_DEFAULT=OFF -qt-freetype -feature-optimize_full -DFEATURE_cxx20=ON -no-feature-imageformat_xbm
     -DFEATURE_quick_canvas=off -DFEATURE_quicktemplates2_calendar=off -DFEATURE_quick_designer=off -no-feature-imageformat_ppm
-    -no-feature-imageformat_bmp -no-feature-pdf -no-feature-private_tests -no-feature-dbus -no-feature-vnc    
+    -no-feature-imageformat_bmp -no-feature-pdf -no-feature-private_tests -no-feature-dbus -no-feature-vnc 
           
 on:
   workflow_dispatch:
@@ -156,7 +156,8 @@ jobs:
           cd build
           
           ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" -${{ env.SHARED_FLAGS }} ^
-            -android-abis ${{ matrix.arch }} -android-ndk "%ANDROID_NDK_LATEST_HOME%" -android-sdk "%ANDROID_HOME%"      
+            -android-abis ${{ matrix.arch }} -android-ndk "%ANDROID_NDK_LATEST_HOME%" -android-sdk "%ANDROID_HOME%" ^
+            -openssl-runtime -OPENSSL_ROOT_DIR="%OPENSSL_DOWNLOADED%" -recheck TEST_opensslv30_headers
             
       - name: List features
         shell: cmd
