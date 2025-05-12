@@ -197,9 +197,6 @@ jobs:
       
       - name: Initialize Qt submodules
         run: perl init-repository --module-subset=${{ env.MODULE_SUBSET }}
-
-      - name: Install dependencies
-        run: brew install p7zip
         
       - name: Configure and build
         run: |
@@ -239,9 +236,6 @@ jobs:
       
       - name: Initialize Qt submodules
         run: perl init-repository --module-subset=${{ env.MODULE_SUBSET }}
-
-      - name: Install dependencies
-        run: brew install wget p7zip
       
       - name: Download prebuilt Qt Host
         run: |
