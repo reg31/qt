@@ -145,6 +145,7 @@ jobs:
           wget https://github.com/reg31/openssl/releases/latest/download/%OPENSSL_ARCHIVE%
           7z x %OPENSSL_ARCHIVE%
           setX OPENSSL_ROOT_DIR "%CD:\=/%/openssl" /m
+          setX OPENSSL_INCLUDE_DIR "%CD:\=/%/openssl/include" /m
           
       - name: Configure Android Qt
         shell: cmd
@@ -157,7 +158,7 @@ jobs:
           
           ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" -${{ env.SHARED_FLAGS }} ^
             -android-abis ${{ matrix.arch }} -android-ndk "%ANDROID_NDK_LATEST_HOME%" -android-sdk "%ANDROID_HOME%" ^
-            -openssl-runtime
+            -DINPUT_openssl=linked -DINPUT_ssl=yes
             
       - name: List features
         shell: cmd
