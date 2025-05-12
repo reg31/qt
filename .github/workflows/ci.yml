@@ -92,7 +92,7 @@ jobs:
         run: |
           cd build
           cmake --build . --parallel
-          cmake --install . --strip
+          cmake --install .
           
       - name: Package artifacts
         shell: cmd
@@ -166,7 +166,9 @@ jobs:
           
           ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" -${{ env.SHARED_FLAGS }} ^
             -android-abis ${{ matrix.arch }} -android-ndk "%ANDROID_NDK_LATEST_HOME%" -android-sdk "%ANDROID_HOME%" ^
-            -DINPUT_openssl=linked -DINPUT_ssl=yes
+            -openssl -openssl-runtime
+            
+            REM -DINPUT_openssl=linked -DINPUT_ssl=yes
             
       - name: List features
         shell: cmd
