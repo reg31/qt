@@ -5,9 +5,10 @@ env:
   SNAPSHOT_TAG: 'qt-daily-snapshot'
   SHARED_FLAGS: -no-feature-testlib -no-feature-sql -no-feature-test_gui -no-feature-dtls -no-feature-calendarwidget -no-feature-jalalicalendar
     -no-feature-hijricalendar -no-feature-islamiccivilcalendar -nomake tests -nomake examples -no-warnings-are-errors -submodules qtbase,qtdeclarative,qtmultimedia
-    -skip qtlanguageserver,qtquicktimeline,WITH_PCH -DFEATURE_cxx20=ON -release -qt-zlib -qt-libjpeg -qt-libpng -no-harfbuzz -reduce-exports
-    -DQT_BUILD_EXAMPLES_BY_DEFAULT=OFF -DQT_BUILD_TESTS_BY_DEFAULT=OFF -qt-freetype 
-    
+    -skip qtlanguageserver,qtquicktimeline,WITH_PCH -release -qt-zlib -qt-libjpeg -qt-libpng -no-harfbuzz -reduce-exports -no-feature-sctp
+    -DQT_BUILD_EXAMPLES_BY_DEFAULT=OFF -DQT_BUILD_TESTS_BY_DEFAULT=OFF -qt-freetype -feature-optimize_full -DFEATURE_cxx20=ON -no-feature-imageformat_xbm
+    -DFEATURE_quick_canvas=off -DFEATURE_quicktemplates2_calendar=off -DFEATURE_qdoc=off -DFEATURE_quick_designer=off -no-feature-imageformat_ppm
+    -no-feature-imageformat_bmp -no-feature-pdf -no-feature-private_tests -no-feature-dbus -no-feature-vnc    
           
 on:
   workflow_dispatch:
@@ -88,7 +89,7 @@ jobs:
         run: |
           cd build
           cmake --build . --parallel
-          cmake --install .
+          cmake --install . --strip
           
       - name: Package artifacts
         shell: cmd
@@ -160,13 +161,9 @@ jobs:
           mkdir build
           cd build
 
-          ..\configure.bat -prefix "%OUTPUT_DIR%" -nomake examples -nomake tests -no-feature-sql -no-feature-test_gui ^
-            -release -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -reduce-exports ^
+          ..\configure.bat -prefix "%OUTPUT_DIR%" ^
             -android-abis ${{ matrix.arch }} -android-ndk "%ANDROID_NDK_LATEST_HOME%" -android-sdk "%ANDROID_HOME%" ^
-            -submodules qtbase,qtdeclarative,qtmultimedia -qt-host-path "%QT_ROOT_DIR%" -feature-optimize_full -DFEATURE_cxx20=ON ^
-            -DQT_BUILD_EXAMPLES_BY_DEFAULT=OFF -DQT_BUILD_TESTS_BY_DEFAULT=OFF -no-feature-dtls -no-feature-testlib ^
-            -no-feature-calendarwidget -no-feature-jalalicalendar -no-feature-hijricalendar -no-feature-islamiccivilcalendar ^
-            -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-warnings-are-errors 
+            -qt-host-path "%QT_ROOT_DIR%" rors -${{ env.SHARED_FLAGS }} -${{ env.SHARED_FLAGS }}
             
       - name: List features
         shell: cmd
@@ -218,10 +215,7 @@ jobs:
           
           export QT_INSTALL_DIR=$(pwd)/install
           
-          ../configure -platform macx-clang -submodules qtbase,qtdeclarative,qtmultimedia -DQT_BUILD_EXAMPLES_BY_DEFAULT=OFF -DQT_BUILD_TESTS_BY_DEFAULT=OFF \
-            -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-feature-sql -release -nomake tests -nomake examples -no-warnings-are-errors -no-feature-test_gui -no-feature-dtls \
-            -no-feature-calendarwidget -no-feature-jalalicalendar -no-feature-hijricalendar -no-feature-islamiccivilcalendar -no-feature-testlib \
-            -feature-optimize_full -DFEATURE_cxx20=ON -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -securetransport -reduce-exports -prefix $QT_INSTALL_DIR
+          ../configure -platform macx-clang --${{ env.SHARED_FLAGS }} -securetransport -prefix $QT_INSTALL_DIR
 
           ../configure -list-features
           cmake --build . --parallel
@@ -273,11 +267,7 @@ jobs:
           QT_HOST_PATH=$(pwd)/host-qt
           export QT_INSTALL_DIR=$(pwd)/install
           
-          ../configure -platform macx-ios-clang -submodules qtbase,qtdeclarative,qtmultimedia -DQT_BUILD_EXAMPLES_BY_DEFAULT=OFF -DQT_BUILD_TESTS_BY_DEFAULT=OFF \
-            -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-feature-sql -release -nomake tests -nomake examples -no-warnings-are-errors \
-            -no-feature-calendarwidget -no-feature-jalalicalendar -no-feature-hijricalendar -no-feature-islamiccivilcalendar -no-feature-testlib \
-            -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre -no-harfbuzz -securetransport -reduce-exports -no-feature-test_gui \
-            -no-feature-dtls -feature-optimize_full -DFEATURE_cxx20=ON -prefix $QT_INSTALL_DIR -qt-host-path $QT_HOST_PATH         
+          ../configure -platform macx-ios-clang -securetransport -prefix $QT_INSTALL_DIR -qt-host-path $QT_HOST_PATH         
 
           ../configure -list-features
           cmake --build . --parallel
