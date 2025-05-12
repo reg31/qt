@@ -135,7 +135,6 @@ jobs:
           set QT_ARCHIVE=qt-windows-mingw-release-dev.zip
           wget https://github.com/reg31/qt/releases/latest/download/%QT_ARCHIVE%
           7z x %QT_ARCHIVE%
-          setx "OPENSSL_ROOT_DIR=%CD:\=/%/openssl"
 
       - name: Download prebuilt openssl
         shell: cmd
@@ -151,6 +150,7 @@ jobs:
         run: |
           set "OUTPUT_DIR=%CD:\=/%/install"
           set "QT_ROOT_DIR=%CD:\=/%/host-qt"
+          set "OPENSSL_ROOT_DIR=%CD:\=/%/openssl"
           
           mkdir build
           cd build
