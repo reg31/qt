@@ -215,13 +215,9 @@ jobs:
         run: |
           mkdir -p build
           cd build
-
-          export CFLAGS="-O3"
-          export CXXFLAGS="-O3"
-          export CMAKE_CXX_STANDARD=20
           
-          INSTALL_PATH=$PWD/install
-          echo "QT_INSTALL_DIR=$INSTALL_PATH" >> $GITHUB_ENV
+          export INSTALL_PATH=$PWD/install
+          export "QT_INSTALL_DIR=$INSTALL_PATH"
           
           ../configure -platform macx-clang -submodules qtbase,qtdeclarative,qtmultimedia -DQT_BUILD_EXAMPLES_BY_DEFAULT=OFF -DQT_BUILD_TESTS_BY_DEFAULT=OFF \
             -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-feature-sql -release -nomake tests -nomake examples -no-warnings-are-errors -no-feature-test_gui -no-feature-dtls \
@@ -266,22 +262,18 @@ jobs:
         run: |
           mkdir host-qt
           cd host-qt
-          QT_ARCHIVE=qt-macos-release-dev.zip
-          curl -O https://github.com/reg31/qt/releases/latest/download/"$QT_ARCHIVE"
+          set QT_ARCHIVE=qt-macos-release-dev.zip
+          curl -O "https://github.com/reg31/qt/releases/latest/download/$QT_ARCHIVE"
           unzip "$QT_ARCHIVE"
         
       - name: Configure and build for iOS
         run: |
           mkdir -p build
           cd build
-          
-          export CFLAGS="-O3"
-          export CXXFLAGS="-O3"
-          export CMAKE_CXX_STANDARD=20
 
-          QT_HOST_PATH="$PWD/host-qt"
-          INSTALL_PATH="$PWD/install"
-          echo "QT_INSTALL_DIR=$INSTALL_PATH" >> $GITHUB_ENV
+          export QT_HOST_PATH="$PWD/host-qt"
+          export INSTALL_PATH="$PWD/install"
+          export QT_INSTALL_DIR="$INSTALL_PATH"
           
           ../configure -platform macx-ios-clang -submodules qtbase,qtdeclarative,qtmultimedia -DQT_BUILD_EXAMPLES_BY_DEFAULT=OFF -DQT_BUILD_TESTS_BY_DEFAULT=OFF \
             -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-feature-sql -release -nomake tests -nomake examples -no-warnings-are-errors \
