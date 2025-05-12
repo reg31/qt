@@ -196,6 +196,9 @@ jobs:
       
       - name: Initialize Qt submodules
         run: perl init-repository --module-subset=${{ env.MODULE_SUBSET }}
+
+      - name: Install dependencies
+        run: brew install p7zip
         
       - name: Configure and build
         run: |
@@ -210,16 +213,13 @@ jobs:
           cmake --install . --strip
           
       - name: Package artifacts
-        run: |
-          cd install
-          echo "Using QT_INSTALL_DIR: $(pwd)"
-          zip -r "qt-macos-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip" *
+        run: 7z a "qt-macos-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip" ./install/*
           
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: qt-macos
-          path: install/qt-macos-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
+          path: qt-macos-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
 
   build-ios:
     needs: setup
@@ -240,7 +240,7 @@ jobs:
         run: perl init-repository --module-subset=${{ env.MODULE_SUBSET }}
 
       - name: Install dependencies
-        run: brew install wget
+        run: brew install wget p7zip
       
       - name: Download prebuilt Qt Host
         run: |
@@ -248,7 +248,7 @@ jobs:
           cd host-qt
           QT_ARCHIVE=qt-macos-release-dev.zip
           wget https://github.com/reg31/qt/releases/latest/download/$QT_ARCHIVE
-          unzip $QT_ARCHIVE
+          7z x $QT_ARCHIVE
         
       - name: Configure and build for iOS
         run: |
@@ -263,16 +263,13 @@ jobs:
           cmake --install . --strip
           
       - name: Package artifacts
-        run: |
-          cd install
-          echo "Using QT_INSTALL_DIR: $(pwd)"
-          zip -r "qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip" *
+        run: 7z a "qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip" ./install/*
           
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: qt-ios
-          path: install/qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
+          path: qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
 
   release:
     #needs: [setup, build-windows, build-android, build-macos, build-ios]
