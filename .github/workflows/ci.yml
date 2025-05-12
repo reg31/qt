@@ -262,7 +262,7 @@ jobs:
         run: |
           mkdir host-qt
           cd host-qt
-          set QT_ARCHIVE=qt-macos-release-dev.zip
+          export QT_ARCHIVE=qt-macos-release-dev.zip
           curl -O "https://github.com/reg31/qt/releases/latest/download/$QT_ARCHIVE"
           unzip "$QT_ARCHIVE"
         
