@@ -157,7 +157,7 @@ jobs:
           
           ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" -${{ env.SHARED_FLAGS }} ^
             -android-abis ${{ matrix.arch }} -android-ndk "%ANDROID_NDK_LATEST_HOME%" -android-sdk "%ANDROID_HOME%" ^
-            -openssl-runtime -DOPENSSL_ROOT_DIR="%OPENSSL_DOWNLOADED%" -recheck TEST_opensslv30_headers
+            -openssl-runtime -DOPENSSL_ROOT_DIR="%OPENSSL_DOWNLOADED%" -skip-tests qtbase
             
       - name: List features
         shell: cmd
