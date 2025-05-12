@@ -206,7 +206,6 @@ jobs:
           ../configure -platform macx-clang -${{ env.SHARED_FLAGS }} -securetransport -prefix $OUTPUT_DIR
           ../configure -list-features
 
-          cd build
           cmake --build . --parallel
           cmake --install . --strip
           
