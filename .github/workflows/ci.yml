@@ -258,12 +258,13 @@ jobs:
           perl init-repository --module-subset=qtbase,qtdeclarative,qtmultimedia
       
       - name: Download prebuilt Qt Host
+        shell: cmd
         run: |
           mkdir host-qt
           cd host-qt
-          export QT_ARCHIVE=qt-macos-release-dev.zip
-          curl -O https://github.com/reg31/qt/releases/latest/download/${{QT_ARCHIVE}}
-          unzip ${{QT_ARCHIVE}}
+          set QT_ARCHIVE=qt-macos-release-dev.zip
+          curl -O https://github.com/reg31/qt/releases/latest/download/$%QT_ARCHIVE%
+          unzip %QT_ARCHIVE%
         
       - name: Configure and build for iOS
         run: |
@@ -296,7 +297,7 @@ jobs:
           path: qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
 
   release:
-    needs: [setup, build-windows, build-android, build-macos, build-ios]
+    # needs: [setup, build-windows, build-android, build-macos, build-ios]
     runs-on: ubuntu-latest
     if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     steps:
