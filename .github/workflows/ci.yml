@@ -72,11 +72,11 @@ jobs:
           set "CC=C:\ProgramData\mingw64\mingw64\bin\gcc"
           set "CXX=C:\ProgramData\mingw64\mingw64\bin\g++"
           
-          .\configure.bat -schannel -prefix "%CD%\..\install" -${{ env.SHARED_FLAGS }}
+          configure.bat -schannel -prefix "%CD%\..\install" -${{ env.SHARED_FLAGS }}
 
       - name: List features
         shell: cmd
-        run: .\configure.bat -list-features
+        run: configure.bat -list-features
 
       - name: Build Qt
         shell: cmd
@@ -150,12 +150,12 @@ jobs:
           set "OPENSSL_DOWNLOADED=%CD:\=/%/openssl"
           
           mkdir build
-          .\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" -${{ env.SHARED_FLAGS }} ^
+          configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" -${{ env.SHARED_FLAGS }} ^
             -android-abis ${{ matrix.arch }} -android-ndk "%ANDROID_NDK_LATEST_HOME%" -android-sdk "%ANDROID_HOME%"      
             
       - name: List features
         shell: cmd
-        run: .\configure.bat -list-features          
+        run: configure.bat -list-features          
 
       - name: Build Android Qt
         shell: cmd
@@ -195,9 +195,8 @@ jobs:
       - name: Configure and build
         run: |
           mkdir -p build    
-          ./configure -platform macx-clang -${{ env.SHARED_FLAGS }} -securetransport -prefix $(pwd)/install
-
-          ./configure -list-features
+          configure -platform macx-clang -${{ env.SHARED_FLAGS }} -securetransport -prefix $(pwd)/install
+          configure -list-features
 
           cd build
           cmake --build . --parallel
@@ -243,9 +242,8 @@ jobs:
       - name: Configure and build for iOS
         run: |
           mkdir -p build          
-          ./configure -platform macx-ios-clang -${{ env.SHARED_FLAGS }} -securetransport -prefix $(pwd)/install -qt-host-path $(pwd)/host-qt      
-
-          ./configure -list-features
+          configure -platform macx-ios-clang -${{ env.SHARED_FLAGS }} -securetransport -prefix $(pwd)/install -qt-host-path $(pwd)/host-qt
+          configure -list-features
 
           cd build
           cmake --build . --parallel
