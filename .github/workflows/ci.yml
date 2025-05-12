@@ -86,7 +86,7 @@ jobs:
         run: |
           cd build
           cmake --build . --parallel
-          cmake --install . --strip
+          cmake --install .
           
       - name: Package artifacts
         shell: cmd
