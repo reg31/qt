@@ -212,6 +212,7 @@ jobs:
           perl init-repository --module-subset=qtbase,qtdeclarative,qtmultimedia
         
       - name: Configure and build
+        shell: bash
         run: |
           mkdir -p build
           cd build
@@ -233,6 +234,7 @@ jobs:
           cmake --install . --strip
           
       - name: Package artifacts
+        shell: bash
         run: |
           echo "Using QT_INSTALL_DIR: $QT_INSTALL_DIR"
           zip -r "qt-macos-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip" "$QT_INSTALL_DIR"/*
@@ -263,6 +265,7 @@ jobs:
           perl init-repository --module-subset=qtbase,qtdeclarative,qtmultimedia
       
       - name: Download prebuilt Qt Host
+        shell: bash
         run: |
           mkdir host-qt
           cd host-qt
@@ -271,6 +274,7 @@ jobs:
           unzip "$QT_ARCHIVE"
         
       - name: Configure and build for iOS
+        shell: bash
         run: |
           mkdir -p build
           cd build
@@ -294,6 +298,7 @@ jobs:
           cmake --install . --strip
           
       - name: Package artifacts
+        shell: bash
         run: |
           echo "Using QT_INSTALL_DIR: ${QT_INSTALL_DIR}"
           zip -r "qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip" "$QT_INSTALL_DIR"/*
