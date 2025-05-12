@@ -219,7 +219,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: qt-macos
-          path: qt-macos-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
+          path: install/qt-macos-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
 
   build-ios:
     needs: setup
@@ -272,7 +272,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: qt-ios
-          path: qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
+          path: install/qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
 
   release:
     #needs: [setup, build-windows, build-android, build-macos, build-ios]
