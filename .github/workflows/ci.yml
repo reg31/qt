@@ -194,7 +194,7 @@ jobs:
 
   build-macos:
     needs: setup
-    runs-on: macos-latest
+    runs-on: macos-15
     strategy:
       matrix:
         build_type: [release]
@@ -206,10 +206,6 @@ jobs:
           ref: ${{ needs.setup.outputs.qt_branch }}
           fetch-depth: 0
           submodules: false
-          
-      - name: Update bash
-        run: |
-          brew update && brew install bash
       
       - name: Initialize Qt submodules
         run: |
@@ -245,7 +241,7 @@ jobs:
 
   build-ios:
     needs: setup
-    runs-on: macos-latest
+    runs-on: macos-15
     strategy:
       matrix:
         build_type: [release]
@@ -257,10 +253,6 @@ jobs:
           ref: ${{ needs.setup.outputs.qt_branch }}
           fetch-depth: 0
           submodules: false
-          
-      - name: Update bash
-        run: |
-          brew update && brew install bash
       
       - name: Initialize Qt submodules
         run: |
