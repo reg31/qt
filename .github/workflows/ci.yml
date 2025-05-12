@@ -9,7 +9,7 @@ env:
     -skip qtlanguageserver,qtquicktimeline,WITH_PCH -qt-zlib -qt-libjpeg -qt-libpng -no-harfbuzz -reduce-exports -no-feature-sctp
     -DQT_BUILD_EXAMPLES_BY_DEFAULT=OFF -DQT_BUILD_TESTS_BY_DEFAULT=OFF -feature-optimize_full -DFEATURE_cxx20=ON -no-feature-imageformat_xbm
     -DFEATURE_quick_canvas=off -DFEATURE_quicktemplates2_calendar=off -DFEATURE_quick_designer=off -no-feature-imageformat_ppm
-    -no-feature-imageformat_bmp -no-feature-pdf -no-feature-private_tests -no-feature-dbus -no-feature-vnc
+    -no-feature-imageformat_bmp -no-feature-pdf -no-feature-private_tests -no-feature-dbus -no-feature-vnc -DFEATURE_qdoc=off
           
 on:
   workflow_dispatch:
@@ -75,7 +75,13 @@ jobs:
           mkdir build
           cd build
           
-          ..\configure.bat -schannel -prefix "%OUTPUT_DIR%" -${{ env.SHARED_FLAGS }}
+          REM  ..\configure.bat -schannel -prefix "%OUTPUT_DIR%" -${{ env.SHARED_FLAGS }}
+          ..\configure.bat -qt-zlib -qt-libjpeg -qt-libpng ^
+          -qt-freetype -no-harfbuzz -schannel -reduce-exports -prefix "%OUTPUT_DIR%" -no-feature-testlib -no-feature-sql -no-feature-test_gui -no-feature-dtls ^
+          -no-feature-calendarwidget -no-feature-jalalicalendar -no-feature-hijricalendar -no-feature-islamiccivilcalendar ^
+          -nomake tests -nomake examples -no-warnings-are-errors -submodules qtbase,qtdeclarative,qtmultimedia ^
+          -skip qtlanguageserver,qtquicktimeline,WITH_PCH -DFEATURE_cxx20=ON -release ^
+          -DQT_BUILD_EXAMPLES_BY_DEFAULT=OFF -DQT_BUILD_TESTS_BY_DEFAULT=OFF 
 
       - name: List features
         shell: cmd
@@ -86,7 +92,7 @@ jobs:
         run: |
           cd build
           cmake --build . --parallel
-          cmake --install .
+          cmake --install . --strip
           
       - name: Package artifacts
         shell: cmd
