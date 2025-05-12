@@ -165,9 +165,8 @@ jobs:
             -submodules qtbase,qtdeclarative,qtmultimedia -qt-host-path "%QT_ROOT_DIR%" -feature-optimize_full -DFEATURE_cxx20=ON ^
             -DQT_BUILD_EXAMPLES_BY_DEFAULT=OFF -DQT_BUILD_TESTS_BY_DEFAULT=OFF -no-feature-dtls -no-feature-testlib ^
             -no-feature-calendarwidget -no-feature-jalalicalendar -no-feature-hijricalendar -no-feature-islamiccivilcalendar ^
-            -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-warnings-are-errors ^
-            -openssl-linked -- -DOPENSSL_ROOT_DIR="%OPENSSL_DOWNLOADED%" -DOPENSSL_USE_STATIC_LIBS=TRUE
-
+            -skip qtlanguageserver,qtquicktimeline,WITH_PCH -no-warnings-are-errors 
+            
       - name: List features
         shell: cmd
         run: |
@@ -262,9 +261,9 @@ jobs:
         run: |
           mkdir host-qt
           cd host-qt
-          export QT_ARCHIVE=qt-macos-release-dev.zip
-          curl -O "https://github.com/reg31/qt/releases/latest/download/$QT_ARCHIVE"
-          unzip "$QT_ARCHIVE"
+          QT_ARCHIVE=qt-macos-release-dev.zip
+          curl -O "https://github.com/reg31/qt/releases/latest/download/{QT_ARCHIVE}"
+          unzip "{QT_ARCHIVE}"
         
       - name: Configure and build for iOS
         run: |
