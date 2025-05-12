@@ -144,13 +144,13 @@ jobs:
           set OPENSSL_ARCHIVE=openssl-android-${{ matrix.arch }}.zip
           wget https://github.com/reg31/openssl/releases/latest/download/%OPENSSL_ARCHIVE%
           7z x %OPENSSL_ARCHIVE%
+          setX "OPENSSL_ROOT_DIR=%CD:\=/%/openssl"
           
       - name: Configure Android Qt
         shell: cmd
         run: |
           set "OUTPUT_DIR=%CD:\=/%/install"   
           set "QT_ROOT_DIR=%CD:\=/%/host-qt"
-          set "OPENSSL_ROOT_DIR=%CD:\=/%/openssl"
           
           mkdir build
           cd build
