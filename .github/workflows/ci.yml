@@ -206,6 +206,10 @@ jobs:
           ref: ${{ needs.setup.outputs.qt_branch }}
           fetch-depth: 0
           submodules: false
+          
+      - name: Update bash
+        run: |
+          brew update && brew install bash
       
       - name: Initialize Qt submodules
         run: |
@@ -253,6 +257,10 @@ jobs:
           ref: ${{ needs.setup.outputs.qt_branch }}
           fetch-depth: 0
           submodules: false
+          
+      - name: Update bash
+        run: |
+          brew update && brew install bash
       
       - name: Initialize Qt submodules
         run: |
@@ -263,8 +271,8 @@ jobs:
           mkdir host-qt
           cd host-qt
           export QT_ARCHIVE=qt-macos-release-dev.zip
-          curl -O "https://github.com/reg31/qt/releases/latest/download/${QT_ARCHIVE}"
-          unzip "${QT_ARCHIVE}"
+          curl -O "https://github.com/reg31/qt/releases/latest/download/$QT_ARCHIVE"
+          unzip "$QT_ARCHIVE"
         
       - name: Configure and build for iOS
         run: |
