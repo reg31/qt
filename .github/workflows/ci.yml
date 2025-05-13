@@ -85,9 +85,9 @@ jobs:
           -skip qtlanguageserver,qtquicktimeline,WITH_PCH -DFEATURE_cxx20=ON -release ^
           -DQT_BUILD_EXAMPLES_BY_DEFAULT=OFF -DQT_BUILD_TESTS_BY_DEFAULT=OFF ^          
           -no-feature-imageformat_xbm -DFEATURE_quick_canvas=off -DFEATURE_quicktemplates2_calendar=off -DFEATURE_quick_designer=off -no-feature-imageformat_ppm ^
-          -no-feature-sctp -no-feature-testlib -no-feature-imageformat_bmp -no-feature-pdf -DFEATURE_qdoc=off -no-feature-dbus
+          -no-feature-sctp -no-feature-testlib -no-feature-imageformat_bmp -no-feature-pdf -DFEATURE_qdoc=off -no-feature-vnc 
 
-          REM   -no-feature-private_tests  -no-feature-vnc 
+          REM   -no-feature-private_tests  -no-feature-dbus 
       - name: List features
         shell: cmd
         run: configure.bat -list-features
