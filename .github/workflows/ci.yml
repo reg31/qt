@@ -261,10 +261,11 @@ jobs:
       - name: Configure and build for iOS
         run: |
           OUTPUT_DIR=$(pwd)/install
+          HOST_PATH=$(pwd)/host-qt
           mkdir -p build
           cd build
           
-          ../configure -platform macx-ios-clang -${{ env.SHARED_FLAGS }} -securetransport -prefix $(pwd)/install -qt-host-path $OUTPUT_DIR
+          ../configure -platform macx-ios-clang -${{ env.SHARED_FLAGS }} -securetransport -prefix $OUTPUT_DIR -qt-host-path $HOST_PATH
           ../perl configure -list-features
 
           cmake --build . --parallel
