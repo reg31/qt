@@ -277,8 +277,7 @@ jobs:
           path: qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
 
   release:
-    #needs: [setup, build-windows, build-android, build-macos, build-ios]
-    needs: [setup, build-windows, build-android, build-macos]
+    needs: [setup, build-windows, build-android, build-macos, build-ios]
     runs-on: ubuntu-latest
     if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     steps:
