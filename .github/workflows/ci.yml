@@ -83,8 +83,9 @@ jobs:
           -skip qtlanguageserver,qtquicktimeline,WITH_PCH -DFEATURE_cxx20=ON -release ^
           -DQT_BUILD_EXAMPLES_BY_DEFAULT=OFF -DQT_BUILD_TESTS_BY_DEFAULT=OFF ^
           -no-feature-imageformat_bmp -no-feature-pdf -no-feature-private_tests -no-feature-dbus -no-feature-vnc -DFEATURE_qdoc=off ^
-          REM -no-feature-imageformat_xbm -DFEATURE_quick_canvas=off -DFEATURE_quicktemplates2_calendar=off -DFEATURE_quick_designer=off -no-feature-imageformat_ppm ^
           -no-feature-sctp -no-feature-testlib
+
+          REM -no-feature-imageformat_xbm -DFEATURE_quick_canvas=off -DFEATURE_quicktemplates2_calendar=off -DFEATURE_quick_designer=off -no-feature-imageformat_ppm
 
       - name: List features
         shell: cmd
@@ -266,7 +267,7 @@ jobs:
           cd build
           
           ../configure -platform macx-ios-clang -${{ env.SHARED_FLAGS }} -securetransport -prefix $OUTPUT_DIR -qt-host-path $HOST_PATH
-          ../perl configure -list-features
+          ../configure -list-features
 
           cmake --build . --parallel
           cmake --install . --strip
