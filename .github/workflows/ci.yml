@@ -77,7 +77,7 @@ jobs:
           mkdir build
           cd build
           
-          REM  ..\configure.bat -schannel -prefix "%OUTPUT_DIR%" -${{ env.SHARED_FLAGS }}
+          ..\configure.bat -schannel -prefix "%OUTPUT_DIR%" -${{ env.SHARED_FLAGS }}
 
       - name: List features
         shell: cmd
