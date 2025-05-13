@@ -11,7 +11,7 @@ env:
     -DFEATURE_quick_canvas=off -DFEATURE_quicktemplates2_calendar=off -DFEATURE_quick_designer=off -no-feature-imageformat_ppm
     -no-feature-imageformat_bmp -no-feature-pdf -no-feature-private_tests -no-feature-dbus -no-feature-vnc -DFEATURE_qdoc=off
     -no-feature-localserver -no-feature-udpsocket -no-feature-libproxy -no-feature-vkgen -no-feature-xml -no-feature-printsupport
-    -disable-deprecated-up-to 0x070000 -no-feature-quick3dxr_openxr
+    -disable-deprecated-up-to 0x070000 -DFEATURE_quick3dxr_openxr=off
           
 on:
   workflow_dispatch:
