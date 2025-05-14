@@ -3,7 +3,7 @@ env:
   QT_REPO: 'https://github.com/qt/qt5.git'
   QT_BRANCH: 'dev'
   SNAPSHOT_TAG: 'qt-daily-snapshot'
-  MODULE_SUBSET: 'qtbase,qtdeclarative,qtmultimedia'
+  MODULE_SUBSET: 'qtbase,qtdeclarative'
   SHARED_FLAGS: -release -no-feature-testlib -no-feature-sql -no-feature-test_gui -no-feature-dtls -no-feature-calendarwidget -no-feature-jalalicalendar
     -no-feature-hijricalendar -no-feature-islamiccivilcalendar -nomake tests -nomake examples -submodules qtbase,qtdeclarative,qtmultimedia
     -skip qtlanguageserver,qtquicktimeline,qtquick3d,WITH_PCH -qt-zlib -qt-libjpeg -qt-libpng -no-harfbuzz -reduce-exports -no-feature-sctp
@@ -128,7 +128,7 @@ jobs:
       
       - name: Initialize Qt submodules
         shell: cmd
-        run: init-repository.bat --module-subset=qtbase,qtdeclarative
+        run: init-repository.bat --module-subset=${{ env.MODULE_SUBSET }}
 
       - name: Download prebuilt Qt Host
         shell: cmd
@@ -164,7 +164,7 @@ jobs:
           ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" ${{ env.SHARED_FLAGS }} ^
             -android-abis ${{ matrix.arch }} -android-ndk "%ANDROID_NDK_LATEST_HOME%" -android-sdk "%ANDROID_HOME%" ^
             -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT_DIR%" -android-javac-source 17 -android-javac-target 17 ^
-            -DFEATURE_ssl=ON -DINPUT_openssl=linked -DOPENSSL_USE_STATIC_LIBS=TRUE -submodules qtbase,qtdeclarative ^
+            -DFEATURE_ssl=ON -DINPUT_openssl=linked -DOPENSSL_USE_STATIC_LIBS=TRUE ^
             -DQT_EXTRA_INCLUDEPATHS=%OPENSSL_INCLUDE_DIR% -DQT_EXTRA_LIBDIRS=%OPENSSL_LIBRARIES%
             
       - name: List features
@@ -292,7 +292,7 @@ jobs:
           fail_on_unmatched_files: false
           body: |
             Automated build of Qt ${{ needs.setup.outputs.qt_branch }} branch
-            With qtbase, qtdeclarative and qtmultimedia (no FFMPEG)
+            With qtbase and qtdeclarative
             
             This build includes binaries for:
             - Windows MINGW (x64)
