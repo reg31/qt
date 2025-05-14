@@ -5,7 +5,7 @@ env:
   SNAPSHOT_TAG: 'qt-daily-snapshot'
   MODULE_SUBSET: 'qtbase,qtdeclarative,qtmultimedia'
   SHARED_FLAGS: -release -no-feature-testlib -no-feature-sql -no-feature-test_gui -no-feature-dtls -no-feature-calendarwidget -no-feature-jalalicalendar
-    -no-feature-hijricalendar -no-feature-islamiccivilcalendar -nomake tests -nomake examples  -submodules qtbase,qtdeclarative,qtmultimedia
+    -no-feature-hijricalendar -no-feature-islamiccivilcalendar -nomake tests -nomake examples -submodules qtbase,qtdeclarative,qtmultimedia
     -skip qtlanguageserver,qtquicktimeline,qtquick3d,WITH_PCH -qt-zlib -qt-libjpeg -qt-libpng -no-harfbuzz -reduce-exports -no-feature-sctp
     -DQT_BUILD_EXAMPLES_BY_DEFAULT=OFF -DQT_BUILD_TESTS_BY_DEFAULT=OFF -feature-optimize_full -DFEATURE_cxx20=ON -no-feature-imageformat_xbm
     -DFEATURE_quick_canvas=off -DFEATURE_quicktemplates2_calendar=off -DFEATURE_quick_designer=off -no-feature-imageformat_ppm
@@ -128,7 +128,7 @@ jobs:
       
       - name: Initialize Qt submodules
         shell: cmd
-        run: init-repository.bat --module-subset=$'qtbase,qtdeclarative'
+        run: init-repository.bat --module-subset=qtbase,qtdeclarative
 
       - name: Download prebuilt Qt Host
         shell: cmd
@@ -164,7 +164,7 @@ jobs:
           ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" ${{ env.SHARED_FLAGS }} ^
             -android-abis ${{ matrix.arch }} -android-ndk "%ANDROID_NDK_LATEST_HOME%" -android-sdk "%ANDROID_HOME%" ^
             -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT_DIR%" -android-javac-source 17 -android-javac-target 17 ^
-            -DFEATURE_ssl=ON -DINPUT_openssl=linked -DOPENSSL_USE_STATIC_LIBS=TRUE ^
+            -DFEATURE_ssl=ON -DINPUT_openssl=linked -DOPENSSL_USE_STATIC_LIBS=TRUE -submodules qtbase,qtdeclarative ^
             -DQT_EXTRA_INCLUDEPATHS=%OPENSSL_INCLUDE_DIR% -DQT_EXTRA_LIBDIRS=%OPENSSL_LIBRARIES%
             
       - name: List features
@@ -212,8 +212,7 @@ jobs:
           mkdir -p build
           cd build
           
-          ../configure -platform macx-clang ${{ env.SHARED_FLAGS }} -securetransport -prefix $OUTPUT_DIR -submodules qtbase,qtdeclarative
-          ../configure -list-features
+          ../configure -platform macx-clang ${{ env.SHARED_FLAGS }} -securetransport -prefix $OUTPUT_DIR
 
           cmake --build . --parallel
           cmake --install . --strip
