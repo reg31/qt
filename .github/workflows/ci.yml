@@ -164,7 +164,7 @@ jobs:
           ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" ${{ env.SHARED_FLAGS }} ^
             -android-abis ${{ matrix.arch }} -android-ndk "%ANDROID_NDK_LATEST_HOME%" -android-sdk "%ANDROID_HOME%" ^
             -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT_DIR%" -android-javac-source 17 -android-javac-target 17 ^
-            -DFEATURE_ssl=ON -DINPUT_openssl=linked -DOPENSSL_USE_STATIC_LIBS=TRUE ^
+            -DFEATURE_ssl=ON -openssl-linked -DOPENSSL_USE_STATIC_LIBS=TRUE ^
             -DQT_EXTRA_INCLUDEPATHS=%OPENSSL_INCLUDE_DIR% -DQT_EXTRA_LIBDIRS=%OPENSSL_LIBRARIES%
             
       - name: List features
