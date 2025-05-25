@@ -155,13 +155,14 @@ jobs:
           set "QT_ROOT_DIR=%CD:\=/%/host-qt"
           set "OPENSSL_INCLUDE_DIR=%CD:\=/%/openssl/include"
           set "OPENSSL_LIB_DIR=%CD:\=/%/openssl/lib"
+          set "OPENSSL_ROOT_DIR=%CD:\=/%/openssl"
           
           mkdir build
           cd build
           
             ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" ${{ env.SHARED_FLAGS }} ^
               -android-abis ${{ matrix.arch }} -android-ndk "%ANDROID_NDK_LATEST_HOME%" -android-sdk "%ANDROID_HOME%" ^
-              -openssl-linked -DQT_EXTRA_INCLUDEPATHS=%OPENSSL_INCLUDE_DIR% -DQT_EXTRA_LIBDIRS=%OPENSSL_LIB_DIR%
+              -openssl-runtime
             
       - name: List features
         shell: cmd
