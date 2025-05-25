@@ -144,7 +144,7 @@ jobs:
         run: |
           mkdir openssl
           cd openssl
-          set OPENSSL_ARCHIVE=openssl-android-${{ matrix.arch }}.zip
+          set OPENSSL_ARCHIVE=openssl-3.5-${{ matrix.arch }}.zip
           wget https://github.com/reg31/openssl/releases/latest/download/%OPENSSL_ARCHIVE%
           7z x %OPENSSL_ARCHIVE%
           
