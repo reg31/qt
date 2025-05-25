@@ -155,17 +155,14 @@ jobs:
           set "QT_ROOT_DIR=%CD:\=/%/host-qt"
           set "OPENSSL_ROOT_DIR=%CD:\=/%"
           set "OPENSSL_INCLUDE_DIR=%CD:\=/%/include"
-          set "OPENSSL_LIBRARIES=%CD:\=/%/lib"
-          set "OPENSSL_USE_STATIC_LIBS=TRUE"
+          set "OPENSSL_LIB_DIR=%CD:\=/%/lib"
           
           mkdir build
           cd build
           
             ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" ${{ env.SHARED_FLAGS }} ^
               -android-abis ${{ matrix.arch }} -android-ndk "%ANDROID_NDK_LATEST_HOME%" -android-sdk "%ANDROID_HOME%" ^
-              -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT_DIR%" -android-javac-source 17 -android-javac-target 17 ^
-              -DFEATURE_ssl=ON -DINPUT_openssl=linked -DOPENSSL_USE_STATIC_LIBS=TRUE ^
-              -DQT_EXTRA_INCLUDEPATHS=%OPENSSL_INCLUDE_DIR% -DQT_EXTRA_LIBDIRS=%OPENSSL_LIBRARIES%
+              -openssl-linked -I "%OPENSSL_INCLUDE_DIR%" -L "%OPENSSL_LIB_DIR%" OPENSSL_LIBS="-llibcrypto -llibssl"
             
       - name: List features
         shell: cmd
