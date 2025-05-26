@@ -71,9 +71,9 @@ jobs:
         run: |         
           set CFLAGS=-O3 -s
           set CXXFLAGS=-O3 -s
-          set "OUTPUT_DIR=%CD%\install"
           set "CC=C:\ProgramData\mingw64\mingw64\bin\gcc"
-          set "CXX=C:\ProgramData\mingw64\mingw64\bin\g++"          
+          set "CXX=C:\ProgramData\mingw64\mingw64\bin\g++"
+          set "OUTPUT_DIR=%CD%\qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
 
           mkdir build
           cd build
@@ -93,7 +93,9 @@ jobs:
           
       - name: Package artifacts
         shell: cmd
-        run: 7z a "qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip" .\install\*
+        run: |
+          set "OUTPUT_NAME=qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
+          7z a %OUTPUT_NAME%.zip .\%OUTPUT_NAME%\*
           
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -133,8 +135,8 @@ jobs:
       - name: Download prebuilt Qt Host
         shell: cmd
         run: |
-          mkdir host-qt
-          cd host-qt
+          mkdir qt-windows-mingw-release-dev
+          cd qt-windows-mingw-release-dev
           set QT_ARCHIVE=qt-windows-mingw-release-dev.zip
           wget https://github.com/reg31/qt/releases/latest/download/%QT_ARCHIVE%
           7z x %QT_ARCHIVE%
@@ -151,8 +153,8 @@ jobs:
       - name: Configure Android Qt
         shell: cmd
         run: |
-          set "OUTPUT_DIR=%CD:\=/%/install"
-          set "QT_ROOT_DIR=%CD:\=/%/host-qt"
+          set "OUTPUT_DIR=%CD:\=/%/qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
+          set "QT_ROOT_DIR=%CD:\=/%/qt-windows-mingw-release-dev"
           set "OPENSSL_ROOT=%CD:\=/%/openssl"
           
           mkdir build
@@ -175,7 +177,9 @@ jobs:
           
       - name: Package artifacts
         shell: cmd
-        run: 7z a "qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip" .\install\*
+        run: |
+          set "OUTPUT_NAME=qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
+          7z a %OUTPUT_NAME%.zip .\%OUTPUT_NAME%\*
           
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -203,7 +207,7 @@ jobs:
         
       - name: Configure and build
         run: |
-          OUTPUT_DIR=$(pwd)/install
+          OUTPUT_DIR=$(pwd)/qt-macos-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
           mkdir -p build
           cd build
           
@@ -213,7 +217,9 @@ jobs:
           cmake --install . --strip
           
       - name: Package artifacts
-        run: 7z a "qt-macos-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip" ./install/*
+        run: |
+          OUTPUT_NAME=qt-macos-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
+          7z a $(OUTPUT_NAME).zip ./$(OUTPUT_NAME)/*
           
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -241,16 +247,16 @@ jobs:
       
       - name: Download prebuilt Qt Host
         run: |
-          mkdir -p host-qt
-          cd host-qt
+          mkdir -p qt-macos-release-dev
+          cd qt-macos-release-dev
           QT_ARCHIVE=qt-macos-release-dev.zip
           wget https://github.com/reg31/qt/releases/latest/download/$QT_ARCHIVE
           7z x $QT_ARCHIVE
         
       - name: Configure and build for iOS
         run: |
-          OUTPUT_DIR=$(pwd)/install
-          HOST_PATH=$(pwd)/host-qt
+          OUTPUT_DIR=$(pwd)/qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
+          HOST_PATH=$(pwd)/qt-macos-release-dev
           mkdir -p build
           cd build
           
@@ -261,7 +267,9 @@ jobs:
           cmake --install . --strip
           
       - name: Package artifacts
-        run: 7z a "qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip" ./install/*
+        run: |
+          OUTPUT_NAME=qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
+          7z a $(OUTPUT_NAME).zip ./$(OUTPUT_NAME)/*
           
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
