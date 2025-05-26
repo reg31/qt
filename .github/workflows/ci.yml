@@ -3,7 +3,7 @@ env:
   QT_REPO: 'https://github.com/qt/qt5.git'
   QT_BRANCH: 'dev'
   SNAPSHOT_TAG: 'qt-daily-snapshot'
-  INIT_FLAGS: --branch --module-subset='qtbase,qtdeclarative'
+  INIT_FLAGS: --branch --no-update --module-subset='qtbase,qtdeclarative'
   SHARED_FLAGS: -release -no-feature-testlib -no-feature-sql -no-feature-test_gui -no-feature-dtls -no-feature-calendarwidget -no-feature-jalalicalendar
     -no-feature-hijricalendar -no-feature-islamiccivilcalendar -nomake tests -nomake examples -submodules qtbase,qtdeclarative
     -skip qtlanguageserver,qtquicktimeline,qtquick3d,WITH_PCH -qt-zlib -qt-libjpeg -qt-libpng -no-harfbuzz -reduce-exports -no-feature-sctp
