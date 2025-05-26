@@ -64,7 +64,7 @@ jobs:
 
       - name: Initialize Qt submodules
         shell: cmd
-        run: init-repository.bat --module-subset=${{ env.MODULE_SUBSET }}
+        run: init-repository.bat --branch --module-subset=${{ env.MODULE_SUBSET }}
 
       - name: Configure
         shell: cmd
@@ -130,7 +130,7 @@ jobs:
       
       - name: Initialize Qt submodules
         shell: cmd
-        run: init-repository.bat --module-subset=${{ env.MODULE_SUBSET }}
+        run: init-repository.bat --branch --module-subset=${{ env.MODULE_SUBSET }}
 
       - name: Download prebuilt Qt Host
         shell: cmd
@@ -203,7 +203,7 @@ jobs:
           submodules: false
       
       - name: Initialize Qt submodules
-        run: perl init-repository --module-subset=${{ env.MODULE_SUBSET }}
+        run: perl init-repository --branch --module-subset=${{ env.MODULE_SUBSET }}
         
       - name: Configure and build
         run: |
@@ -243,7 +243,7 @@ jobs:
           submodules: false
       
       - name: Initialize Qt submodules
-        run: perl init-repository --module-subset=${{ env.MODULE_SUBSET }}
+        run: perl init-repository --branch --module-subset=${{ env.MODULE_SUBSET }}
       
       - name: Download prebuilt Qt Host
         run: |
