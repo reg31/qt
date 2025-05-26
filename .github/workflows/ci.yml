@@ -260,7 +260,7 @@ jobs:
           mkdir -p build
           cd build
           
-          ../configure -platform macx-ios-clang ${{ env.SHARED_FLAGS }} -securetransport -prefix $OUTPUT_DIR -qt-host-path $HOST_PATH -DIOS_ARCH="arm64"
+          ../configure -platform macx-ios-clang ${{ env.SHARED_FLAGS }} -securetransport -prefix $OUTPUT_DIR -qt-host-path $HOST_PATH -sdk iphoneos
           ../configure -list-features
 
           cmake --build . --parallel
