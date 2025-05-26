@@ -219,7 +219,7 @@ jobs:
       - name: Package artifacts
         run: |
           OUTPUT_NAME=qt-macos-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
-          7z a $(OUTPUT_NAME).zip ./$(OUTPUT_NAME)/*
+          7z a $OUTPUT_NAME.zip ./$OUTPUT_NAME/*
           
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -269,7 +269,7 @@ jobs:
       - name: Package artifacts
         run: |
           OUTPUT_NAME=qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
-          7z a $(OUTPUT_NAME).zip ./$(OUTPUT_NAME)/*
+          7z a $OUTPUT_NAME.zip ./$OUTPUT_NAME/*
           
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
