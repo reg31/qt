@@ -60,8 +60,12 @@ jobs:
           fetch-depth: 0
           submodules: false
 
-      - name: Install dependencies
-        run: choco install -y mingw
+      - name: Download mingw
+        shell: cmd
+        run: |
+          set MINGW_ARCHIVE=x86_64-15.1.0-release-posix-seh-ucrt-rt_v12-rev0.7z
+          wget https://github.com/niXman/mingw-builds-binaries/releases/download/15.1.0-rt_v12-rev0/%MINGW_ARCHIVE%
+          7z x %MINGW_ARCHIVE%
 
       - name: Initialize Qt submodules
         shell: cmd
@@ -72,9 +76,8 @@ jobs:
         run: |         
           set CFLAGS=-O3 -s
           set CXXFLAGS=-O3 -s
-          Set "LDFLAGS=-fuse-ld=gold"
-          set "CC=C:\ProgramData\mingw64\mingw64\bin\gcc"
-          set "CXX=C:\ProgramData\mingw64\mingw64\bin\g++"
+          set "CC=%CD%\mingw64\mingw64\bin\gcc"
+          set "CXX=%CD%\mingw64\mingw64\bin\g++"
           set "OUTPUT_DIR=%CD%\qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
 
           mkdir build
