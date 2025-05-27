@@ -161,7 +161,7 @@ jobs:
         id: mkspecsFolder
         uses: jaywcjlove/github-action-read-file@main
         with:
-          path: files/mkspecs_android.7z
+          path: files/mkspecs_${{ matrix.arch }}.7z
     
       - name: Extract folders
         shell: cmd
@@ -171,7 +171,7 @@ jobs:
           wget "${{ steps.binFolder.outputs.download_url }}"
           7z x bin_${{ matrix.arch }}.7z
           wget "${{ steps.mkspecsFolder.outputs.download_url }}"
-          7z x mkspecs_android.7z
+          7z x mkspecs_${{ matrix.arch }}.7z
           
       - name: Configure Android Qt
         shell: cmd
