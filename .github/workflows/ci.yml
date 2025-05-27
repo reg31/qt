@@ -211,8 +211,8 @@ jobs:
         shell: cmd
         run: |
           set "OUTPUT_NAME=qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
-          Xcopy .\configFolders\mkspecs .\%OUTPUT_NAME%\mkspecs /c /i /s /e /t /y
-          Xcopy .\configFolders\bin .\%OUTPUT_NAME%\bin /c /i /s /e /t /y
+          Xcopy .\configFolders\mkspecs\ .\%OUTPUT_NAME%\mkspecs\ /c /i /s /y /r
+          Xcopy .\configFolders\bin\ .\%OUTPUT_NAME%\bin\ /c /i /s /y /r
           7z a %OUTPUT_NAME%.zip .\%OUTPUT_NAME%\*
           
       - name: Upload build artifact
