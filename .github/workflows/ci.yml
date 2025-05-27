@@ -72,6 +72,7 @@ jobs:
         run: |         
           set CFLAGS=-O3 -s
           set CXXFLAGS=-O3 -s
+          Set "LDFLAGS=-fuse-ld=gold"
           set "CC=C:\ProgramData\mingw64\mingw64\bin\gcc"
           set "CXX=C:\ProgramData\mingw64\mingw64\bin\g++"
           set "OUTPUT_DIR=%CD%\qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
@@ -176,6 +177,8 @@ jobs:
       - name: Configure Android Qt
         shell: cmd
         run: |
+          set CFLAGS=-O3
+          set CXXFLAGS=-O3
           set "OUTPUT_DIR=%CD:\=/%/qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
           set "QT_ROOT_DIR=%CD:\=/%/qt-windows-mingw-release-dev"
           set "OPENSSL_ROOT=%CD:\=/%/openssl"
