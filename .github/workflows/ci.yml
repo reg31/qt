@@ -79,8 +79,8 @@ jobs:
         run: |         
           set CFLAGS=-O3 -s
           set CXXFLAGS=-O3 -s
-          set "CC=%CD%\mingw64\mingw64\bin\gcc"
-          set "CXX=%CD%\mingw64\mingw64\bin\g++"
+          set "CC=%CD%\mingw64\bin\gcc"
+          set "CXX=%CD%\mingw64\bin\g++"
           set "OUTPUT_DIR=%CD%\qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
 
           mkdir build
