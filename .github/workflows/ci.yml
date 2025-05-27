@@ -163,7 +163,7 @@ jobs:
           
             ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" ${{ env.SHARED_FLAGS }} ^
               -android-abis ${{ matrix.arch }} -android-ndk "%ANDROID_NDK_LATEST_HOME%" -android-sdk "%ANDROID_HOME%" ^
-              -DQT_FORCE_BUILD_TOOLS=ON -DQT_FORCE_FIND_TOOLS=ON -openssl-runtime -- -D OPENSSL_ROOT_DIR="%OPENSSL_ROOT%"
+              -openssl-linked -- -D OPENSSL_ROOT_DIR="%OPENSSL_ROOT%" -- -D OPENSSL_USE_STATIC_LIBS=ON
             
       - name: List features
         shell: cmd
@@ -262,7 +262,7 @@ jobs:
           cd build
           
           ../configure -platform macx-ios-clang ${{ env.SHARED_FLAGS }} -securetransport -prefix $OUTPUT_DIR -qt-host-path $HOST_PATH \
-            -sdk iphoneos -DQT_FORCE_BUILD_TOOLS=ON -DQT_FORCE_FIND_TOOLS=ON
+            -sdk iphoneos
           ../configure -list-features
 
           cmake --build . --parallel
