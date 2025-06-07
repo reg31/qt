@@ -14,6 +14,7 @@ env:
     -DFEATURE_quickcontrols2_fluentwinui3=off DFEATURE_quickcontrols2_imagine=off -DFEATURE_quick_designer=off -DFEATURE_qdoc=off
     -DFEATURE_quick_sprite=OFF -DFEATURE_quickcontrols2_imagine=OFF -DFEATURE_quickcontrols2_universal=OFF -DFEATURE_quickcontrols2_fusion=OFF
     -DFEATURE_cxx20=ON -DFEATURE_quick_canvas=off -DFEATURE_quicktemplates2_calendar=off -DFEATURE_style_windowsvista=off -DFEATURE_style_windows=off
+    -DQT_NO_PACKAGE_VERSION_INCOMPATIBLE_WARNING=TRUE
           
 on:
   workflow_dispatch:
@@ -312,8 +313,7 @@ jobs:
           path: qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
 
   release:
-    #needs: [setup, build-windows, build-android, build-macos, build-ios]
-    needs: [setup, build-windows, build-macos]
+    needs: [setup, build-windows, build-android, build-macos, build-ios]
     runs-on: ubuntu-latest
     if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     steps:
@@ -339,7 +339,10 @@ jobs:
             - macOS         
           files: |
             qt-builds/qt-windows-mingw/*.zip
+            qt-builds/qt-android-armeabi-v7a/*.zip
+            qt-builds/qt-android-arm64-v8a/*.zip
             qt-builds/qt-macos/*.zip
+            qt-builds/qt-ios/*.zip
           
       - name: Cleanup repository
         uses: dev-drprasad/delete-older-releases@v0.3.4
