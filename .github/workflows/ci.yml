@@ -4,7 +4,7 @@ env:
   QT_BRANCH: 'dev'
   SNAPSHOT_TAG: 'qt-daily-snapshot'
   INIT_FLAGS: --module-subset=qtbase,qtdeclarative --branch --no-update
-  SHARED_FLAGS: -DQT_NO_PACKAGE_VERSION_CHECK=TRUE -DQT_NO_PACKAGE_VERSION_INCOMPATIBLE_WARNING=TRUE -release -no-feature-testlib  -no-feature-dtls
+  SHARED_FLAGS: -release -no-feature-testlib  -no-feature-dtls
     -no-feature-hijricalendar -no-feature-islamiccivilcalendar -nomake tests -nomake examples -submodules qtbase,qtdeclarative  -no-feature-sql
     -skip qtlanguageserver,qtquicktimeline,qtquick3d,WITH_PCH -qt-zlib -qt-libjpeg -qt-libpng -no-harfbuzz -reduce-exports -no-feature-sctp
     -DQT_BUILD_EXAMPLES_BY_DEFAULT=OFF -DQT_BUILD_TESTS_BY_DEFAULT=OFF -feature-optimize_full -no-feature-imageformat_xbm -no-feature-calendarwidget
@@ -14,6 +14,7 @@ env:
     -DFEATURE_quickcontrols2_fluentwinui3=off DFEATURE_quickcontrols2_imagine=off -DFEATURE_quick_designer=off -DFEATURE_qdoc=off
     -DFEATURE_quick_sprite=OFF -DFEATURE_quickcontrols2_imagine=OFF -DFEATURE_quickcontrols2_universal=OFF -DFEATURE_quickcontrols2_fusion=OFF
     -DFEATURE_cxx20=ON -DFEATURE_quick_canvas=off -DFEATURE_quicktemplates2_calendar=off -DFEATURE_style_windowsvista=off -DFEATURE_style_windows=off
+    -- -DQT_NO_PACKAGE_VERSION_CHECK=TRUE -DQT_NO_PACKAGE_VERSION_INCOMPATIBLE_WARNING=TRUE
     
           
 on:
