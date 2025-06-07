@@ -6,7 +6,7 @@ env:
   INIT_FLAGS: --module-subset=qtbase,qtdeclarative --branch --no-update
   SHARED_FLAGS: -release -no-feature-testlib -no-feature-sql -no-feature-test_gui -no-feature-dtls -no-feature-calendarwidget -no-feature-jalalicalendar
     -no-feature-hijricalendar -no-feature-islamiccivilcalendar -nomake tests -nomake examples -submodules qtbase,qtdeclarative
-    -skip qtquicktimeline,qtquick3d,WITH_PCH -qt-zlib -qt-libjpeg -qt-libpng -no-harfbuzz -reduce-exports -no-feature-sctp
+    -skip qtlanguageserver,qtquicktimeline,qtquick3d,WITH_PCH -qt-zlib -qt-libjpeg -qt-libpng -no-harfbuzz -reduce-exports -no-feature-sctp
     -DQT_BUILD_EXAMPLES_BY_DEFAULT=OFF -DQT_BUILD_TESTS_BY_DEFAULT=OFF -feature-optimize_full -no-feature-imageformat_xbm
     -no-feature-imageformat_ppm -no-warnings-are-errors -disable-deprecated-up-to 0x070000 -c++std c++20
     -no-feature-imageformat_bmp -feature-relocatable -strip -no-feature-pdf -no-feature-private_tests -no-feature-dbus -no-feature-vnc
