@@ -1,7 +1,7 @@
 name: Build Qt Library
 env:
   QT_REPO: 'https://github.com/qt/qt5.git'
-  QT_BRANCH: '6.10'
+  QT_BRANCH: 'dev'
   SNAPSHOT_TAG: 'qt-daily-snapshot'
   INIT_FLAGS: --module-subset=qtbase,qtdeclarative --branch --no-update
   SHARED_FLAGS: -release -no-feature-testlib -no-feature-dtls -DQT_NO_PACKAGE_VERSION_CHECK=TRUE -DQT_NO_PACKAGE_VERSION_INCOMPATIBLE_WARNING=TRUE
@@ -22,7 +22,7 @@ on:
       qt_branch:
         description: 'Qt branch/tag to build'
         required: true
-        default: "6.10"
+        default: "dev"
         type: string
   schedule:
     - cron: '0 0 * * *'
@@ -315,7 +315,7 @@ jobs:
   release:
     needs: [setup, build-windows, build-android, build-macos, build-ios]
     runs-on: ubuntu-latest
-    if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ (github.ref == 'refs/heads/main' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && always() }}
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
