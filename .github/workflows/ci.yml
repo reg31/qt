@@ -4,7 +4,7 @@ env:
   QT_BRANCH: 'dev'
   SNAPSHOT_TAG: 'qt-daily-snapshot'
   INIT_FLAGS: --module-subset=qtbase,qtdeclarative --branch --no-update
-  SHARED_FLAGS: -release -no-feature-testlib -no-feature-dtls -DQT_NO_PACKAGE_VERSION_CHECK=TRUE -DQT_NO_PACKAGE_VERSION_INCOMPATIBLE_WARNING=TRUE
+  SHARED_FLAGS: -release -no-feature-testlib -no-feature-dtls -DQT_NO_PACKAGE_VERSION_CHECK=ON -DQT_NO_PACKAGE_VERSION_INCOMPATIBLE_WARNING=ON
     -no-feature-hijricalendar -no-feature-islamiccivilcalendar -nomake tests -nomake examples -submodules qtbase,qtdeclarative -no-feature-sql
     -skip qtlanguageserver,qtquicktimeline,qtquick3d,WITH_PCH -qt-zlib -qt-libjpeg -qt-libpng -no-harfbuzz -reduce-exports -no-feature-sctp
     -DQT_BUILD_EXAMPLES_BY_DEFAULT=OFF -DQT_BUILD_TESTS_BY_DEFAULT=OFF -DQT_BUILD_TOOLS_BY_DEFAULT=OFF -feature-optimize_full -no-feature-calendarwidget
