@@ -14,7 +14,6 @@ env:
     -DFEATURE_quickcontrols2_fluentwinui3=off DFEATURE_quickcontrols2_imagine=off -DFEATURE_quick_designer=off -DFEATURE_qdoc=off -no-feature-imageformat_xbm
     -DFEATURE_quick_sprite=OFF -DFEATURE_quickcontrols2_imagine=OFF -DFEATURE_quickcontrols2_universal=OFF -DFEATURE_quickcontrols2_fusion=OFF
     -DFEATURE_cxx20=ON -DFEATURE_quick_canvas=off -DFEATURE_quicktemplates2_calendar=off -DFEATURE_style_windowsvista=off -DFEATURE_style_windows=off
-    -DQT_CMAKE_EXPORT_NAMESPACE=Qt6
           
 on:
   workflow_dispatch:
@@ -114,7 +113,7 @@ jobs:
 
   build-android:
     needs: setup
-    runs-on: windows-latest
+    runs-on: windows-2025
     strategy:
       matrix:
         build_type: [release]
@@ -224,7 +223,7 @@ jobs:
 
   build-macos:
     needs: setup
-    runs-on: macos-latest
+    runs-on: macos-15
     strategy:
       matrix:
         build_type: [release]
@@ -264,7 +263,7 @@ jobs:
 
   build-ios:
     needs: setup
-    runs-on: macos-latest
+    runs-on: macos-15
     strategy:
       matrix:
         build_type: [release]
