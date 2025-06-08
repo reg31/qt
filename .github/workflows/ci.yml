@@ -314,7 +314,7 @@ jobs:
   release:
     needs: [setup, build-windows, build-android, build-macos, build-ios]
     runs-on: ubuntu-latest
-    if: ${{ (github.ref == 'refs/heads/main' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && always() }}
+    if: ${{ !cancelled() && steps.build-windows.conclusion == 'success' && steps.build-macos.conclusion == 'success' }}
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
