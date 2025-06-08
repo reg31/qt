@@ -66,8 +66,8 @@ jobs:
       - name: Download mingw
         shell: cmd
         run: |
-          set MINGW_ARCHIVE=x86_64-14.1.0-release-posix-seh-ucrt-rt_v12-rev0.7z 
-          wget https://github.com/niXman/mingw-builds-binaries/releases/download/14.1.0-rt_v12-rev0/%MINGW_ARCHIVE%
+          set MINGW_ARCHIVE=x86_64-15.1.0-release-posix-seh-ucrt-rt_v12-rev0.7z
+          wget https://github.com/niXman/mingw-builds-binaries/releases/download/15.1.0-rt_v12-rev0/%MINGW_ARCHIVE%
           7z x %MINGW_ARCHIVE%
 
       - name: Initialize Qt submodules
