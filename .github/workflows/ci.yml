@@ -314,11 +314,10 @@ jobs:
   release:
     needs: [setup, build-windows, build-android, build-macos, build-ios]
     runs-on: ubuntu-latest
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && needs.build-windows.result == 'success' && needs.build-macos.result == 'success'}}
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
-        if: ${{ jobs.build-windows.result == 'success' && jobs.build-macos.result == 'success' }}
         with:
           path: qt-builds
           
