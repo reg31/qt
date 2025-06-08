@@ -77,8 +77,8 @@ jobs:
       - name: Configure
         shell: cmd
         run: |
-          set CFLAGS=-O3 -s
-          set CXXFLAGS=-O3 -s
+          set CFLAGS=-O3 -s --keep-going
+          set CXXFLAGS=-O3 -s --keep-going
           set "CC=%CD%\mingw64\bin\gcc"
           set "CXX=%CD%\mingw64\bin\g++"
           set "OUTPUT_DIR=%CD%\qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
@@ -96,7 +96,7 @@ jobs:
         shell: cmd
         run: |
           cd build
-          cmake --build . --parallel --keep-going
+          cmake --build . --parallel
           cmake --install .
           
       - name: Package artifacts
