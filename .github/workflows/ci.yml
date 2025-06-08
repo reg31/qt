@@ -10,7 +10,7 @@ env:
     -DQT_BUILD_EXAMPLES_BY_DEFAULT=OFF -DQT_BUILD_TESTS_BY_DEFAULT=OFF -DQT_BUILD_TOOLS_BY_DEFAULT=OFF -feature-optimize_full -no-feature-calendarwidget
     -no-feature-imageformat_ppm -no-warnings-are-errors -disable-deprecated-up-to 0x070000 -c++std c++20 -no-feature-test_gui -no-feature-jalalicalendar
     -no-feature-imageformat_bmp -feature-relocatable -strip -no-feature-pdf -no-feature-private_tests -no-feature-dbus -no-feature-vnc
-    -no-feature-localserver -no-feature-udpsocket -no-feature-libproxy -no-feature-vkgen -no-feature-xml -no-feature-printsupport -DQT_QML_GENERATE_QMLLS_INI=OFF
+    -no-feature-localserver -no-feature-udpsocket -no-feature-libproxy -no-feature-vkgen -no-feature-xml -no-feature-printsupport -DQT_QML_GENERATE_QMLLS_INI_NO_CMAKE_CALLS=ON
     -DFEATURE_quickcontrols2_fluentwinui3=off DFEATURE_quickcontrols2_imagine=off -DFEATURE_quick_designer=off -DFEATURE_qdoc=off -no-feature-imageformat_xbm
     -DFEATURE_quick_sprite=OFF -DFEATURE_quickcontrols2_imagine=OFF -DFEATURE_quickcontrols2_universal=OFF -DFEATURE_quickcontrols2_fusion=OFF
     -DFEATURE_cxx20=ON -DFEATURE_quick_canvas=off -DFEATURE_quicktemplates2_calendar=off -DFEATURE_style_windowsvista=off -DFEATURE_style_windows=off    
