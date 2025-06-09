@@ -14,6 +14,7 @@ env:
     -DFEATURE_quickcontrols2_fluentwinui3=off DFEATURE_quickcontrols2_imagine=off -DFEATURE_quick_designer=off -DFEATURE_qdoc=off -no-feature-imageformat_xbm
     -DFEATURE_quick_sprite=OFF -DFEATURE_quickcontrols2_imagine=OFF -DFEATURE_quickcontrols2_universal=OFF -DFEATURE_quickcontrols2_fusion=OFF
     -DFEATURE_cxx20=ON -DFEATURE_quick_canvas=off -DFEATURE_quicktemplates2_calendar=off -DFEATURE_style_windowsvista=off -DFEATURE_style_windows=off
+    -DFEATURE_qml_xmllistmodel=off
           
 on:
   workflow_dispatch:
