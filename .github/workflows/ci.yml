@@ -79,10 +79,10 @@ jobs:
       - name: Configure
         shell: cmd
         run: |
-          set CFLAGS=-O3 -s -flto
-          set CXXFLAGS=-O3 -s -flto
           set "CC=%CD%\mingw64\bin\gcc"
           set "CXX=%CD%\mingw64\bin\g++"
+          set CFLAGS=-O3 -s -flto -ffat-lto-objects
+          set CXXFLAGS=-O3 -s -flto -ffat-lto-objects
           set "OUTPUT_DIR=%CD%\qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
 
           mkdir build
