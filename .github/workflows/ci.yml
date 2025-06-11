@@ -195,7 +195,7 @@ jobs:
           
             ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" ${{ env.SHARED_FLAGS }} ^
               -android-abis ${{ matrix.arch }} -android-ndk "%ANDROID_NDK_LATEST_HOME%" -android-sdk "%ANDROID_HOME%" ^
-              -ltcg -DQT_GENERATE_WRAPPER_SCRIPTS_FOR_ALL_HOSTS=ON -openssl-runtime -- -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT%"
+              -DQT_GENERATE_WRAPPER_SCRIPTS_FOR_ALL_HOSTS=ON -openssl-runtime -- -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT%"
             
       - name: List features
         shell: cmd
@@ -246,7 +246,7 @@ jobs:
           mkdir -p build
           cd build
           
-          ../configure -platform macx-clang ${{ env.SHARED_FLAGS }} -securetransport -ltcg -prefix $OUTPUT_DIR -- -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
+          ../configure -platform macx-clang ${{ env.SHARED_FLAGS }} -securetransport -prefix $OUTPUT_DIR -- -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
 
           cmake --build . --parallel
           cmake --install . --strip
@@ -295,7 +295,7 @@ jobs:
           mkdir -p build
           cd build
           
-          ../configure -platform macx-ios-clang ${{ env.SHARED_FLAGS }} -securetransport -ltcg -prefix $OUTPUT_DIR -qt-host-path $HOST_PATH
+          ../configure -platform macx-ios-clang ${{ env.SHARED_FLAGS }} -securetransport -prefix $OUTPUT_DIR -qt-host-path $HOST_PATH
           ../configure -list-features
 
           cmake --build . --parallel
