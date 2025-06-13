@@ -331,7 +331,7 @@ jobs:
           fail_on_unmatched_files: false
           body: |
             Automated build of Qt ${{ needs.setup.outputs.qt_branch }} branch
-            With qtbase and qtdeclarative, some features are disabled to minimize footprint (e.g. Widgets)
+            With qtbase and qtdeclarative, some features are disabled to minimize footprint
             
             This build includes binaries for:
             - Windows MINGW (x64)
