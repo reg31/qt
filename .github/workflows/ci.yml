@@ -14,7 +14,7 @@ env:
     -DFEATURE_quick_designer=off -DFEATURE_qdoc=off -no-feature-imageformat_xbm -DFEATURE_quick_sprite=OFF -DFEATURE_quick_canvas=off -no-feature-gssapi
     -DFEATURE_quicktemplates2_calendar=off -no-feature-quickcontrols2-fusion -no-feature-quickcontrols2-imagine -no-feature-quickcontrols2-universal
     -no-feature-quickcontrols2-fluentwinui3 -no-feature-accessibility -no-feature-textmarkdownreader -no-feature-textmarkdownwriter -no-feature-pdf
-    -no-feature-movie -no-feature-undocommand -no-feature-undogroup -no-feature-ctf
+    -no-feature-movie -no-feature-undocommand -no-feature-undogroup -no-feature-ctf -no-feature-widgets
           
 on:
   workflow_dispatch:
