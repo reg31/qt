@@ -243,6 +243,7 @@ jobs:
       - name: Package artifacts
         run: |
           OUTPUT_NAME=qt-macos-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
+          find ./$OUTPUT_NAME -type f -exec chmod +x {} +
           7z a $OUTPUT_NAME.zip ./$OUTPUT_NAME/*
           
       - name: Upload build artifact
@@ -293,6 +294,7 @@ jobs:
       - name: Package artifacts
         run: |
           OUTPUT_NAME=qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
+          find ./$OUTPUT_NAME -type f -exec chmod +x {} +
           7z a $OUTPUT_NAME.zip ./$OUTPUT_NAME/*
           
       - name: Upload build artifact
