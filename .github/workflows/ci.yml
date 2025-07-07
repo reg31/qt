@@ -213,7 +213,7 @@ jobs:
 
   build-macos:
     needs: setup
-    runs-on: macos-15
+    runs-on: macos-latest
     strategy:
       matrix:
         build_type: [release]
@@ -229,16 +229,13 @@ jobs:
       - name: Initialize Qt submodules
         run: perl init-repository ${{ env.INIT_FLAGS }}
         
-      - name: Select Xcode Version
-        run: sudo xcode-select -switch /Applications/Xcode_16.4.app
-   
       - name: Configure and build
         run: |
           OUTPUT_DIR=$(pwd)/qt-macos-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
           mkdir -p build
           cd build
           
-          ../configure -platform macx-clang ${{ env.SHARED_FLAGS }} -securetransport -feature-appstore-compliant -prefix $OUTPUT_DIR -- -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
+          ../configure -platform macx-clang ${{ env.SHARED_FLAGS }} -securetransport -feature-appstore-compliant -prefix $OUTPUT_DIR -- -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
 
           cmake --build . --parallel
           cmake --install . --strip
@@ -257,7 +254,7 @@ jobs:
 
   build-ios:
     needs: setup
-    runs-on: macos-15
+    runs-on: macos-latest
     strategy:
       matrix:
         build_type: [release]
@@ -280,9 +277,6 @@ jobs:
           QT_ARCHIVE=qt-macos-release-dev.zip
           wget https://github.com/reg31/qt/releases/latest/download/$QT_ARCHIVE
           7z x $QT_ARCHIVE
-
-      - name: Select Xcode Version
-        run: sudo xcode-select -switch /Applications/Xcode_16.4.app
         
       - name: Configure and build for iOS
         run: |
