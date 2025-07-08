@@ -235,7 +235,7 @@ jobs:
           mkdir -p build
           cd build
           
-          ../configure -platform macx-clang ${{ env.SHARED_FLAGS }} -securetransport -feature-appstore-compliant -prefix $OUTPUT_DIR
+          ../configure -platform macx-clang ${{ env.SHARED_FLAGS }} -securetransport -prefix $OUTPUT_DIR
 
           cmake --build . --parallel
           cmake --install . --strip
