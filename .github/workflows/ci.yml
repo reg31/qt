@@ -11,12 +11,12 @@ env:
     -no-feature-imageformat_ppm -no-warnings-are-errors -disable-deprecated-up-to 0x070000 -feature-c++20 -no-feature-test_gui -no-feature-jalalicalendar
     -no-feature-imageformat_bmp -feature-relocatable -strip -no-feature-pdf -no-feature-private_tests -no-feature-dbus -no-feature-vnc -no-feature-openvg
     -no-feature-localserver -no-feature-libproxy -no-feature-vkgen -no-feature-xml -no-feature-printsupport -no-feature-udpsocket -no-feature-brotli
-    -DFEATURE_quick_designer=off -DFEATURE_qdoc=off -no-feature-imageformat_xbm -DFEATURE_quick_sprite=OFF -DFEATURE_quick_canvas=off -no-feature-gssapi
-    -DFEATURE_quicktemplates2_calendar=off -no-feature-quickcontrols2-fusion -no-feature-quickcontrols2-imagine -no-feature-quickcontrols2-universal
+    -DQT_FEATURE_quick_designer=off -DQT_FEATURE_qdoc=off -no-feature-imageformat_xbm -DQT_FEATURE_quick_sprite=OFF -DQT_FEATURE_quick_canvas=off
+    -DQT_FEATURE_qml_xmllistmodel=off -no-feature-quickcontrols2-fusion -no-feature-quickcontrols2-imagine -no-feature-quickcontrols2-universal
     -no-feature-quickcontrols2-fluentwinui3 -no-feature-accessibility -no-feature-textmarkdownreader -no-feature-textmarkdownwriter -no-feature-pdf
     -no-feature-movie -no-feature-undocommand -no-feature-undogroup -no-feature-ctf -no-feature-widgets -DFEATURE_native_grpc=OFF -DQT_WILL_BUILD_TOOLS=ON
     -no-feature-qml-network -no-feature-sortfilterproxymodel -no-feature-textodfwriter -no-feature-translation -no-feature-networkproxy -no-feature-qml-ssl
-    -no-feature-cborstreamwriter -no-feature-gssapi -no-feature-sspi -no-feature-qmlxmllistmodel
+    -no-feature-cborstreamwriter -no-feature-gssapi -no-feature-sspi -DQT_FEATURE_qml_xmllistmodel=OFF
           
 on:
   workflow_dispatch:
