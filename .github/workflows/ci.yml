@@ -16,7 +16,7 @@ env:
     -no-feature-quickcontrols2-fluentwinui3 -no-feature-accessibility -no-feature-textmarkdownreader -no-feature-textmarkdownwriter -no-feature-pdf
     -no-feature-movie -no-feature-undocommand -no-feature-undogroup -no-feature-ctf -no-feature-widgets -DFEATURE_native_grpc=OFF -DQT_WILL_BUILD_TOOLS=ON
     -no-feature-qml-network -no-feature-sortfilterproxymodel -no-feature-textodfwriter -no-feature-translation -no-feature-networkproxy -no-feature-qml-ssl
-    -no-feature-cborstreamwriter
+    -no-feature-cborstreamwriter -no-feature-gssapi -no-feature-sspi -no-feature-qmlxmllistmodel
           
 on:
   workflow_dispatch:
