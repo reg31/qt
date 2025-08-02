@@ -15,6 +15,7 @@ env:
     -DFEATURE_quicktemplates2_calendar=off -no-feature-quickcontrols2-fusion -no-feature-quickcontrols2-imagine -no-feature-quickcontrols2-universal
     -no-feature-quickcontrols2-fluentwinui3 -no-feature-accessibility -no-feature-textmarkdownreader -no-feature-textmarkdownwriter -no-feature-pdf
     -no-feature-movie -no-feature-undocommand -no-feature-undogroup -no-feature-ctf -no-feature-widgets -DFEATURE_native_grpc=OFF -DQT_WILL_BUILD_TOOLS=ON
+    -no-feature-qml-network
           
 on:
   workflow_dispatch:
