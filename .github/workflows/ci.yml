@@ -14,8 +14,7 @@ env:
     -no-feature-quickcontrols2-fusion -no-feature-quickcontrols2-imagine -no-feature-quickcontrols2-universal -no-feature-gssapi -no-feature-harfbuzz
     -no-feature-quickcontrols2-fluentwinui3 -no-feature-accessibility -no-feature-textmarkdownreader -no-feature-textmarkdownwriter -no-feature-pdf
     -no-feature-movie -no-feature-undocommand -no-feature-undogroup -no-feature-ctf -no-feature-widgets -DQT_WILL_BUILD_TOOLS=ON -no-feature-imageformat_xbm 
-    -no-feature-qml-network -no-feature-sortfilterproxymodel -no-feature-textodfwriter -no-feature-qml-ssl -no-feature-cborstreamwriter -DFEATURE_qdoc=off
-    -DFEATURE_native_grpc=OFF DFEATURE_quick_designer=off -DFEATURE_quick_sprite=OFF -DFEATURE_quick_canvas=off -DFEATURE_quicktemplates2_calendar=off 
+    -no-feature-qml-network -no-feature-sortfilterproxymodel -no-feature-textodfwriter -no-feature-qml-ssl -no-feature-cborstreamwrite
           
 on:
   workflow_dispatch:
