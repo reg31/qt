@@ -15,7 +15,8 @@ env:
     -no-feature-quickcontrols2-fluentwinui3 -no-feature-accessibility -no-feature-textmarkdownreader -no-feature-textmarkdownwriter -no-feature-pdf
     -no-feature-movie -no-feature-undocommand -no-feature-undogroup -no-feature-ctf -no-feature-widgets -no-feature-imageformat_xbm 
     -no-feature-sortfilterproxymodel -no-feature-textodfwriter -no-feature-qml-network -no-feature-qml-ssl -DQT_WILL_BUILD_TOOLS=ON
-    -no-feature-graphicsframecapture
+    -no-feature-graphicsframecapture -DFEATURE_regularexpression=OFF -DFEATURE_quick_sprite=OFF -DFEATURE_quick_canvas=off -DFEATURE_native_grpc=OFF
+    -DFEATURE_quick_designer=off -DFEATURE_qdoc=off -DFEATURE_quicktemplates2_calendar=off
           
 on:
   workflow_dispatch:
