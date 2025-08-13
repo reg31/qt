@@ -16,8 +16,6 @@ env:
     -no-feature-movie -no-feature-undocommand -no-feature-undogroup -no-feature-ctf -no-feature-widgets -no-feature-imageformat_xbm 
     -no-feature-sortfilterproxymodel -no-feature-textodfwriter -no-feature-qml-network -no-feature-qml-ssl -DQT_WILL_BUILD_TOOLS=ON
     -no-feature-graphicsframecapture -no-feature-regularexpression -DQT_BUILD_QMAKE=ON
-  CHERRY_PICK: -n c5b782bcdaa0b793753e3036239894ed29d8fefa b94f5eaf42e4186814ca65f62425023e05912340 edcf55199af687475277c905f060cd02d3627882
-          fcfad113a082f6c49b6b59aca3c5c2570cf32b02
 
 on:
   workflow_dispatch:
@@ -80,7 +78,12 @@ jobs:
 
       - name: Cherry pick commits
         shell: cmd
-        run: git cherry-pick ${{ env.CHERRY_PICK }}
+        run: |
+          cd qtdeclarative
+          git cherry-pick -n b94f5eaf42e4186814ca65f62425023e05912340
+          cd ..
+          cd qtbase
+          git cherry-pick -n fcfad113a082f6c49b6b59aca3c5c2570cf32b02 
           
       - name: Configure
         shell: cmd
@@ -150,7 +153,12 @@ jobs:
 
       - name: Cherry pick commits
         shell: cmd
-        run: git cherry-pick ${{ env.CHERRY_PICK }}
+        run: |
+          cd qtdeclarative
+          git cherry-pick -n b94f5eaf42e4186814ca65f62425023e05912340
+          cd ..
+          cd qtbase
+          git cherry-pick -n fcfad113a082f6c49b6b59aca3c5c2570cf32b02
 
       - name: Download prebuilt Qt Host
         shell: cmd
