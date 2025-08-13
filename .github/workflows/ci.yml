@@ -76,9 +76,12 @@ jobs:
 
       - name: Initialize Qt submodules
         shell: cmd
-        run: |
-          init-repository.bat ${{ env.INIT_FLAGS }}
-          git cherry-pick {{ env.CHERRY_PICK }}
+        run: init-repository.bat ${{ env.INIT_FLAGS }}
+
+      - name: Cherry pick commits
+        shell: cmd
+        run: git cherry-pick {{ env.CHERRY_PICK }}
+          
       - name: Configure
         shell: cmd
         run: |
@@ -143,9 +146,11 @@ jobs:
       
       - name: Initialize Qt submodules
         shell: cmd
-        run:  |
-          init-repository.bat ${{ env.INIT_FLAGS }}
-          git cherry-pick {{ env.CHERRY_PICK }}
+        run: init-repository.bat ${{ env.INIT_FLAGS }}
+
+      - name: Cherry pick commits
+        shell: cmd
+        run: git cherry-pick {{ env.CHERRY_PICK }}
 
       - name: Download prebuilt Qt Host
         shell: cmd
