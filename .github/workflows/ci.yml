@@ -80,7 +80,7 @@ jobs:
 
       - name: Cherry pick commits
         shell: cmd
-        run: git cherry-pick {{ env.CHERRY_PICK }}
+        run: git cherry-pick ${{ env.CHERRY_PICK }}
           
       - name: Configure
         shell: cmd
@@ -150,7 +150,7 @@ jobs:
 
       - name: Cherry pick commits
         shell: cmd
-        run: git cherry-pick {{ env.CHERRY_PICK }}
+        run: git cherry-pick ${{ env.CHERRY_PICK }}
 
       - name: Download prebuilt Qt Host
         shell: cmd
