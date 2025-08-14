@@ -15,7 +15,7 @@ env:
     -no-feature-quickcontrols2-fluentwinui3 -no-feature-accessibility -no-feature-textmarkdownreader -no-feature-textmarkdownwriter -no-feature-pdf
     -no-feature-movie -no-feature-undocommand -no-feature-undogroup -no-feature-ctf -no-feature-widgets -no-feature-imageformat_xbm 
     -no-feature-sortfilterproxymodel -no-feature-textodfwriter -no-feature-qml-network -no-feature-qml-ssl -DQT_WILL_BUILD_TOOLS=ON
-    -no-feature-graphicsframecapture -no-feature-regularexpression -reduce-relocations -DQT_FEATURE_no_direct_extern_access=ON -DQT_BUILD_QMAKE=ON
+    -no-feature-graphicsframecapture -no-feature-regularexpression -DQT_BUILD_QMAKE=ON
 
 on:
   workflow_dispatch:
@@ -88,7 +88,7 @@ jobs:
           mkdir build
           cd build
           
-          ..\configure.bat -schannel -prefix "%OUTPUT_DIR%" ${{ env.SHARED_FLAGS }}
+          ..\configure.bat -schannel -prefix "%OUTPUT_DIR%" ${{ env.SHARED_FLAGS }} -reduce-relocations
 
       - name: List features
         shell: cmd
@@ -183,9 +183,9 @@ jobs:
           mkdir build
           cd build
           
-            ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" ${{ env.SHARED_FLAGS }} -DQT_GENERATE_WRAPPER_SCRIPTS_FOR_ALL_HOSTS=ON ^
-              -android-abis ${{ matrix.arch }} -android-ndk "%ANDROID_NDK_LATEST_HOME%" -android-sdk "%ANDROID_HOME%" ^
-              -DQT_GENERATE_WRAPPER_SCRIPTS_FOR_ALL_HOSTS=ON -openssl-runtime -- -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT%"
+            ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" ${{ env.SHARED_FLAGS }} -reduce-relocations ^
+              -DQT_GENERATE_WRAPPER_SCRIPTS_FOR_ALL_HOSTS=ON -android-abis ${{ matrix.arch }} -android-ndk "%ANDROID_NDK_LATEST_HOME%" ^
+               -android-sdk "%ANDROID_HOME%" -DQT_GENERATE_WRAPPER_SCRIPTS_FOR_ALL_HOSTS=ON -openssl-runtime -- -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT%"
             
       - name: List features
         shell: cmd
