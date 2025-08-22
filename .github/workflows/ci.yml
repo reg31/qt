@@ -98,7 +98,7 @@ jobs:
         shell: cmd
         run: |
           cd build
-          cmake --build . --parallel
+          cmake --build . -j%NUMBER_OF_PROCESSORS%
           cmake --install .
           
       - name: Package artifacts
@@ -195,7 +195,7 @@ jobs:
         shell: cmd
         run: |
           cd build
-          cmake --build . --parallel
+          cmake --build . -j%NUMBER_OF_PROCESSORS%
           cmake --install . --strip
           
       - name: Package artifacts
@@ -240,7 +240,7 @@ jobs:
           -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
           ../configure -list-features
           
-          cmake --build . --parallel
+          cmake --build . -j$(sysctl -n hw.ncpu)
           cmake --install . --strip
           
       - name: Package artifacts
@@ -289,10 +289,10 @@ jobs:
           cd build
           
           ../configure -platform macx-ios-clang ${{ env.SHARED_FLAGS }} -securetransport -feature-appstore-compliant \
-          -prefix $OUTPUT_DIR -qt-host-path $HOST_PATH
+          -prefix $OUTPUT_DIR -qt-host-path $HOST_PATH -DCMAKE_C_FLAGS="-march=armv8.2-a+dotprod" -DCMAKE_CXX_FLAGS="-march=armv8.2-a+dotprod"
           ../configure -list-features
 
-          cmake --build . --parallel
+          cmake --build . -j$(sysctl -n hw.ncpu)
           cmake --install . --strip
           
       - name: Package artifacts
