@@ -237,7 +237,7 @@ jobs:
           cd build
           
           ../configure -platform macx-clang ${{ env.SHARED_FLAGS }} -securetransport -feature-appstore-compliant -prefix $OUTPUT_DIR \
-          -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
+          -- -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
           ../configure -list-features
           
           cmake --build . -j$(sysctl -n hw.ncpu)
@@ -289,7 +289,7 @@ jobs:
           cd build
           
           ../configure -platform macx-ios-clang ${{ env.SHARED_FLAGS }} -securetransport -feature-appstore-compliant \
-          -prefix $OUTPUT_DIR -qt-host-path $HOST_PATH -DCMAKE_C_FLAGS="-march=armv8.2-a+dotprod" -DCMAKE_CXX_FLAGS="-march=armv8.2-a+dotprod"
+          -prefix $OUTPUT_DIR -qt-host-path $HOST_PATH -- -DCMAKE_C_FLAGS="-march=armv8.2-a+dotprod" -DCMAKE_CXX_FLAGS="-march=armv8.2-a+dotprod"
           ../configure -list-features
 
           cmake --build . -j$(sysctl -n hw.ncpu)
