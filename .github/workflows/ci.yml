@@ -15,7 +15,7 @@ env:
     -no-feature-quickcontrols2-fluentwinui3 -no-feature-accessibility -no-feature-textmarkdownreader -no-feature-textmarkdownwriter -no-feature-pdf
     -no-feature-movie -no-feature-undocommand -no-feature-undogroup -no-feature-ctf -no-feature-widgets -no-feature-imageformat_xbm 
     -no-feature-sortfilterproxymodel -no-feature-textodfwriter -no-feature-qml-network -no-feature-qml-ssl -DQT_WILL_BUILD_TOOLS=ON
-    -no-feature-graphicsframecapture -no-feature-regularexpression
+    -no-feature-graphicsframecapture -no-feature-regularexpression -reduce-relocations -DFEATURE_no_direct_extern_access=ON
 
 on:
   workflow_dispatch:
@@ -79,8 +79,8 @@ jobs:
       - name: Configure
         shell: cmd
         run: |
-          set CFLAGS=-O3 -s
-          set CXXFLAGS=-O3 -s
+          set "CFLAGS=-O3 -s"
+          set "CXXFLAGS=-O3 -s"
           set "CC=%CD%\mingw64\bin\gcc"
           set "CXX=%CD%\mingw64\bin\g++"
           set "OUTPUT_DIR=%CD%\qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
@@ -88,7 +88,7 @@ jobs:
           mkdir build
           cd build
           
-          ..\configure.bat -schannel -prefix "%OUTPUT_DIR%" ${{ env.SHARED_FLAGS }} -reduce-relocations -DFEATURE_no_direct_extern_access=ON
+          ..\configure.bat -schannel -prefix "%OUTPUT_DIR%" ${{ env.SHARED_FLAGS }} -reduce-relocations -DFEATURE_no_direct_extern_access=ON -- -DCMAKE_OSX_ARCHITECTURES="x86_64"
 
       - name: List features
         shell: cmd
