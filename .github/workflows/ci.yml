@@ -288,7 +288,7 @@ jobs:
           mkdir -p build
           cd build
           
-          ../configure -platform macx-ios-clang ${{ env.SHARED_FLAGS }} -securetransport -feature-appstore-compliant -ltcg \
+          ../configure -platform macx-ios-clang ${{ env.SHARED_FLAGS }} -securetransport -feature-appstore-compliant -gc-binaries \
           -feature-relocatable -prefix $OUTPUT_DIR -qt-host-path $HOST_PATH -- -DCMAKE_OSX_ARCHITECTURES="arm64"
           ../configure -list-features
 
