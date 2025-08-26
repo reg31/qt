@@ -183,7 +183,7 @@ jobs:
           mkdir build
           cd build
           
-            ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" ${{ env.SHARED_FLAGS }} -reduce-relocations ^
+            ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" ${{ env.SHARED_FLAGS }} -reduce-relocations -c++std c++20 ^
               -DQT_GENERATE_WRAPPER_SCRIPTS_FOR_ALL_HOSTS=ON -android-abis ${{ matrix.arch }} -android-ndk "%ANDROID_NDK_LATEST_HOME%" ^
                -android-sdk "%ANDROID_HOME%" -DQT_GENERATE_WRAPPER_SCRIPTS_FOR_ALL_HOSTS=ON -openssl-runtime -- -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT%"
             
