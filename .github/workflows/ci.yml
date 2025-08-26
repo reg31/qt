@@ -174,8 +174,8 @@ jobs:
       - name: Configure Android Qt
         shell: cmd
         run: |
-          set "CFLAGS=-O3"
-          set "CXXFLAGS=-O3 -D_LIBCPP_ABI_NO_COMPRESSED_PAIR_PADDING"
+          set CFLAGS=-O3
+          set CXXFLAGS=-O3
           set "OUTPUT_DIR=%CD:\=/%/qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
           set "QT_ROOT_DIR=%CD:\=/%/qt-windows-mingw-release-dev"
           set "OPENSSL_ROOT=%CD:\=/%/openssl"
