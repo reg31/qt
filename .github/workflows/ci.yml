@@ -241,7 +241,7 @@ jobs:
           mkdir -p build
           cd build
           
-          ../configure -platform macx-clang ${{ env.SHARED_FLAGS }} -c++std c++2b -securetransport -feature-appstore-compliant -prefix $OUTPUT_DIR \
+          ../configure -platform macx-clang ${{ env.SHARED_FLAGS }} -c++std c++2c -securetransport -feature-appstore-compliant -prefix $OUTPUT_DIR \
           -feature-relocatable -- -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
           ../configure -list-features
           
