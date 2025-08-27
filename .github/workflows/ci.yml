@@ -175,7 +175,6 @@ jobs:
       - name: Configure Android Qt
         shell: cmd
         run: |
-          echo "ANDROID_API=35" >> $GITHUB_ENV
           set "OUTPUT_DIR=%CD:\=/%/qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
           set "QT_ROOT_DIR=%CD:\=/%/qt-windows-mingw-release-dev"
           set "OPENSSL_ROOT=%CD:\=/%/openssl"
