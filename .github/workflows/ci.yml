@@ -48,7 +48,6 @@ jobs:
           else
             echo "qt_branch=${{ env.QT_BRANCH }}" >> $GITHUB_OUTPUT
           fi
-
   build-windows:
     needs: setup
     runs-on: windows-2025
@@ -73,7 +72,6 @@ jobs:
           set MINGW_ARCHIVE=x86_64-15.1.0-release-posix-seh-ucrt-rt_v12-rev0.7z
           wget https://github.com/niXman/mingw-builds-binaries/releases/download/15.1.0-rt_v12-rev0/%MINGW_ARCHIVE%
           7z x %MINGW_ARCHIVE%
-
       - name: Initialize Qt submodules
         shell: cmd
         run: init-repository.bat ${{ env.INIT_FLAGS }}
@@ -84,12 +82,11 @@ jobs:
           set "CC=%CD%\mingw64\bin\gcc"
           set "CXX=%CD%\mingw64\bin\g++"
           set "OUTPUT_DIR=%CD%\qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
-
           mkdir build
           cd build
           
-          ..\configure.bat -schannel -prefix "%OUTPUT_DIR%" ${{ env.SHARED_FLAGS }} -reduce-relocations  -c++std c++2c
-
+          ..\configure.bat -schannel -prefix "%OUTPUT_DIR%" ${{ env.SHARED_FLAGS }} -reduce-relocations  -c++std c++2c ^
+            -- ${{ env.WITH_STRIP_BUILD_FLAGS }}
       - name: List features
         shell: cmd
         run: configure.bat -list-features
@@ -98,7 +95,7 @@ jobs:
         shell: cmd
         run: |
           cd build
-          cmake --build . -j%NUMBER_OF_PROCESSORS% ${{ env.WITH_STRIP_BUILD_FLAGS }}
+          cmake --build . -j%NUMBER_OF_PROCESSORS%
           cmake --install .
           
       - name: Package artifacts
@@ -150,7 +147,6 @@ jobs:
           set QT_ARCHIVE=qt-windows-mingw-release-dev.zip
           wget https://github.com/reg31/qt/releases/latest/download/%QT_ARCHIVE%
           7z x %QT_ARCHIVE%
-
       - name: Download prebuilt openssl
         shell: cmd
         run: |
@@ -184,7 +180,7 @@ jobs:
             ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" ${{ env.SHARED_FLAGS }} -reduce-relocations -c++std c++20 ^
               -DQT_GENERATE_WRAPPER_SCRIPTS_FOR_ALL_HOSTS=ON -android-abis ${{ matrix.arch }} -android-ndk "%ANDROID_NDK_LATEST_HOME%" ^
                -android-sdk "%ANDROID_HOME%" -DQT_GENERATE_WRAPPER_SCRIPTS_FOR_ALL_HOSTS=ON -openssl-runtime ^
-               -- -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT%"
+               -- -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT%" ${{ env.NO_STRIP_BUILD_FLAGS }}
             
       - name: List features
         shell: cmd
@@ -194,7 +190,7 @@ jobs:
         shell: cmd
         run: |
           cd build
-          cmake --build . -j%NUMBER_OF_PROCESSORS% ${{ env.NO_STRIP_BUILD_FLAGS }}
+          cmake --build . -j%NUMBER_OF_PROCESSORS%
           cmake --install . --strip
           
       - name: Package artifacts
@@ -244,7 +240,7 @@ jobs:
           -feature-relocatable -- -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
           ../configure -list-features
           
-          cmake --build . -j$(sysctl -n hw.ncpu) ${{ env.NO_STRIP_BUILD_FLAGS }}
+          cmake --build . -j$(sysctl -n hw.ncpu)
           cmake --install . --strip
           
       - name: Package artifacts
@@ -300,8 +296,7 @@ jobs:
           ../configure -platform macx-ios-clang ${{ env.SHARED_FLAGS }} -c++std c++2b -securetransport -feature-appstore-compliant -gc-binaries \
           -feature-relocatable -prefix $OUTPUT_DIR -qt-host-path $HOST_PATH -- -DCMAKE_OSX_ARCHITECTURES="arm64"
           ../configure -list-features
-
-          cmake --build . -j$(sysctl -n hw.ncpu) ${{ env.NO_STRIP_BUILD_FLAGS }}
+          cmake --build . -j$(sysctl -n hw.ncpu)
           cmake --install . --strip
           
       - name: Package artifacts
