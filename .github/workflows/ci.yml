@@ -217,7 +217,8 @@ jobs:
       - name: Setup xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: latest-stable
+          #xcode-version: latest-stable
+          xcode-version: '16.2'
           
       - name: Checkout Qt
         uses: actions/checkout@v5
@@ -265,7 +266,8 @@ jobs:
       - name: Setup xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: latest-stable
+          #xcode-version: latest-stable
+          xcode-version: '16.2'
           
       - name: Checkout Qt
         uses: actions/checkout@v5
