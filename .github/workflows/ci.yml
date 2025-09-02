@@ -17,8 +17,6 @@ env:
     -no-feature-quickcontrols2-fluentwinui3 -no-feature-accessibility -no-feature-textmarkdownreader -no-feature-textmarkdownwriter -no-feature-pdf
     -no-feature-movie -no-feature-undocommand -no-feature-undogroup -no-feature-ctf -no-feature-widgets -no-feature-imageformat_xbm -DQT_WILL_BUILD_TOOLS=ON 
     -no-feature-sortfilterproxymodel -no-feature-graphicsframecapture -DFEATURE_regularexpression=OFF -DFEATURE_no_direct_extern_access=ON
-    -no-feature-force_asserts -DFEATURE_quick_canvas=off -DFEATURE_quick_designer=off -DFEATURE_qml_xmllistmodel=off -DFEATURE_qml_table_model=off
-    -DFEATURE_qml_tree_model=off -DFEATURE_quick_gridview=off -DFEATURE_quick_tableview=off -DFEATURE_quick_treeview=off -DFEATURE_quick_pathview=off
   EXTRA_FLAGS: -no-feature-qml-network -no-feature-qml-ssl
     
 on:
