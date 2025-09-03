@@ -3,7 +3,7 @@ env:
   QT_REPO: 'https://github.com/qt/qt5.git'
   QT_BRANCH: 'dev'
   SNAPSHOT_TAG: 'qt-daily-snapshot'
-  OPENSSL_VERSION: openssl-3.5
+  OPENSSL_VERSION: openssl-3.6
   INIT_FLAGS: --module-subset=qtbase,qtdeclarative --branch --no-update
   NO_STRIP_BUILD_FLAGS: -DCMAKE_CXX_FLAGS_RELEASE="-O2 -DNDEBUG" -DCMAKE_C_FLAGS_RELEASE="-O2 -DNDEBUG"
   WITH_STRIP_BUILD_FLAGS: -DCMAKE_CXX_FLAGS_RELEASE="-O2 -DNDEBUG -s" -DCMAKE_C_FLAGS_RELEASE="-O2 -DNDEBUG -s"
