@@ -165,6 +165,14 @@ jobs:
           7z x bin_${{ matrix.arch }}.7z
           wget %DOWNLOAD_URL%mkspecs_${{ matrix.arch }}.7z
           7z x mkspecs_${{ matrix.arch }}.7z
+
+      - name: Configure Android Qt
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r29-beta4
+        env:
+          ANDROID_NDK_LATEST_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
           
       - name: Configure Android Qt
         shell: cmd
@@ -178,7 +186,7 @@ jobs:
           
             ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} ^
               -DQT_GENERATE_WRAPPER_SCRIPTS_FOR_ALL_HOSTS=ON -android-abis ${{ matrix.arch }} -android-ndk "%ANDROID_NDK_LATEST_HOME%" ^
-              -reduce-relocations -c++std c++20 -android-sdk "%ANDROID_HOME%" -DQT_GENERATE_WRAPPER_SCRIPTS_FOR_ALL_HOSTS=ON -openssl-runtime ^
+              -reduce-relocations -c++std c++2c -android-sdk "%ANDROID_SDK_ROOT%" -DQT_GENERATE_WRAPPER_SCRIPTS_FOR_ALL_HOSTS=ON -openssl-runtime ^
               -- -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT%" ${{ env.NO_STRIP_BUILD_FLAGS }}
             
       - name: List features
