@@ -146,6 +146,7 @@ jobs:
           set QT_ARCHIVE=qt-windows-mingw-release-dev.zip
           wget https://github.com/reg31/qt/releases/latest/download/%QT_ARCHIVE%
           7z x %QT_ARCHIVE%
+          
       - name: Download prebuilt openssl
         shell: cmd
         run: |
@@ -171,6 +172,7 @@ jobs:
         id: setup-ndk
         with:
           ndk-version: r29-beta4
+          link-to-sdk: true
           
       - name: Configure Android Qt
         shell: cmd
@@ -185,7 +187,7 @@ jobs:
             ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} ^
               -DQT_GENERATE_WRAPPER_SCRIPTS_FOR_ALL_HOSTS=ON -android-abis ${{ matrix.arch }} -android-ndk ${{ steps.setup-ndk.outputs.ndk-path }} ^
               -reduce-relocations -c++std c++2c -android-sdk "%ANDROID_SDK_ROOT%" -DQT_GENERATE_WRAPPER_SCRIPTS_FOR_ALL_HOSTS=ON -openssl-runtime ^
-              -DANDROID_PLATFORM=latest -- -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT%" ${{ env.NO_STRIP_BUILD_FLAGS }}
+              -- -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT%" ${{ env.NO_STRIP_BUILD_FLAGS }} -DANDROID_PLATFORM=latest
             
       - name: List features
         shell: cmd
