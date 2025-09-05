@@ -1,6 +1,7 @@
 name: Build Qt Library
 env:
   QT_BRANCH: 'dev'
+  JAVA_VERSION: 24
   OPENSSL_VERSION: openssl-3.6
   INIT_FLAGS: --module-subset=qtbase,qtdeclarative --branch --no-update
   NO_STRIP_BUILD_FLAGS: -DCMAKE_CXX_FLAGS_RELEASE="-O2 -DNDEBUG" -DCMAKE_C_FLAGS_RELEASE="-O2 -DNDEBUG"
@@ -129,7 +130,7 @@ jobs:
         uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
-          java-version: '24'
+          java-version: ${{ env.JAVA_VERSION }}
           check-latest: true
       
       - name: Install dependencies
@@ -188,7 +189,7 @@ jobs:
             ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} -feature-exceptions ^
               -DQT_GENERATE_WRAPPER_SCRIPTS_FOR_ALL_HOSTS=ON -android-abis ${{ matrix.arch }} -android-ndk ${{ steps.setup-ndk.outputs.ndk-path }} ^
               -reduce-relocations -c++std c++2b -android-sdk "%ANDROID_SDK_ROOT%" -DQT_GENERATE_WRAPPER_SCRIPTS_FOR_ALL_HOSTS=ON -openssl-runtime ^
-              -skip qtshadertools -android-javac-source 24 -android-javac-target 24 ^
+              -skip qtshadertools -android-javac-source ${{ env.JAVA_VERSION }} -android-javac-target ${{ env.JAVA_VERSION }} ^
               -- -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT%" ${{ env.NO_STRIP_BUILD_FLAGS }} -DANDROID_PLATFORM=latest
             
       - name: List features
