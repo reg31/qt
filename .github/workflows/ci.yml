@@ -87,7 +87,8 @@ jobs:
           cd build
           
           ..\configure.bat -schannel -prefix "%OUTPUT_DIR%" ${{ env.SHARED_FLAGS }} -reduce-relocations -c++std c++2c ^
-            -- ${{ env.WITH_STRIP_BUILD_FLAGS }}
+            -- ${{ env.WITH_STRIP_BUILD_FLAGS }} -Wno-deprecated
+
       - name: List features
         shell: cmd
         run: configure.bat -list-features
