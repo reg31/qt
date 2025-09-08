@@ -6,7 +6,7 @@ env:
   INIT_FLAGS: --module-subset=qtbase,qtdeclarative --branch --no-update
   NO_STRIP_BUILD_FLAGS: -DCMAKE_CXX_FLAGS_RELEASE="-O2 -DNDEBUG" -DCMAKE_C_FLAGS_RELEASE="-O2 -DNDEBUG"
   WITH_STRIP_BUILD_FLAGS: -DCMAKE_CXX_FLAGS_RELEASE="-O2 -DNDEBUG -s -Wno-deprecated" -DCMAKE_C_FLAGS_RELEASE="-O2 -DNDEBUG -s"
-  SHARED_FLAGS: -release -no-feature-testlib -no-feature-dtls -DQT_NO_PACKAGE_VERSION_CHECK=ON -DQT_NO_PACKAGE_VERSION_INCOMPATIBLE_WARNING=ON
+  SHARED_FLAGS: -release -no-feature-testlib -DQT_NO_PACKAGE_VERSION_CHECK=ON -DQT_NO_PACKAGE_VERSION_INCOMPATIBLE_WARNING=ON
     -no-feature-hijricalendar -no-feature-islamiccivilcalendar -nomake tests -nomake examples -submodules qtbase,qtdeclarative -no-feature-sql
     -skip qtlanguageserver,qtquicktimeline,qtquick3d,qtimageformats -qt-zlib -qt-libjpeg -qt-libpng -qt-pcre -no-harfbuzz -no-freetype -reduce-exports
     -DQT_BUILD_EXAMPLES_BY_DEFAULT=OFF -DQT_BUILD_TESTS_BY_DEFAULT=OFF -DQT_BUILD_TOOLS_BY_DEFAULT=ON -no-feature-calendarwidget -no-feature-textodfwriter
