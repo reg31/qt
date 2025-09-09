@@ -250,7 +250,7 @@ jobs:
           cd build
           
           ../configure -platform macx-clang ${{ env.SHARED_FLAGS }} -c++std c++2b -securetransport -feature-appstore-compliant -prefix $OUTPUT_DIR \
-          -feature-exceptions -- -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
+          -- -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
           ../configure -list-features
           
           cmake --build . -j$(sysctl -n hw.ncpu)
@@ -308,7 +308,7 @@ jobs:
           cd build
           
           ../configure -platform macx-ios-clang ${{ env.SHARED_FLAGS }} -c++std c++2b -securetransport -feature-appstore-compliant -gc-binaries \
-          -feature-exceptions -skip qtshadertools -prefix $OUTPUT_DIR -qt-host-path $HOST_PATH -- -DCMAKE_OSX_ARCHITECTURES="arm64"
+          -skip qtshadertools -prefix $OUTPUT_DIR -qt-host-path $HOST_PATH -- -DCMAKE_OSX_ARCHITECTURES="arm64"
           ../configure -list-features
           
           cmake --build . -j$(sysctl -n hw.ncpu)
