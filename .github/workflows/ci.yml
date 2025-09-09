@@ -5,7 +5,7 @@ env:
   OPENSSL_VERSION: openssl-3.6
   INIT_FLAGS: --module-subset=qtbase,qtdeclarative --branch --no-update
   NO_STRIP_BUILD_FLAGS: -DCMAKE_CXX_FLAGS_RELEASE="-O2 -DNDEBUG" -DCMAKE_C_FLAGS_RELEASE="-O2 -DNDEBUG"
-  WITH_STRIP_BUILD_FLAGS: -DCMAKE_CXX_FLAGS_RELEASE="-O2 -DNDEBUG -s -Wno-deprecated" -DCMAKE_C_FLAGS_RELEASE="-O2 -DNDEBUG -s"
+  WITH_STRIP_BUILD_FLAGS: -DCMAKE_CXX_FLAGS_RELEASE="-O2 -DNDEBUG -s" -DCMAKE_C_FLAGS_RELEASE="-O2 -DNDEBUG -s"
   SHARED_FLAGS: -release -no-feature-testlib -DQT_NO_PACKAGE_VERSION_CHECK=ON -DQT_NO_PACKAGE_VERSION_INCOMPATIBLE_WARNING=ON
     -no-feature-hijricalendar -no-feature-islamiccivilcalendar -nomake tests -nomake examples -submodules qtbase,qtdeclarative -no-feature-sql
     -skip qtlanguageserver,qtquicktimeline,qtquick3d,qtimageformats -qt-zlib -qt-libjpeg -qt-libpng -qt-pcre -no-harfbuzz -no-freetype -reduce-exports
@@ -221,7 +221,7 @@ jobs:
 
   build-macos:
     needs: setup
-    runs-on: macos-15
+    runs-on: macos-latest
     strategy:
       matrix:
         build_type: [release]
@@ -230,7 +230,6 @@ jobs:
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: latest-stable
-          #xcode-version: '16.2'
           
       - name: Checkout Qt
         uses: actions/checkout@v5
@@ -270,7 +269,7 @@ jobs:
 
   build-ios:
     needs: setup
-    runs-on: macos-15
+    runs-on: macos-latest
     strategy:
       matrix:
         build_type: [release]
@@ -279,7 +278,6 @@ jobs:
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: latest-stable
-          #xcode-version: '16.2'
           
       - name: Checkout Qt
         uses: actions/checkout@v5
