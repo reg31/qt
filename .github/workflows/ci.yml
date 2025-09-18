@@ -51,7 +51,7 @@ jobs:
           fi
   build-windows:
     needs: setup
-    runs-on: windows-2025
+    runs-on: windows-latest
     strategy:
       matrix:
         build_type: [release]
