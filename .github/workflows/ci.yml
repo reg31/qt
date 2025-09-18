@@ -1,7 +1,7 @@
 name: Build Qt Library
 env:
   QT_BRANCH: 'dev'
-  JAVA_VERSION: 24
+  JAVA_VERSION: 25
   OPENSSL_VERSION: openssl-3.6
   INIT_FLAGS: --module-subset=qtbase,qtdeclarative --branch --no-update
   NO_STRIP_BUILD_FLAGS: -DCMAKE_CXX_FLAGS_RELEASE="-O2 -DNDEBUG" -DCMAKE_C_FLAGS_RELEASE="-O2 -DNDEBUG"
@@ -131,7 +131,7 @@ jobs:
       - name: Set up JDK
         uses: actions/setup-java@v5
         with:
-          distribution: 'temurin'
+          distribution: 'graalvm'
           java-version: ${{ env.JAVA_VERSION }}
           check-latest: true
       
