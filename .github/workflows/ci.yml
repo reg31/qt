@@ -68,7 +68,7 @@ jobs:
           fetch-depth: 0
           submodules: false
         
-      - name: setup dev drive
+      - name: Setup dev drive
         uses: samypr100/setup-dev-drive@v3
         with:
           drive-size: 4GB
@@ -145,7 +145,7 @@ jobs:
           fetch-depth: 0
           submodules: false
 
-      - name: setup dev drive
+      - name: Setup dev drive
         uses: samypr100/setup-dev-drive@v3
         with:
           drive-size: 4GB
