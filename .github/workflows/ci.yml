@@ -67,13 +67,11 @@ jobs:
           ref: ${{ needs.setup.outputs.qt_branch }}
           fetch-depth: 0
           submodules: false
-          
-      - name: Initialize Qt submodules
-        run: init-repository.bat ${{ env.INIT_FLAGS }}
         
       - name: setup dev drive
         uses: samypr100/setup-dev-drive@v3
         with:
+          drive-size: 4GB
           drive-type: Fixed
           workspace-copy: true
           trusted-dev-drive: true
@@ -88,6 +86,10 @@ jobs:
           set MINGW_ARCHIVE=x86_64-15.1.0-release-posix-seh-ucrt-rt_v12-rev0.7z
           wget https://github.com/niXman/mingw-builds-binaries/releases/download/15.1.0-rt_v12-rev0/%MINGW_ARCHIVE%
           7z x %MINGW_ARCHIVE%
+        
+      - name: Initialize Qt submodules
+        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
+        run: init-repository.bat ${{ env.INIT_FLAGS }}
           
       - name: Configure
         working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
@@ -142,13 +144,11 @@ jobs:
           ref: ${{ needs.setup.outputs.qt_branch }}
           fetch-depth: 0
           submodules: false
-          
-      - name: Initialize Qt submodules
-        run: init-repository.bat ${{ env.INIT_FLAGS }}
 
       - name: setup dev drive
         uses: samypr100/setup-dev-drive@v3
         with:
+          drive-size: 4GB
           drive-type: Fixed
           workspace-copy: true
           trusted-dev-drive: true
@@ -163,6 +163,10 @@ jobs:
       - name: Install dependencies
         working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: choco install -y wget
+        
+      - name: Initialize Qt submodules
+        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
+        run: init-repository.bat ${{ env.INIT_FLAGS }}
 
       - name: Download prebuilt Qt Host
         working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
