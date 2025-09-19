@@ -49,12 +49,16 @@ jobs:
           else
             echo "qt_branch=${{ env.QT_BRANCH }}" >> $GITHUB_OUTPUT
           fi
+          
   build-windows:
     needs: setup
     runs-on: windows-latest
     strategy:
       matrix:
         build_type: [release]
+    defaults:
+      run:
+        shell: cmd
     steps:
       - name: Checkout Qt
         uses: actions/checkout@v5
@@ -63,22 +67,31 @@ jobs:
           ref: ${{ needs.setup.outputs.qt_branch }}
           fetch-depth: 0
           submodules: false
+        
+      - name: setup dev drive
+        uses: samypr100/setup-dev-drive@v3
+        with:
+          drive-type: Fixed
+          workspace-copy: true
+          trusted-dev-drive: true
 
       - name: Install dependencies
+        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: choco install -y wget
 
       - name: Download mingw
-        shell: cmd
+        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: |
           set MINGW_ARCHIVE=x86_64-15.1.0-release-posix-seh-ucrt-rt_v12-rev0.7z
           wget https://github.com/niXman/mingw-builds-binaries/releases/download/15.1.0-rt_v12-rev0/%MINGW_ARCHIVE%
           7z x %MINGW_ARCHIVE%
+          
       - name: Initialize Qt submodules
-        shell: cmd
+        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: init-repository.bat ${{ env.INIT_FLAGS }}
           
       - name: Configure
-        shell: cmd
+        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: |
           set "CC=%CD%\mingw64\bin\gcc"
           set "CXX=%CD%\mingw64\bin\g++"
@@ -90,18 +103,18 @@ jobs:
             -- ${{ env.WITH_STRIP_BUILD_FLAGS }}
 
       - name: List features
-        shell: cmd
+        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: configure.bat -list-features
 
       - name: Build Qt
-        shell: cmd
+        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: |
           cd build
           cmake --build . -j%NUMBER_OF_PROCESSORS%
           cmake --install .
           
       - name: Package artifacts
-        shell: cmd
+        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: |
           set "OUTPUT_NAME=qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
           7z a %OUTPUT_NAME%.zip .\%OUTPUT_NAME%\*
@@ -110,15 +123,18 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: qt-windows-mingw
-          path: qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
+          path: ${{ env.DEV_DRIVE_WORKSPACE }}/qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
 
   build-android:
     needs: setup
-    runs-on: windows-2025
+    runs-on: windows-latest
     strategy:
       matrix:
         build_type: [release]
         arch: [arm64-v8a, armeabi-v7a]
+    defaults:
+      run:
+        shell: cmd
     steps:
       - name: Checkout Qt
         uses: actions/checkout@v5
@@ -127,6 +143,13 @@ jobs:
           ref: ${{ needs.setup.outputs.qt_branch }}
           fetch-depth: 0
           submodules: false
+
+      - name: setup dev drive
+        uses: samypr100/setup-dev-drive@v3
+        with:
+          drive-type: Fixed
+          workspace-copy: true
+          trusted-dev-drive: true
       
       - name: Set up JDK
         uses: actions/setup-java@v5
@@ -136,14 +159,15 @@ jobs:
           check-latest: true
       
       - name: Install dependencies
+        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: choco install -y wget
       
       - name: Initialize Qt submodules
-        shell: cmd
+        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: init-repository.bat ${{ env.INIT_FLAGS }}
 
       - name: Download prebuilt Qt Host
-        shell: cmd
+        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: |
           mkdir qt-windows-mingw-release-dev
           cd qt-windows-mingw-release-dev
@@ -152,7 +176,7 @@ jobs:
           7z x %QT_ARCHIVE%
           
       - name: Download prebuilt openssl
-        shell: cmd
+        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: |
           mkdir openssl
           cd openssl
@@ -161,7 +185,7 @@ jobs:
           7z x %OPENSSL_ARCHIVE%
     
       - name: Extract config folders
-        shell: cmd
+        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: |
           mkdir configFolders
           cd configFolders
@@ -179,7 +203,7 @@ jobs:
           link-to-sdk: true
           
       - name: Configure Android Qt
-        shell: cmd
+        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: |
           set "OUTPUT_DIR=%CD:\=/%/qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
           set "QT_ROOT_DIR=%CD:\=/%/qt-windows-mingw-release-dev"
@@ -195,18 +219,18 @@ jobs:
               -- -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT%" ${{ env.NO_STRIP_BUILD_FLAGS }}
             
       - name: List features
-        shell: cmd
+        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: configure.bat -list-features          
 
       - name: Build Android Qt
-        shell: cmd
+        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: |
           cd build
           cmake --build . -j%NUMBER_OF_PROCESSORS%
           cmake --install . --strip
           
       - name: Package artifacts
-        shell: cmd
+        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: |
           set "OUTPUT_NAME=qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
           Xcopy .\configFolders\mkspecs\ .\%OUTPUT_NAME%\mkspecs\ /c /i /s /y /r
@@ -217,7 +241,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: qt-android-${{ matrix.arch }}
-          path: qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
+          path: ${{ env.DEV_DRIVE_WORKSPACE }}/qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
 
   build-macos:
     needs: setup
