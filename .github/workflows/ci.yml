@@ -71,7 +71,7 @@ jobs:
       - name: Setup dev drive
         uses: samypr100/setup-dev-drive@v3
         with:
-          drive-size: 4GB
+          drive-size: 8GB
           drive-type: Fixed
           workspace-copy: true
           trusted-dev-drive: true
@@ -148,7 +148,7 @@ jobs:
       - name: Setup dev drive
         uses: samypr100/setup-dev-drive@v3
         with:
-          drive-size: 4GB
+          drive-size: 8GB
           drive-type: Fixed
           workspace-copy: true
           trusted-dev-drive: true
