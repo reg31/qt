@@ -59,15 +59,7 @@ jobs:
     defaults:
       run:
         shell: cmd
-    steps:
-      - name: Maximize build space
-        uses: easimon/maximize-build-space@master
-        with:
-          remove-codeql: 'true'
-          remove-dotnet: 'true'
-          remove-haskell: 'true'          
-          remove-docker-images: 'true'
-          
+    steps:         
       - name: Checkout Qt
         uses: actions/checkout@v5
         with:
