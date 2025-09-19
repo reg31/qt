@@ -60,6 +60,14 @@ jobs:
       run:
         shell: cmd
     steps:
+      - name: Maximize build space
+        uses: easimon/maximize-build-space@master
+        with:
+          remove-codeql: 'true'
+          remove-dotnet: 'true'
+          remove-haskell: 'true'          
+          remove-docker-images: 'true'
+          
       - name: Checkout Qt
         uses: actions/checkout@v5
         with:
@@ -71,7 +79,7 @@ jobs:
       - name: Setup dev drive
         uses: samypr100/setup-dev-drive@v3
         with:
-          drive-size: 14GB
+          drive-size: 20GB
           drive-type: Fixed
           workspace-copy: true
           trusted-dev-drive: true
@@ -148,7 +156,7 @@ jobs:
       - name: Setup dev drive
         uses: samypr100/setup-dev-drive@v3
         with:
-          drive-size: 14GB
+          drive-size: 8GB
           drive-type: Fixed
           workspace-copy: true
           trusted-dev-drive: true
