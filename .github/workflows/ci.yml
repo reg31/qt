@@ -17,7 +17,7 @@ env:
     -no-feature-quickcontrols2-fluentwinui3 -no-feature-accessibility -no-feature-textmarkdownreader -no-feature-textmarkdownwriter
     -no-feature-movie -no-feature-undocommand -no-feature-undogroup -no-feature-ctf -no-feature-widgets -no-feature-imageformat_xbm -DQT_WILL_BUILD_TOOLS=ON 
     -no-feature-sortfilterproxymodel -no-feature-graphicsframecapture -DFEATURE_regularexpression=OFF -DFEATURE_no_direct_extern_access=ON
-    -no-feature-concatenatetablesproxymodel -no-feature-whatsthis
+    -no-feature-concatenatetablesproxymodel -no-feature-whatsthis -fno-exceptions
   EXTRA_FLAGS: -no-feature-qml-network -no-feature-qml-ssl
     
 on:
@@ -218,7 +218,8 @@ jobs:
               -DQT_GENERATE_WRAPPER_SCRIPTS_FOR_ALL_HOSTS=ON -android-abis ${{ matrix.arch }} -android-ndk ${{ steps.setup-ndk.outputs.ndk-path }} ^
               -reduce-relocations -c++std c++2b -android-sdk "%ANDROID_SDK_ROOT%" -DQT_GENERATE_WRAPPER_SCRIPTS_FOR_ALL_HOSTS=ON -openssl-runtime ^
               -skip qtshadertools -android-javac-source ${{ env.JAVA_VERSION }} -android-javac-target ${{ env.JAVA_VERSION }} ^
-              -- -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT%" ${{ env.NO_STRIP_BUILD_FLAGS }}
+              -- -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT%" ${{ env.NO_STRIP_BUILD_FLAGS }} ^
+              -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--pack-dyn-relocs=android+relr,--use-android-relr-tags,--gc-sections"
               
             
       - name: List features
@@ -228,7 +229,6 @@ jobs:
       - name: Build Android Qt
         working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: |
-          cmake -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--pack-dyn-relocs=android+relr,--use-android-relr-tags,--gc-sections"
           cd build          
           cmake --build . -j%NUMBER_OF_PROCESSORS%
           cmake --install . --strip
