@@ -101,7 +101,8 @@ jobs:
           cd build
           
           ..\configure.bat -schannel -prefix "%OUTPUT_DIR%" ${{ env.SHARED_FLAGS }} -reduce-relocations -c++std c++2c ^
-            -- ${{ env.WITH_STRIP_BUILD_FLAGS }}
+            -- ${{ env.WITH_STRIP_BUILD_FLAGS }} ^
+            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--pack-dyn-relocs=android+relr,--use-android-relr-tags,--gc-sections"
 
       - name: List features
         working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
