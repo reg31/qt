@@ -214,10 +214,10 @@ jobs:
           mkdir build
           cd build
           
-            ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} -feature-exceptions ^
+            ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} ^
               -DQT_GENERATE_WRAPPER_SCRIPTS_FOR_ALL_HOSTS=ON -android-abis ${{ matrix.arch }} -android-ndk ${{ steps.setup-ndk.outputs.ndk-path }} ^
               -reduce-relocations -c++std c++2b -android-sdk "%ANDROID_SDK_ROOT%" -DQT_GENERATE_WRAPPER_SCRIPTS_FOR_ALL_HOSTS=ON -openssl-runtime ^
-              -skip qtshadertools -android-javac-source ${{ env.JAVA_VERSION }} -android-javac-target ${{ env.JAVA_VERSION }} ^
+              -skip qtshadertools -android-javac-source ${{ env.JAVA_VERSION }} -android-javac-target ${{ env.JAVA_VERSION }} -gc-binaries ^
               -- -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT%" ${{ env.NO_STRIP_BUILD_FLAGS }}
               
             
@@ -229,7 +229,7 @@ jobs:
         working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: |
           cd build
-          cmake --build . -j%NUMBER_OF_PROCESSORS% --DCMAKE_SHARED_LINKER_FLAGS="-Wl,--pack-dyn-relocs=android+relr,--use-android-relr-tags,--gc-sections"
+          cmake --build . -j%NUMBER_OF_PROCESSORS%
           cmake --install . --strip
           
       - name: Package artifacts
@@ -279,7 +279,7 @@ jobs:
           -- -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
           ../configure -list-features
           
-          cmake --build . -j$(sysctl -n hw.ncpu) --DCMAKE_SHARED_LINKER_FLAGS="-Wl,--gc-sections"
+          cmake --build . -j$(sysctl -n hw.ncpu)
           cmake --install . --strip
           
       - name: Package artifacts
@@ -336,7 +336,7 @@ jobs:
           -skip qtshadertools -prefix $OUTPUT_DIR -qt-host-path $HOST_PATH -- -DCMAKE_OSX_ARCHITECTURES="arm64"
           ../configure -list-features
           
-          cmake --build . -j$(sysctl -n hw.ncpu) --DCMAKE_SHARED_LINKER_FLAGS="-Wl,--gc-sections"
+          cmake --build . -j$(sysctl -n hw.ncpu)
           cmake --install . --strip
           
       - name: Package artifacts
