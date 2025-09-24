@@ -229,6 +229,7 @@ jobs:
         working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: |
           cd build
+          cmake -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--pack-dyn-relocs=android+relr,--use-android-relr-tags,--gc-sections"
           cmake --build . -j%NUMBER_OF_PROCESSORS%
           cmake --install . --strip
           
