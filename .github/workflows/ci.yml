@@ -17,8 +17,8 @@ env:
     -no-feature-quickcontrols2-fluentwinui3 -no-feature-accessibility -no-feature-textmarkdownreader -no-feature-textmarkdownwriter
     -no-feature-movie -no-feature-undocommand -no-feature-undogroup -no-feature-ctf -no-feature-widgets -no-feature-imageformat_xbm
     -no-feature-sortfilterproxymodel -no-feature-graphicsframecapture -DFEATURE_regularexpression=OFF -DFEATURE_no_direct_extern_access=ON
-    -no-feature-concatenatetablesproxymodel -no-feature-whatsthis -DQT_FORCE_BUILD_TOOLS=ON -DQT_WILL_BUILD_TOOLS=ON
-  EXTRA_FLAGS: -no-feature-qml-network -no-feature-qml-ssl -no-feature-icu    -no-feature-quickcontrols2-windows
+    -no-feature-concatenatetablesproxymodel -no-feature-whatsthis -DQT_FORCE_BUILD_TOOLS=ON -DQT_WILL_BUILD_TOOLS=ON -no-feature-quickcontrols2-windows
+  EXTRA_FLAGS: -no-feature-qml-network -no-feature-qml-ssl -no-feature-icu
     
 on:
   workflow_dispatch:
@@ -237,8 +237,8 @@ jobs:
         working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: |
           set "OUTPUT_NAME=qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
-          Xcopy .\configFolders\mkspecs\ .\%OUTPUT_NAME%\mkspecs\ /c /i /s /y /r
-          Xcopy .\configFolders\bin\ .\%OUTPUT_NAME%\bin\ /c /i /s /y /r
+          # Xcopy .\configFolders\mkspecs\ .\%OUTPUT_NAME%\mkspecs\ /c /i /s /y /r
+          # Xcopy .\configFolders\bin\ .\%OUTPUT_NAME%\bin\ /c /i /s /y /r
           7z a %OUTPUT_NAME%.zip .\%OUTPUT_NAME%\*
           
       - name: Upload build artifact
