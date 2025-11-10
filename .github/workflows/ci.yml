@@ -237,8 +237,8 @@ jobs:
         working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: |
           set "OUTPUT_NAME=qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
-          Xcopy .\configFolders\mkspecs\ .\%OUTPUT_NAME%\mkspecs\ /c /i /s /y /r
-          Xcopy .\configFolders\bin\ .\%OUTPUT_NAME%\bin\ /c /i /s /y /r
+          # Xcopy .\configFolders\mkspecs\ .\%OUTPUT_NAME%\mkspecs\ /c /i /s /y /r
+          # Xcopy .\configFolders\bin\ .\%OUTPUT_NAME%\bin\ /c /i /s /y /r
           7z a %OUTPUT_NAME%.zip .\%OUTPUT_NAME%\*
           
       - name: Upload build artifact
@@ -276,7 +276,7 @@ jobs:
           mkdir -p build
           cd build
           
-          ../configure -platform macx-clang ${{ env.SHARED_FLAGS }} -securetransport -feature-appstore-compliant -prefix $OUTPUT_DIR \
+          ../configure -xplatform macx-clang ${{ env.SHARED_FLAGS }} -securetransport -feature-appstore-compliant -prefix $OUTPUT_DIR \
           -- -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" ${{ env.NO_STRIP_BUILD_FLAGS }} -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-dead_strip"
           ../configure -list-features
           
@@ -333,7 +333,7 @@ jobs:
           mkdir -p build
           cd build
           
-          ../configure -platform macx-ios-clang ${{ env.SHARED_FLAGS }} -securetransport -feature-appstore-compliant -gc-binaries \
+          ../configure -xplatform macx-ios-clang ${{ env.SHARED_FLAGS }} -securetransport -feature-appstore-compliant -gc-binaries \
           -skip qtshadertools -prefix $OUTPUT_DIR -qt-host-path $HOST_PATH -- -DCMAKE_OSX_ARCHITECTURES="arm64" \
           -DCMAKE_C_FLAGS="-march=armv8.2-a+dotprod -O2 -DNDEBUG" -DCMAKE_CXX_FLAGS="-march=armv8.2-a+dotprod -O2 -DNDEBUG"
           ../configure -list-features
