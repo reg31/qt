@@ -272,7 +272,7 @@ jobs:
           mkdir -p build
           cd build
           
-          ../configure -xplatform macx-clang ${{ env.SHARED_FLAGS }} -securetransport -feature-appstore-compliant -prefix $OUTPUT_DIR \
+          ../configure ${{ env.SHARED_FLAGS }} -securetransport -feature-appstore-compliant -prefix $OUTPUT_DIR \
           -- -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" ${{ env.NO_STRIP_BUILD_FLAGS }} -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-dead_strip"
           ../configure -list-features
           
@@ -329,7 +329,7 @@ jobs:
           mkdir -p build
           cd build
           
-          ../configure -xplatform macx-ios-clang ${{ env.SHARED_FLAGS }} -securetransport -feature-appstore-compliant -gc-binaries \
+          ../configure -platform macx-ios-clang ${{ env.SHARED_FLAGS }} -securetransport -feature-appstore-compliant -gc-binaries \
           -skip qtshadertools -prefix $OUTPUT_DIR -qt-host-path $HOST_PATH -- -DCMAKE_OSX_ARCHITECTURES="arm64" \
           -DCMAKE_C_FLAGS="-march=armv8.2-a+dotprod -O2 -DNDEBUG" -DCMAKE_CXX_FLAGS="-march=armv8.2-a+dotprod -O2 -DNDEBUG"
           ../configure -list-features
