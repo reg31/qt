@@ -191,11 +191,8 @@ jobs:
         run: |
           mkdir configFolders
           cd configFolders
-          set "DOWNLOAD_URL=https://raw.githubusercontent.com/reg31/qt/main/files/"
-          wget %DOWNLOAD_URL%bin_${{ matrix.arch }}.7z
-          7z x bin_${{ matrix.arch }}.7z
-          wget %DOWNLOAD_URL%mkspecs_${{ matrix.arch }}.7z
-          7z x mkspecs_${{ matrix.arch }}.7z
+          wget https://raw.githubusercontent.com/reg31/qt/main/files/android_bin.7z
+          7z x android_bin.7z
 
       - name: Download NDK
         uses: nttld/setup-ndk@v1
@@ -215,11 +212,9 @@ jobs:
           cd build
           
             ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} ^
-              -DQT_GENERATE_WRAPPER_SCRIPTS_FOR_ALL_HOSTS=ON -android-abis ${{ matrix.arch }} -android-ndk ${{ steps.setup-ndk.outputs.ndk-path }} ^
-              -xplatform android-clang -reduce-relocations -android-sdk "%ANDROID_SDK_ROOT%" -DQT_GENERATE_WRAPPER_SCRIPTS_FOR_ALL_HOSTS=ON -openssl-runtime ^
-              -skip qtshadertools -android-javac-source ${{ env.JAVA_VERSION }} -android-javac-target ${{ env.JAVA_VERSION }} ^
-              -DQT_QMAKE_TARGET_MKSPEC=android-clang -DCMAKE_STAGING_PREFIX="%OUTPUT_DIR%" ^
-              -- -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT%" ${{ env.NO_STRIP_BUILD_FLAGS }} ^
+              -android-abis ${{ matrix.arch }} -android-ndk ${{ steps.setup-ndk.outputs.ndk-path }} -reduce-relocations ^
+              -android-sdk "%ANDROID_SDK_ROOT%" -openssl-runtime -skip qtshadertools -android-javac-source ${{ env.JAVA_VERSION }} ^
+               -android-javac-target ${{ env.JAVA_VERSION }} -- -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT%" ${{ env.NO_STRIP_BUILD_FLAGS }} ^
               -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--pack-dyn-relocs=android+relr,--use-android-relr-tags,--gc-sections"
               
             
@@ -238,7 +233,7 @@ jobs:
         working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: |
           set "OUTPUT_NAME=qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
-          # Xcopy .\configFolders\mkspecs\ .\%OUTPUT_NAME%\mkspecs\ /c /i /s /y /r
+          Xcopy .\qt-windows-mingw-release-dev\bin\ .\%OUTPUT_NAME%\bin\ /c /i /s /y /r
           Xcopy .\configFolders\bin\ .\%OUTPUT_NAME%\bin\ /c /i /s /y /r
           7z a %OUTPUT_NAME%.zip .\%OUTPUT_NAME%\*
           
