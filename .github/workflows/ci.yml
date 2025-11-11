@@ -214,7 +214,7 @@ jobs:
           mkdir build
           cd build
           
-            ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} ^
+            ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} -cross-compile ^
               -DQT_GENERATE_WRAPPER_SCRIPTS_FOR_ALL_HOSTS=ON -android-abis ${{ matrix.arch }} -android-ndk ${{ steps.setup-ndk.outputs.ndk-path }} ^
               -xplatform android-clang -reduce-relocations -android-sdk "%ANDROID_SDK_ROOT%" -DQT_GENERATE_WRAPPER_SCRIPTS_FOR_ALL_HOSTS=ON -openssl-runtime ^
               -skip qtshadertools -android-javac-source ${{ env.JAVA_VERSION }} -android-javac-target ${{ env.JAVA_VERSION }} ^
@@ -238,7 +238,7 @@ jobs:
         run: |
           set "OUTPUT_NAME=qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
           # Xcopy .\configFolders\mkspecs\ .\%OUTPUT_NAME%\mkspecs\ /c /i /s /y /r
-          # Xcopy .\configFolders\bin\ .\%OUTPUT_NAME%\bin\ /c /i /s /y /r
+          Xcopy .\configFolders\bin\ .\%OUTPUT_NAME%\bin\ /c /i /s /y /r
           7z a %OUTPUT_NAME%.zip .\%OUTPUT_NAME%\*
           
       - name: Upload build artifact
