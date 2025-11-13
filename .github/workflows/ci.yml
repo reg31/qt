@@ -212,7 +212,7 @@ jobs:
           cd build
           
             ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} ^
-              -android-abis ${{ matrix.arch }} -android-ndk ${{ steps.setup-ndk.outputs.ndk-path }} -reduce-relocations -DQT_BUILD_HOST_JAVA_DOCS=OFF ^
+              -android-abis ${{ matrix.arch }} -android-ndk ${{ steps.setup-ndk.outputs.ndk-path }} -reduce-relocations ^
               -android-sdk "%ANDROID_SDK_ROOT%" -openssl-runtime -skip qtshadertools -android-javac-source ${{ env.JAVA_VERSION }} ^
                -android-javac-target ${{ env.JAVA_VERSION }} -- -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT%" ${{ env.NO_STRIP_BUILD_FLAGS }} ^
               -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--pack-dyn-relocs=android+relr,--use-android-relr-tags,--gc-sections"
