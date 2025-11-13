@@ -69,7 +69,7 @@ jobs:
           submodules: false
         
       - name: Setup dev drive
-        uses: samypr100/setup-dev-drive@v3
+        uses: samypr100/setup-dev-drive@v4
         with:
           drive-size: 24GB
           drive-type: Fixed
@@ -121,7 +121,7 @@ jobs:
           7z a %OUTPUT_NAME%.zip .\%OUTPUT_NAME%\*
           
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: qt-windows-mingw
           path: ${{ env.DEV_DRIVE_WORKSPACE }}/qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
@@ -146,7 +146,7 @@ jobs:
           submodules: false
 
       - name: Setup dev drive
-        uses: samypr100/setup-dev-drive@v3
+        uses: samypr100/setup-dev-drive@v4
         with:
           drive-size: 12GB
           drive-type: Fixed
@@ -238,7 +238,7 @@ jobs:
           7z a %OUTPUT_NAME%.zip .\%OUTPUT_NAME%\*
           
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: qt-android-${{ matrix.arch }}
           path: ${{ env.DEV_DRIVE_WORKSPACE }}/qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
@@ -286,7 +286,7 @@ jobs:
           7z a $OUTPUT_NAME.zip ./$OUTPUT_NAME/*
           
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: qt-macos
           path: qt-macos-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
@@ -344,7 +344,7 @@ jobs:
           7z a $OUTPUT_NAME.zip ./$OUTPUT_NAME/*
           
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: qt-ios
           path: qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
@@ -356,7 +356,7 @@ jobs:
     if: ${{ !cancelled() && needs.build-windows.result == 'success'}}
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           path: qt-builds
           
