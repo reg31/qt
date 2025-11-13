@@ -17,7 +17,7 @@ env:
     -no-feature-quickcontrols2-fluentwinui3 -no-feature-textmarkdownreader -no-feature-textmarkdownwriter -no-feature-movie -no-feature-undocommand 
     -no-feature-undogroup -no-feature-ctf -no-feature-widgets -no-feature-imageformat_xbm -no-feature-sortfilterproxymodel -no-feature-graphicsframecapture 
     -DFEATURE_regularexpression=OFF -no-feature-concatenatetablesproxymodel -no-feature-whatsthis -DQT_FORCE_BUILD_TOOLS=ON -DQT_WILL_BUILD_TOOLS=ON
-    -DFEATURE_no_direct_extern_access=ON -DQT_USE_QSTRINGBUILDER=ON -DQT_BUILD_HOST_JAVA_DOCS=OFF
+    -DFEATURE_no_direct_extern_access=ON -DQT_USE_QSTRINGBUILDER=ON
   EXTRA_FLAGS: -no-feature-qml-network -no-feature-qml-ssl -no-feature-icu
     
 on:
