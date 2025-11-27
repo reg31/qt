@@ -60,7 +60,7 @@ jobs:
         shell: cmd
     steps:         
       - name: Checkout Qt
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           repository: qt/qt5
           ref: ${{ needs.setup.outputs.qt_branch }}
@@ -137,7 +137,7 @@ jobs:
         shell: cmd
     steps:
       - name: Checkout Qt
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           repository: qt/qt5
           ref: ${{ needs.setup.outputs.qt_branch }}
@@ -255,7 +255,7 @@ jobs:
           xcode-version: latest-stable
           
       - name: Checkout Qt
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           repository: qt/qt5
           ref: ${{ needs.setup.outputs.qt_branch }}
@@ -303,7 +303,7 @@ jobs:
           xcode-version: latest-stable
           
       - name: Checkout Qt
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           repository: qt/qt5
           ref: ${{ needs.setup.outputs.qt_branch }}
