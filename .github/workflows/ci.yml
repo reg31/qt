@@ -17,7 +17,7 @@ env:
     -no-feature-quickcontrols2-fluentwinui3 -no-feature-textmarkdownreader -no-feature-textmarkdownwriter -no-feature-movie -no-feature-undocommand 
     -no-feature-undogroup -no-feature-ctf -no-feature-widgets -no-feature-imageformat_xbm -no-feature-sortfilterproxymodel
     -DFEATURE_regularexpression=OFF -no-feature-concatenatetablesproxymodel -DFEATURE_no_direct_extern_access=ON
-  EXTRA_FLAGS: -no-feature-qml-network -no-feature-qml-ssl -no-feature-quickcontrols2-fusion -no-feature-websockets-qml -no-feature-qml-labs
+  EXTRA_FLAGS: -no-feature-qml-network -no-feature-qml-ssl -no-feature-quickcontrols2-fusion -no-feature-websockets-qml
     
 on:
   workflow_dispatch:
