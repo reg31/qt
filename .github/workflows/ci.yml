@@ -5,7 +5,7 @@ env:
   OPENSSL_VERSION: openssl-3.6
   INIT_FLAGS: --module-subset=qtbase,qtdeclarative --branch --no-update
   NO_STRIP_BUILD_FLAGS: -DCMAKE_CXX_FLAGS_RELEASE="-O2 -DNDEBUG" -DCMAKE_C_FLAGS_RELEASE="-O2 -DNDEBUG"
-  WITH_STRIP_BUILD_FLAGS: -DCMAKE_CXX_FLAGS_RELEASE="-O2 -DNDEBUG -s" -DCMAKE_C_FLAGS_RELEASE="-O2 -DNDEBUG -s"
+  WITH_STRIP_BUILD_FLAGS: -DCMAKE_CXX_FLAGS_RELEASE="-O2 -DNDEBUG" -DCMAKE_C_FLAGS_RELEASE="-O2 -DNDEBUG"
   SHARED_FLAGS: -release -no-feature-testlib -DQT_NO_PACKAGE_VERSION_CHECK=ON -DQT_NO_PACKAGE_VERSION_INCOMPATIBLE_WARNING=ON -c++std c++2b
     -no-feature-hijricalendar -no-feature-islamiccivilcalendar -nomake tests -nomake examples -submodules qtbase,qtdeclarative -no-feature-sql
     -skip qtlanguageserver,qtquicktimeline,qtquick3d,qtimageformats,qtsvg -qt-zlib -qt-libjpeg -qt-libpng -qt-pcre -qt-harfbuzz -qt-freetype -reduce-exports
@@ -81,7 +81,7 @@ jobs:
         working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: choco install -y wget
 
-      - name: Download mingw
+      - name: Download llvm
         working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: |
           set MINGW_ARCHIVE=${{ env.LLVM_RELEASE }}.zip
@@ -123,8 +123,8 @@ jobs:
       - name: Upload build artifact
         uses: actions/upload-artifact@v6
         with:
-          name: qt-windows-mingw
-          path: ${{ env.DEV_DRIVE_WORKSPACE }}/qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
+          name: qt-windows-llvm
+          path: ${{ env.DEV_DRIVE_WORKSPACE }}/qt-windows-llvm-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
 
   build-android:
     needs: setup
@@ -375,7 +375,7 @@ jobs:
             - iOS
             - macOS         
           files: |
-            qt-builds/qt-windows-mingw/*.zip
+            qt-builds/qt-windows-llvm/*.zip
             qt-builds/qt-android-armeabi-v7a/*.zip
             qt-builds/qt-android-arm64-v8a/*.zip
             qt-builds/qt-macos/*.zip
