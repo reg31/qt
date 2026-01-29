@@ -236,7 +236,6 @@ jobs:
         with:
           key: xcode-cache-deriveddata-${{ github.workflow }}-macos-${{ github.sha }}
           restore-keys: xcode-cache-deriveddata-${{ github.workflow }}-macos-
-          sourcepackages-directory: build
           deriveddata-directory: build
           
       - name: Checkout Qt
@@ -292,7 +291,6 @@ jobs:
         with:
           key: xcode-cache-deriveddata-${{ github.workflow }}-ios-${{ github.sha }}
           restore-keys: xcode-cache-deriveddata-${{ github.workflow }}-ios-
-          sourcepackages-directory: build
           deriveddata-directory: build
           
       - name: Checkout Qt
