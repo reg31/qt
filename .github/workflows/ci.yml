@@ -5,8 +5,8 @@ env:
   SCCACHE_GHA_ENABLED: "true"
   OPENSSL_VERSION: openssl-3.6
   INIT_FLAGS: --module-subset=qtbase,qtdeclarative --branch --no-update
-  NO_STRIP_BUILD_FLAGS: -DCMAKE_CXX_FLAGS_RELEASE="-O2 -DNDEBUG" -DCMAKE_C_FLAGS_RELEASE="-O2 -DNDEBUG" -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
-  WITH_STRIP_BUILD_FLAGS: -DCMAKE_CXX_FLAGS_RELEASE="-O2 -DNDEBUG -s" -DCMAKE_C_FLAGS_RELEASE="-O2 -DNDEBUG -s" -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+  NO_STRIP_BUILD_FLAGS: -DCMAKE_CXX_FLAGS_RELEASE="-O2 -DNDEBUG" -DCMAKE_C_FLAGS_RELEASE="-O2 -DNDEBUG"
+  WITH_STRIP_BUILD_FLAGS: -DCMAKE_CXX_FLAGS_RELEASE="-O2 -DNDEBUG -s" -DCMAKE_C_FLAGS_RELEASE="-O2 -DNDEBUG -s"
   SHARED_FLAGS: -release -no-feature-testlib -DQT_NO_PACKAGE_VERSION_CHECK=ON -DQT_NO_PACKAGE_VERSION_INCOMPATIBLE_WARNING=ON -c++std c++2b
     -no-feature-hijricalendar -no-feature-islamiccivilcalendar -nomake tests -nomake examples -submodules qtbase,qtdeclarative -no-feature-sql
     -skip qtlanguageserver,qtquicktimeline,qtquick3d,qtimageformats,qtsvg -qt-zlib -qt-libjpeg -qt-libpng -qt-pcre -qt-harfbuzz -qt-freetype -reduce-exports
@@ -70,37 +70,25 @@ jobs:
           ref: ${{ needs.setup.outputs.qt_branch }}
           fetch-depth: 0
           submodules: false
-        
-      - name: Setup dev drive
-        uses: samypr100/setup-dev-drive@v4
-        with:
-          drive-size: 24GB
-          drive-type: Fixed
-          workspace-copy: true
-          trusted-dev-drive: true
 
       - name: Install dependencies
-        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: choco install -y wget
 
       - name: Download mingw
-        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: |
           set MINGW_ARCHIVE=x86_64-15.1.0-release-posix-seh-ucrt-rt_v12-rev0.7z
           wget https://github.com/niXman/mingw-builds-binaries/releases/download/15.1.0-rt_v12-rev0/%MINGW_ARCHIVE%
           7z x %MINGW_ARCHIVE%
         
       - name: Initialize Qt submodules
-        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: init-repository.bat ${{ env.INIT_FLAGS }}
           
       - name: Configure
-        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: |
           set "CC=%CD%\mingw64\bin\gcc"
-          set "CXX=%CD%\mingw64/bin\g++"
-          set "CMAKE_CXX_COMPILER_LAUNCHER=sccache"
+          set "CXX=%CD%\mingw64/bin\g++"          
           set "CMAKE_C_COMPILER_LAUNCHER=sccache"
+          set "CMAKE_CXX_COMPILER_LAUNCHER=sccache"
           set "OUTPUT_DIR=%CD%\qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
           mkdir build
           cd build
@@ -108,18 +96,15 @@ jobs:
           ..\configure.bat -schannel -prefix "%OUTPUT_DIR%" ${{ env.SHARED_FLAGS }} -reduce-relocations ^
             -- ${{ env.WITH_STRIP_BUILD_FLAGS }} -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--gc-sections"
       - name: List features
-        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: configure.bat -list-features
 
       - name: Build Qt
-        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: |
           cd build
           cmake --build . -j%NUMBER_OF_PROCESSORS%
           cmake --install .
           
       - name: Package artifacts
-        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: |
           set "OUTPUT_NAME=qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
           7z a %OUTPUT_NAME%.zip .\%OUTPUT_NAME%\*
@@ -128,7 +113,7 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: qt-windows-mingw
-          path: ${{ env.DEV_DRIVE_WORKSPACE }}/qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
+          path: ./qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
 
   build-android:
     needs: setup
@@ -151,14 +136,6 @@ jobs:
           ref: ${{ needs.setup.outputs.qt_branch }}
           fetch-depth: 0
           submodules: false
-
-      - name: Setup dev drive
-        uses: samypr100/setup-dev-drive@v4
-        with:
-          drive-size: 12GB
-          drive-type: Fixed
-          workspace-copy: true
-          trusted-dev-drive: true
       
       - name: Set up JDK
         uses: actions/setup-java@v5
@@ -168,15 +145,12 @@ jobs:
           check-latest: true
       
       - name: Install dependencies
-        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: choco install -y wget
         
       - name: Initialize Qt submodules
-        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: init-repository.bat ${{ env.INIT_FLAGS }}
 
       - name: Download prebuilt Qt Host
-        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: |
           mkdir qt-windows-mingw-release-dev
           cd qt-windows-mingw-release-dev
@@ -185,7 +159,6 @@ jobs:
           7z x %QT_ARCHIVE%
           
       - name: Download prebuilt openssl
-        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: |
           mkdir openssl
           cd openssl
@@ -194,7 +167,6 @@ jobs:
           7z x %OPENSSL_ARCHIVE%
     
       - name: Extract config folders
-        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: |
           mkdir configFolders
           cd configFolders
@@ -208,10 +180,11 @@ jobs:
           link-to-sdk: true
           
       - name: Configure Android Qt
-        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: |
           set "OUTPUT_DIR=%CD:\=/%/qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
           set "QT_ROOT_DIR=%CD:\=/%/qt-windows-mingw-release-dev"
+          set "CMAKE_CXX_COMPILER_LAUNCHER=sccache"
+          set "CMAKE_C_COMPILER_LAUNCHER=sccache"
           set "OPENSSL_ROOT=%CD:\=/%/openssl"
           
           mkdir build
@@ -225,18 +198,15 @@ jobs:
               
             
       - name: List features
-        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: configure.bat -list-features          
 
       - name: Build Android Qt
-        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: |
           cd build          
           cmake --build . -j%NUMBER_OF_PROCESSORS%
           cmake --install . --strip
           
       - name: Package artifacts
-        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: |
           set "OUTPUT_NAME=qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
           Xcopy .\qt-windows-mingw-release-dev\bin\ .\%OUTPUT_NAME%\bin\ /c /i /s /y /r
@@ -247,7 +217,7 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: qt-android-${{ matrix.arch }}
-          path: ${{ env.DEV_DRIVE_WORKSPACE }}/qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
+          path: ./qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
 
   build-macos:
     needs: setup
@@ -255,14 +225,18 @@ jobs:
     strategy:
       matrix:
         build_type: [release]
-    steps:
-      - name: Run sccache-cache
-        uses: mozilla-actions/sccache-action@v0.0.9
-        
+    steps:        
       - name: Setup xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: latest-stable
+
+      - name: Cache DerivedData
+        uses: irgaly/xcode-cache@v1
+        with:
+          key: xcode-cache-deriveddata-macos-${{ github.sha }}
+          restore-keys: xcode-cache-deriveddata-macos-
+          deriveddata-directory: build
           
       - name: Checkout Qt
         uses: actions/checkout@v6
@@ -280,9 +254,6 @@ jobs:
           OUTPUT_DIR=$(pwd)/qt-macos-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
           mkdir -p build
           cd build
-          
-          export CMAKE_CXX_COMPILER_LAUNCHER="sccache"
-          export CMAKE_C_COMPILER_LAUNCHER="sccache"
           
           ../configure ${{ env.SHARED_FLAGS }} -securetransport -feature-appstore-compliant -prefix $OUTPUT_DIR \
           -- -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" ${{ env.NO_STRIP_BUILD_FLAGS }} -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-dead_strip"
@@ -309,14 +280,18 @@ jobs:
     strategy:
       matrix:
         build_type: [release]
-    steps:
-      - name: Run sccache-cache
-        uses: mozilla-actions/sccache-action@v0.0.9
-        
+    steps:      
       - name: Setup xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: latest-stable
+
+      - name: Cache DerivedData
+        uses: irgaly/xcode-cache@v1
+        with:
+          key: xcode-cache-deriveddata-ios-${{ github.sha }}
+          restore-keys: xcode-cache-deriveddata-ios-
+          deriveddata-directory: build
           
       - name: Checkout Qt
         uses: actions/checkout@v6
@@ -343,9 +318,6 @@ jobs:
           HOST_PATH=$(pwd)/qt-macos-release-dev
           mkdir -p build
           cd build
-          
-          export CMAKE_CXX_COMPILER_LAUNCHER="sccache"
-          export CMAKE_C_COMPILER_LAUNCHER="sccache"
           
           ../configure -platform macx-ios-clang ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} -securetransport -feature-appstore-compliant \
           -skip qtshadertools -gc-binaries -prefix $OUTPUT_DIR -qt-host-path $HOST_PATH -- -DCMAKE_OSX_ARCHITECTURES="arm64" \
