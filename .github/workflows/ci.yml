@@ -98,9 +98,9 @@ jobs:
         working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: |
           set "CC=%CD%\mingw64\bin\gcc"
-          set "CXX=%CD%\mingw64/bin\g++"
-          set "CMAKE_CXX_COMPILER_LAUNCHER=sccache"
+          set "CXX=%CD%\mingw64/bin\g++"          
           set "CMAKE_C_COMPILER_LAUNCHER=sccache"
+          set "CMAKE_CXX_COMPILER_LAUNCHER=sccache"
           set "OUTPUT_DIR=%CD%\qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
           mkdir build
           cd build
@@ -212,6 +212,8 @@ jobs:
         run: |
           set "OUTPUT_DIR=%CD:\=/%/qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
           set "QT_ROOT_DIR=%CD:\=/%/qt-windows-mingw-release-dev"
+          set "CMAKE_CXX_COMPILER_LAUNCHER=sccache"
+          set "CMAKE_C_COMPILER_LAUNCHER=sccache"
           set "OPENSSL_ROOT=%CD:\=/%/openssl"
           
           mkdir build
