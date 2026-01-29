@@ -52,7 +52,7 @@ jobs:
           
   build-windows:
     needs: setup
-    runs-on: windows-2022
+    runs-on: windows-latest
     strategy:
       matrix:
         build_type: [release]
@@ -70,32 +70,20 @@ jobs:
           ref: ${{ needs.setup.outputs.qt_branch }}
           fetch-depth: 0
           submodules: false
-        
-      - name: Setup dev drive
-        uses: samypr100/setup-dev-drive@v4
-        with:
-          drive-size: 24GB
-          drive-type: Fixed
-          workspace-copy: true
-          trusted-dev-drive: true
 
       - name: Install dependencies
-        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: choco install -y wget
 
       - name: Download mingw
-        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: |
           set MINGW_ARCHIVE=x86_64-15.1.0-release-posix-seh-ucrt-rt_v12-rev0.7z
           wget https://github.com/niXman/mingw-builds-binaries/releases/download/15.1.0-rt_v12-rev0/%MINGW_ARCHIVE%
           7z x %MINGW_ARCHIVE%
         
       - name: Initialize Qt submodules
-        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: init-repository.bat ${{ env.INIT_FLAGS }}
           
       - name: Configure
-        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: |
           set "CC=%CD%\mingw64\bin\gcc"
           set "CXX=%CD%\mingw64/bin\g++"          
@@ -108,18 +96,15 @@ jobs:
           ..\configure.bat -schannel -prefix "%OUTPUT_DIR%" ${{ env.SHARED_FLAGS }} -reduce-relocations ^
             -- ${{ env.WITH_STRIP_BUILD_FLAGS }} -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--gc-sections"
       - name: List features
-        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: configure.bat -list-features
 
       - name: Build Qt
-        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: |
           cd build
           cmake --build . -j%NUMBER_OF_PROCESSORS%
           cmake --install .
           
       - name: Package artifacts
-        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: |
           set "OUTPUT_NAME=qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
           7z a %OUTPUT_NAME%.zip .\%OUTPUT_NAME%\*
@@ -128,11 +113,11 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: qt-windows-mingw
-          path: ${{ env.DEV_DRIVE_WORKSPACE }}/qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
+          path: ./qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
 
   build-android:
     needs: setup
-    runs-on: windows-2022
+    runs-on: windows-latest
     strategy:
       matrix:
         build_type: [release]
@@ -151,14 +136,6 @@ jobs:
           ref: ${{ needs.setup.outputs.qt_branch }}
           fetch-depth: 0
           submodules: false
-
-      - name: Setup dev drive
-        uses: samypr100/setup-dev-drive@v4
-        with:
-          drive-size: 12GB
-          drive-type: Fixed
-          workspace-copy: true
-          trusted-dev-drive: true
       
       - name: Set up JDK
         uses: actions/setup-java@v5
@@ -168,15 +145,12 @@ jobs:
           check-latest: true
       
       - name: Install dependencies
-        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: choco install -y wget
         
       - name: Initialize Qt submodules
-        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: init-repository.bat ${{ env.INIT_FLAGS }}
 
       - name: Download prebuilt Qt Host
-        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: |
           mkdir qt-windows-mingw-release-dev
           cd qt-windows-mingw-release-dev
@@ -185,7 +159,6 @@ jobs:
           7z x %QT_ARCHIVE%
           
       - name: Download prebuilt openssl
-        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: |
           mkdir openssl
           cd openssl
@@ -194,7 +167,6 @@ jobs:
           7z x %OPENSSL_ARCHIVE%
     
       - name: Extract config folders
-        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: |
           mkdir configFolders
           cd configFolders
@@ -208,7 +180,6 @@ jobs:
           link-to-sdk: true
           
       - name: Configure Android Qt
-        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: |
           set "OUTPUT_DIR=%CD:\=/%/qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
           set "QT_ROOT_DIR=%CD:\=/%/qt-windows-mingw-release-dev"
@@ -227,18 +198,15 @@ jobs:
               
             
       - name: List features
-        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: configure.bat -list-features          
 
       - name: Build Android Qt
-        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: |
           cd build          
           cmake --build . -j%NUMBER_OF_PROCESSORS%
           cmake --install . --strip
           
       - name: Package artifacts
-        working-directory: ${{ env.DEV_DRIVE_WORKSPACE }}
         run: |
           set "OUTPUT_NAME=qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
           Xcopy .\qt-windows-mingw-release-dev\bin\ .\%OUTPUT_NAME%\bin\ /c /i /s /y /r
@@ -249,7 +217,7 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: qt-android-${{ matrix.arch }}
-          path: ${{ env.DEV_DRIVE_WORKSPACE }}/qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
+          path: ./qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
 
   build-macos:
     needs: setup
@@ -266,8 +234,9 @@ jobs:
       - name: Cache DerivedData
         uses: irgaly/xcode-cache@v1
         with:
-          key: xcode-cache-deriveddata-${{ github.workflow }}-${{ github.sha }}
-          restore-keys: xcode-cache-deriveddata-${{ github.workflow }}-
+          key: xcode-cache-deriveddata-${{ github.workflow }}-macos-${{ github.sha }}
+          restore-keys: xcode-cache-deriveddata-${{ github.workflow }}-macos-
+          sourcepackages-directory: build
           deriveddata-directory: build
           
       - name: Checkout Qt
@@ -321,8 +290,9 @@ jobs:
       - name: Cache DerivedData
         uses: irgaly/xcode-cache@v1
         with:
-          key: xcode-cache-deriveddata-${{ github.workflow }}-${{ github.sha }}
-          restore-keys: xcode-cache-deriveddata-${{ github.workflow }}-
+          key: xcode-cache-deriveddata-${{ github.workflow }}-ios-${{ github.sha }}
+          restore-keys: xcode-cache-deriveddata-${{ github.workflow }}-ios-
+          sourcepackages-directory: build
           deriveddata-directory: build
           
       - name: Checkout Qt
