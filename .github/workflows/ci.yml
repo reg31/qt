@@ -257,14 +257,18 @@ jobs:
     strategy:
       matrix:
         build_type: [release]
-    steps:
-      - name: Run sccache-cache
-        uses: mozilla-actions/sccache-action@v0.0.9
-        
+    steps:        
       - name: Setup xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: latest-stable
+
+      - name: Cache DerivedData
+        uses: irgaly/xcode-cache@v1
+        with:
+          key: xcode-cache-deriveddata-${{ github.workflow }}-${{ github.sha }}
+          restore-keys: xcode-cache-deriveddata-${{ github.workflow }}-
+          deriveddata-directory: build
           
       - name: Checkout Qt
         uses: actions/checkout@v6
@@ -282,9 +286,6 @@ jobs:
           OUTPUT_DIR=$(pwd)/qt-macos-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
           mkdir -p build
           cd build
-          
-          export CMAKE_CXX_COMPILER_LAUNCHER="sccache"
-          export CMAKE_C_COMPILER_LAUNCHER="sccache"
           
           ../configure ${{ env.SHARED_FLAGS }} -securetransport -feature-appstore-compliant -prefix $OUTPUT_DIR \
           -- -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" ${{ env.NO_STRIP_BUILD_FLAGS }} -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-dead_strip"
@@ -311,14 +312,18 @@ jobs:
     strategy:
       matrix:
         build_type: [release]
-    steps:
-      - name: Run sccache-cache
-        uses: mozilla-actions/sccache-action@v0.0.9
-        
+    steps:      
       - name: Setup xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: latest-stable
+
+      - name: Cache DerivedData
+        uses: irgaly/xcode-cache@v1
+        with:
+          key: xcode-cache-deriveddata-${{ github.workflow }}-${{ github.sha }}
+          restore-keys: xcode-cache-deriveddata-${{ github.workflow }}-
+          deriveddata-directory: build
           
       - name: Checkout Qt
         uses: actions/checkout@v6
@@ -345,9 +350,6 @@ jobs:
           HOST_PATH=$(pwd)/qt-macos-release-dev
           mkdir -p build
           cd build
-          
-          export CMAKE_CXX_COMPILER_LAUNCHER="sccache"
-          export CMAKE_C_COMPILER_LAUNCHER="sccache"
           
           ../configure -platform macx-ios-clang ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} -securetransport -feature-appstore-compliant \
           -skip qtshadertools -gc-binaries -prefix $OUTPUT_DIR -qt-host-path $HOST_PATH -- -DCMAKE_OSX_ARCHITECTURES="arm64" \
