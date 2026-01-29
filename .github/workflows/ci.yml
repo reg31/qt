@@ -237,6 +237,7 @@ jobs:
           key: xcode-cache-deriveddata-macos-${{ github.sha }}
           restore-keys: xcode-cache-deriveddata-macos-
           deriveddata-directory: build
+          verbose: true
           
       - name: Checkout Qt
         uses: actions/checkout@v6
@@ -292,7 +293,8 @@ jobs:
           key: xcode-cache-deriveddata-ios-${{ github.sha }}
           restore-keys: xcode-cache-deriveddata-ios-
           deriveddata-directory: build
-          
+          verbose: true
+    
       - name: Checkout Qt
         uses: actions/checkout@v6
         with:
