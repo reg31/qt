@@ -225,19 +225,14 @@ jobs:
     strategy:
       matrix:
         build_type: [release]
-    steps:        
+    steps:
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.9
+        
       - name: Setup xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: latest-stable
-
-      - name: Cache DerivedData
-        uses: irgaly/xcode-cache@v1
-        with:
-          key: xcode-cache-deriveddata-macos-${{ github.sha }}
-          restore-keys: xcode-cache-deriveddata-macos-
-          deriveddata-directory: build
-          verbose: true
           
       - name: Checkout Qt
         uses: actions/checkout@v6
@@ -253,6 +248,8 @@ jobs:
       - name: Configure and build
         run: |
           OUTPUT_DIR=$(pwd)/qt-macos-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
+          export CMAKE_CXX_COMPILER_LAUNCHER="sccache"
+          export CMAKE_C_COMPILER_LAUNCHER="sccache"
           mkdir -p build
           cd build
           
@@ -281,19 +278,14 @@ jobs:
     strategy:
       matrix:
         build_type: [release]
-    steps:      
+    steps:
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.9
+        
       - name: Setup xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: latest-stable
-
-      - name: Cache DerivedData
-        uses: irgaly/xcode-cache@v1
-        with:
-          key: xcode-cache-deriveddata-ios-${{ github.sha }}
-          restore-keys: xcode-cache-deriveddata-ios-
-          deriveddata-directory: build
-          verbose: true
     
       - name: Checkout Qt
         uses: actions/checkout@v6
@@ -315,8 +307,10 @@ jobs:
           7z x $QT_ARCHIVE
         
       - name: Configure and build for iOS
-        run: |
+        run: | 
           OUTPUT_DIR=$(pwd)/qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
+          export CMAKE_CXX_COMPILER_LAUNCHER="sccache"
+          export CMAKE_C_COMPILER_LAUNCHER="sccache"
           HOST_PATH=$(pwd)/qt-macos-release-dev
           mkdir -p build
           cd build
