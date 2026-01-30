@@ -253,7 +253,7 @@ jobs:
 
   build-macos-x86_64:
     needs: setup
-    runs-on: macos-intel
+    runs-on: macos-15-intel
     strategy:
       matrix:
         build_type: [release]
