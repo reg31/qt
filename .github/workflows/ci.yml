@@ -71,6 +71,16 @@ jobs:
           fetch-depth: 0
           submodules: false
 
+      - name: Cache Qt submodules
+        uses: actions/cache@v5
+        with:
+          path: |
+            qtbase
+            qtdeclarative
+          key: qt-submodules-windows-${{ needs.setup.outputs.qt_branch }}-${{ hashFiles('.gitmodules') }}
+          restore-keys: |
+            qt-submodules-windows-${{ needs.setup.outputs.qt_branch }}-
+
       - name: Install dependencies
         run: choco install -y wget
 
@@ -136,6 +146,16 @@ jobs:
           ref: ${{ needs.setup.outputs.qt_branch }}
           fetch-depth: 0
           submodules: false
+
+      - name: Cache Qt submodules
+        uses: actions/cache@v5
+        with:
+          path: |
+            qtbase
+            qtdeclarative
+          key: qt-submodules-android-${{ needs.setup.outputs.qt_branch }}-${{ hashFiles('.gitmodules') }}
+          restore-keys: |
+            qt-submodules-android-${{ needs.setup.outputs.qt_branch }}-
       
       - name: Set up JDK
         uses: actions/setup-java@v5
@@ -225,6 +245,7 @@ jobs:
     strategy:
       matrix:
         build_type: [release]
+        arch: [x86_64, arm64]
     steps:
       - name: Run sccache-cache
         uses: mozilla-actions/sccache-action@v0.0.9
@@ -241,20 +262,30 @@ jobs:
           ref: ${{ needs.setup.outputs.qt_branch }}
           fetch-depth: 0
           submodules: false
+
+      - name: Cache Qt submodules
+        uses: actions/cache@v5
+        with:
+          path: |
+            qtbase
+            qtdeclarative
+          key: qt-submodules-macos-${{ needs.setup.outputs.qt_branch }}-${{ hashFiles('.gitmodules') }}
+          restore-keys: |
+            qt-submodules-macos-${{ needs.setup.outputs.qt_branch }}-
       
       - name: Initialize Qt submodules
         run: perl init-repository ${{ env.INIT_FLAGS }}
    
       - name: Configure and build
         run: |
-          OUTPUT_DIR=$(pwd)/qt-macos-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
+          OUTPUT_DIR=$(pwd)/qt-macos-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
           export CMAKE_CXX_COMPILER_LAUNCHER="sccache"
           export CMAKE_C_COMPILER_LAUNCHER="sccache"
           mkdir -p build
           cd build
           
           ../configure ${{ env.SHARED_FLAGS }} -securetransport -feature-appstore-compliant -prefix $OUTPUT_DIR \
-          -- -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" ${{ env.NO_STRIP_BUILD_FLAGS }} -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-dead_strip"
+          -- -DCMAKE_OSX_ARCHITECTURES="${{ matrix.arch }}" ${{ env.NO_STRIP_BUILD_FLAGS }} -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-dead_strip"
           ../configure -list-features
           
           cmake --build . -j$(sysctl -n hw.ncpu)
@@ -262,15 +293,67 @@ jobs:
           
       - name: Package artifacts
         run: |
-          OUTPUT_NAME=qt-macos-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
+          OUTPUT_NAME=qt-macos-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
           find ./$OUTPUT_NAME -type f -exec chmod +x {} +
           7z a $OUTPUT_NAME.zip ./$OUTPUT_NAME/*
           
       - name: Upload build artifact
         uses: actions/upload-artifact@v6
         with:
+          name: qt-macos-${{ matrix.arch }}
+          path: qt-macos-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
+
+  combine-macos:
+    needs: [setup, build-macos]
+    runs-on: macos-latest
+    steps:
+      - name: Download x86_64 build
+        uses: actions/download-artifact@v7
+        with:
+          name: qt-macos-x86_64
+          path: qt-x86_64
+          
+      - name: Download arm64 build
+        uses: actions/download-artifact@v7
+        with:
+          name: qt-macos-arm64
+          path: qt-arm64
+          
+      - name: Extract builds
+        run: |
+          cd qt-x86_64
+          7z x qt-macos-x86_64-release-${{ needs.setup.outputs.qt_branch }}.zip
+          cd ../qt-arm64
+          7z x qt-macos-arm64-release-${{ needs.setup.outputs.qt_branch }}.zip
+          
+      - name: Create universal binaries
+        run: |
+          OUTPUT_DIR=$(pwd)/qt-macos-universal-release-${{ needs.setup.outputs.qt_branch }}
+          mkdir -p $OUTPUT_DIR
+          
+          cp -R qt-x86_64/qt-macos-x86_64-release-${{ needs.setup.outputs.qt_branch }}/* $OUTPUT_DIR/
+          
+          find qt-x86_64/qt-macos-x86_64-release-${{ needs.setup.outputs.qt_branch }} -type f \( -name "*.dylib" -o -name "*.a" -o -perm +111 \) | while read x86file; do
+            relpath=${x86file#qt-x86_64/qt-macos-x86_64-release-${{ needs.setup.outputs.qt_branch }}/}
+            arm64file="qt-arm64/qt-macos-arm64-release-${{ needs.setup.outputs.qt_branch }}/$relpath"
+            outfile="$OUTPUT_DIR/$relpath"
+            
+            if [ -f "$arm64file" ]; then
+              lipo -create "$x86file" "$arm64file" -output "$outfile"
+            fi
+          done
+          
+      - name: Package universal build
+        run: |
+          OUTPUT_NAME=qt-macos-release-${{ needs.setup.outputs.qt_branch }}
+          find ./qt-macos-universal-release-${{ needs.setup.outputs.qt_branch }} -type f -exec chmod +x {} +
+          7z a $OUTPUT_NAME.zip ./qt-macos-universal-release-${{ needs.setup.outputs.qt_branch }}/*
+          
+      - name: Upload universal build
+        uses: actions/upload-artifact@v6
+        with:
           name: qt-macos
-          path: qt-macos-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
+          path: qt-macos-release-${{ needs.setup.outputs.qt_branch }}.zip
 
   build-ios:
     needs: setup
@@ -294,6 +377,16 @@ jobs:
           ref: ${{ needs.setup.outputs.qt_branch }}
           fetch-depth: 0
           submodules: false
+
+      - name: Cache Qt submodules
+        uses: actions/cache@v5
+        with:
+          path: |
+            qtbase
+            qtdeclarative
+          key: qt-submodules-ios-${{ needs.setup.outputs.qt_branch }}-${{ hashFiles('.gitmodules') }}
+          restore-keys: |
+            qt-submodules-ios-${{ needs.setup.outputs.qt_branch }}-
       
       - name: Initialize Qt submodules
         run: perl init-repository ${{ env.INIT_FLAGS }}
@@ -336,10 +429,9 @@ jobs:
           path: qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
 
   release:
-    needs: [setup, build-windows, build-android, build-macos, build-ios]
+    needs: [setup, build-windows, build-android, combine-macos, build-ios]
     runs-on: ubuntu-latest
-    if: ${{ !cancelled() && needs.build-windows.result == 'success' && needs.build-macos.result == 'success'}}
-    #if: ${{ !cancelled() && needs.build-windows.result == 'success' && needs.build-android.result == 'success'}}
+    if: ${{ !cancelled() && needs.build-windows.result == 'success' && needs.combine-macos.result == 'success'}}
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v7
@@ -360,7 +452,7 @@ jobs:
             - Windows MINGW (x64)
             - Android (armeabi-v7a, arm64-v8a)
             - iOS
-            - macOS         
+            - macOS (Universal Binary)
           files: |
             qt-builds/qt-windows-mingw/*.zip
             qt-builds/qt-android-armeabi-v7a/*.zip
