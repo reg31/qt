@@ -60,9 +60,6 @@ jobs:
       run:
         shell: cmd
     steps:
-      - name: Run sccache-cache
-        uses: mozilla-actions/sccache-action@v0.0.9
-        
       - name: Checkout Qt
         uses: actions/checkout@v6
         with:
@@ -70,7 +67,10 @@ jobs:
           ref: ${{ needs.setup.outputs.qt_branch }}
           fetch-depth: 0
           submodules: false
-
+          
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.9
+        
       - name: Get current date
         id: date
         run: echo date=%DATE:~-4%-%DATE:~4,2%-%DATE:~7,2% >> %GITHUB_OUTPUT%
@@ -130,9 +130,6 @@ jobs:
       run:
         shell: cmd
     steps:
-      - name: Run sccache-cache
-        uses: mozilla-actions/sccache-action@v0.0.9
-        
       - name: Checkout Qt
         uses: actions/checkout@v6
         with:
@@ -140,7 +137,10 @@ jobs:
           ref: ${{ needs.setup.outputs.qt_branch }}
           fetch-depth: 0
           submodules: false
-
+          
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.9
+        
       - name: Get current date
         id: date
         run: echo date=%DATE:~-4%-%DATE:~4,2%-%DATE:~7,2% >> %GITHUB_OUTPUT%
@@ -286,9 +286,6 @@ jobs:
       matrix:
         build_type: [release]
     steps:
-      - name: Run sccache-cache
-        uses: mozilla-actions/sccache-action@v0.0.9
-        
       - name: Setup xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
@@ -301,7 +298,10 @@ jobs:
           ref: ${{ needs.setup.outputs.qt_branch }}
           fetch-depth: 0
           submodules: false
-
+          
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.9
+        
       - name: Get current date
         id: date
         run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
