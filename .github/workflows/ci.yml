@@ -71,6 +71,10 @@ jobs:
           fetch-depth: 0
           submodules: false
 
+      - name: Get current date
+        id: date
+        run: echo date=%DATE:~-4%-%DATE:~4,2%-%DATE:~7,2% >> %GITHUB_OUTPUT%
+            
       - name: Install dependencies
         run: choco install -y wget
 
@@ -81,6 +85,7 @@ jobs:
           7z x %MINGW_ARCHIVE%
         
       - name: Initialize Qt submodules
+        if: steps.cache-submodules.outputs.cache-hit != 'true'
         run: init-repository.bat ${{ env.INIT_FLAGS }}
           
       - name: Configure
@@ -136,6 +141,10 @@ jobs:
           ref: ${{ needs.setup.outputs.qt_branch }}
           fetch-depth: 0
           submodules: false
+
+      - name: Get current date
+        id: date
+        run: echo date=%DATE:~-4%-%DATE:~4,2%-%DATE:~7,2% >> %GITHUB_OUTPUT%
       
       - name: Set up JDK
         uses: actions/setup-java@v5
@@ -148,6 +157,7 @@ jobs:
         run: choco install -y wget
         
       - name: Initialize Qt submodules
+        if: steps.cache-submodules.outputs.cache-hit != 'true'
         run: init-repository.bat ${{ env.INIT_FLAGS }}
 
       - name: Download prebuilt Qt Host
@@ -195,7 +205,8 @@ jobs:
               -android-sdk "%ANDROID_SDK_ROOT%" -openssl-runtime -skip qtshadertools -android-javac-source ${{ env.JAVA_VERSION }} ^
               -android-javac-target ${{ env.JAVA_VERSION }} -- -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT%" ${{ env.NO_STRIP_BUILD_FLAGS }} ^
               -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--pack-dyn-relocs=android+relr,--use-android-relr-tags,--gc-sections"
-                 
+              
+            
       - name: List features
         run: configure.bat -list-features          
 
@@ -218,13 +229,65 @@ jobs:
           name: qt-android-${{ matrix.arch }}
           path: ./qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
 
-  build-macos:
+  build-macos-x86_64:
+    needs: setup
+    runs-on: macos-15-intel
+    strategy:
+      matrix:
+        build_type: [release]
+    steps:      
+      - name: Setup xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+          
+      - name: Checkout Qt
+        uses: actions/checkout@v6
+        with:
+          repository: qt/qt5
+          ref: ${{ needs.setup.outputs.qt_branch }}
+          fetch-depth: 0
+          submodules: false
+
+      - name: Get current date
+        id: date
+        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+      
+      - name: Initialize Qt submodules
+        if: steps.cache-submodules.outputs.cache-hit != 'true'
+        run: perl init-repository ${{ env.INIT_FLAGS }}
+   
+      - name: Configure and build
+        run: |
+          OUTPUT_DIR=$(pwd)/qt-macos-x86_64-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
+          mkdir -p build
+          cd build
+          
+          ../configure ${{ env.SHARED_FLAGS }} -securetransport -feature-appstore-compliant -prefix $OUTPUT_DIR \
+          -- -DCMAKE_OSX_ARCHITECTURES="x86_64" ${{ env.NO_STRIP_BUILD_FLAGS }} -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-dead_strip"
+          ../configure -list-features
+          
+          cmake --build . -j$(sysctl -n hw.ncpu)
+          cmake --install . --strip
+          
+      - name: Package artifacts
+        run: |
+          OUTPUT_NAME=qt-macos-x86_64-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
+          find ./$OUTPUT_NAME -type f -exec chmod +x {} +
+          7z a $OUTPUT_NAME.zip ./$OUTPUT_NAME/*
+          
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: qt-macos-x86_64
+          path: qt-macos-x86_64-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
+
+  build-macos-arm64:
     needs: setup
     runs-on: macos-latest
     strategy:
       matrix:
         build_type: [release]
-        arch: [x86_64, arm64]
     steps:
       - name: Run sccache-cache
         uses: mozilla-actions/sccache-action@v0.0.9
@@ -241,20 +304,25 @@ jobs:
           ref: ${{ needs.setup.outputs.qt_branch }}
           fetch-depth: 0
           submodules: false
+
+      - name: Get current date
+        id: date
+        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
       
       - name: Initialize Qt submodules
+        if: steps.cache-submodules.outputs.cache-hit != 'true'
         run: perl init-repository ${{ env.INIT_FLAGS }}
    
       - name: Configure and build
         run: |
-          OUTPUT_DIR=$(pwd)/qt-macos-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
+          OUTPUT_DIR=$(pwd)/qt-macos-arm64-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
           export CMAKE_CXX_COMPILER_LAUNCHER="sccache"
           export CMAKE_C_COMPILER_LAUNCHER="sccache"
           mkdir -p build
           cd build
           
-          ../configure ${{ env.SHARED_FLAGS }} -securetransport -feature-appstore-compliant -prefix $OUTPUT_DIR -DQT_NO_HANDLE_APPLE_SINGLE_ARCH_CROSS_COMPILING=ON \
-          -- -DCMAKE_OSX_ARCHITECTURES="${{ matrix.arch }}" ${{ env.NO_STRIP_BUILD_FLAGS }} -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-dead_strip"
+          ../configure ${{ env.SHARED_FLAGS }} -securetransport -feature-appstore-compliant -prefix $OUTPUT_DIR \
+          -- -DCMAKE_OSX_ARCHITECTURES="arm64" ${{ env.NO_STRIP_BUILD_FLAGS }} -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-dead_strip"
           ../configure -list-features
           
           cmake --build . -j$(sysctl -n hw.ncpu)
@@ -262,18 +330,18 @@ jobs:
           
       - name: Package artifacts
         run: |
-          OUTPUT_NAME=qt-macos-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
+          OUTPUT_NAME=qt-macos-arm64-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
           find ./$OUTPUT_NAME -type f -exec chmod +x {} +
           7z a $OUTPUT_NAME.zip ./$OUTPUT_NAME/*
           
       - name: Upload build artifact
         uses: actions/upload-artifact@v6
         with:
-          name: qt-macos-${{ matrix.arch }}
-          path: qt-macos-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
+          name: qt-macos-arm64
+          path: qt-macos-arm64-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
 
   combine-macos:
-    needs: [build-macos]
+    needs: [build-macos-x86_64, build-macos-arm64]
     runs-on: macos-latest
     steps:
       - name: Download x86_64 build
@@ -346,8 +414,13 @@ jobs:
           ref: ${{ needs.setup.outputs.qt_branch }}
           fetch-depth: 0
           submodules: false
+
+      - name: Get current date
+        id: date
+        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
       
       - name: Initialize Qt submodules
+        if: steps.cache-submodules.outputs.cache-hit != 'true'
         run: perl init-repository ${{ env.INIT_FLAGS }}
       
       - name: Download prebuilt Qt Host
