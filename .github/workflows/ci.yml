@@ -71,16 +71,6 @@ jobs:
           fetch-depth: 0
           submodules: false
 
-      - name: Cache Qt submodules
-        uses: actions/cache@v5
-        with:
-          path: |
-            qtbase
-            qtdeclarative
-          key: qt-submodules-windows-${{ needs.setup.outputs.qt_branch }}-${{ hashFiles('.gitmodules') }}
-          restore-keys: |
-            qt-submodules-windows-${{ needs.setup.outputs.qt_branch }}-
-
       - name: Install dependencies
         run: choco install -y wget
 
@@ -146,16 +136,6 @@ jobs:
           ref: ${{ needs.setup.outputs.qt_branch }}
           fetch-depth: 0
           submodules: false
-
-      - name: Cache Qt submodules
-        uses: actions/cache@v5
-        with:
-          path: |
-            qtbase
-            qtdeclarative
-          key: qt-submodules-android-${{ needs.setup.outputs.qt_branch }}-${{ hashFiles('.gitmodules') }}
-          restore-keys: |
-            qt-submodules-android-${{ needs.setup.outputs.qt_branch }}-
       
       - name: Set up JDK
         uses: actions/setup-java@v5
@@ -262,16 +242,6 @@ jobs:
           ref: ${{ needs.setup.outputs.qt_branch }}
           fetch-depth: 0
           submodules: false
-
-      - name: Cache Qt submodules
-        uses: actions/cache@v5
-        with:
-          path: |
-            qtbase
-            qtdeclarative
-          key: qt-submodules-macos-${{ needs.setup.outputs.qt_branch }}-${{ hashFiles('.gitmodules') }}
-          restore-keys: |
-            qt-submodules-macos-${{ needs.setup.outputs.qt_branch }}-
       
       - name: Initialize Qt submodules
         run: perl init-repository ${{ env.INIT_FLAGS }}
@@ -377,16 +347,6 @@ jobs:
           ref: ${{ needs.setup.outputs.qt_branch }}
           fetch-depth: 0
           submodules: false
-
-      - name: Cache Qt submodules
-        uses: actions/cache@v5
-        with:
-          path: |
-            qtbase
-            qtdeclarative
-          key: qt-submodules-ios-${{ needs.setup.outputs.qt_branch }}-${{ hashFiles('.gitmodules') }}
-          restore-keys: |
-            qt-submodules-ios-${{ needs.setup.outputs.qt_branch }}-
       
       - name: Initialize Qt submodules
         run: perl init-repository ${{ env.INIT_FLAGS }}
