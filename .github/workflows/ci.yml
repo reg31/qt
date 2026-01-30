@@ -85,7 +85,6 @@ jobs:
           7z x %MINGW_ARCHIVE%
         
       - name: Initialize Qt submodules
-        if: steps.cache-submodules.outputs.cache-hit != 'true'
         run: init-repository.bat ${{ env.INIT_FLAGS }}
           
       - name: Configure
@@ -98,7 +97,7 @@ jobs:
           mkdir build
           cd build
           
-          ..\configure.bat -schannel -prefix "%OUTPUT_DIR%" ${{ env.SHARED_FLAGS }}  -no-pch -reduce-relocations ^
+          ..\configure.bat -schannel -prefix "%OUTPUT_DIR%" ${{ env.SHARED_FLAGS }} -reduce-relocations ^
             -- ${{ env.WITH_STRIP_BUILD_FLAGS }} -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--gc-sections"
       - name: List features
         run: configure.bat -list-features
@@ -157,7 +156,6 @@ jobs:
         run: choco install -y wget
         
       - name: Initialize Qt submodules
-        if: steps.cache-submodules.outputs.cache-hit != 'true'
         run: init-repository.bat ${{ env.INIT_FLAGS }}
 
       - name: Download prebuilt Qt Host
@@ -200,7 +198,7 @@ jobs:
           mkdir build
           cd build
           
-            ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} -no-pch ^
+            ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} ^
               -android-abis ${{ matrix.arch }} -android-ndk ${{ steps.setup-ndk.outputs.ndk-path }} -reduce-relocations -platform android-clang ^
               -android-sdk "%ANDROID_SDK_ROOT%" -openssl-runtime -skip qtshadertools -android-javac-source ${{ env.JAVA_VERSION }} ^
               -android-javac-target ${{ env.JAVA_VERSION }} -- -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT%" ${{ env.NO_STRIP_BUILD_FLAGS }} ^
@@ -254,7 +252,6 @@ jobs:
         run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
       
       - name: Initialize Qt submodules
-        if: steps.cache-submodules.outputs.cache-hit != 'true'
         run: perl init-repository ${{ env.INIT_FLAGS }}
    
       - name: Configure and build
@@ -310,7 +307,6 @@ jobs:
         run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
       
       - name: Initialize Qt submodules
-        if: steps.cache-submodules.outputs.cache-hit != 'true'
         run: perl init-repository ${{ env.INIT_FLAGS }}
    
       - name: Configure and build
@@ -321,7 +317,7 @@ jobs:
           mkdir -p build
           cd build
           
-          ../configure ${{ env.SHARED_FLAGS }} -no-pch -securetransport -feature-appstore-compliant -prefix $OUTPUT_DIR \
+          ../configure ${{ env.SHARED_FLAGS }} -securetransport -feature-appstore-compliant -prefix $OUTPUT_DIR \
           -- -DCMAKE_OSX_ARCHITECTURES="arm64" ${{ env.NO_STRIP_BUILD_FLAGS }} -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-dead_strip"
           ../configure -list-features
           
@@ -420,7 +416,6 @@ jobs:
         run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
       
       - name: Initialize Qt submodules
-        if: steps.cache-submodules.outputs.cache-hit != 'true'
         run: perl init-repository ${{ env.INIT_FLAGS }}
       
       - name: Download prebuilt Qt Host
