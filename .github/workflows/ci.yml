@@ -195,8 +195,7 @@ jobs:
               -android-sdk "%ANDROID_SDK_ROOT%" -openssl-runtime -skip qtshadertools -android-javac-source ${{ env.JAVA_VERSION }} ^
               -android-javac-target ${{ env.JAVA_VERSION }} -- -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT%" ${{ env.NO_STRIP_BUILD_FLAGS }} ^
               -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--pack-dyn-relocs=android+relr,--use-android-relr-tags,--gc-sections"
-              
-            
+                 
       - name: List features
         run: configure.bat -list-features          
 
