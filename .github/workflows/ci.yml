@@ -240,6 +240,13 @@ jobs:
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: latest-stable
+
+      - name: Cache DerivedData
+        uses: irgaly/xcode-cache@v1
+        with:
+          key: xcode-cache-deriveddata-${{ github.workflow }}-macos-${{ github.sha }}
+          restore-keys: xcode-cache-deriveddata-${{ github.workflow }}-macos-
+          deriveddata-directory: build
           
       - name: Checkout Qt
         uses: actions/checkout@v6
@@ -341,7 +348,7 @@ jobs:
           path: qt-macos-arm64-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
 
   combine-macos:
-    needs: [build-macos-x86_64, build-macos-arm64]
+    needs: [setup, build-macos-x86_64, build-macos-arm64]
     runs-on: macos-latest
     steps:
       - name: Download x86_64 build
@@ -461,7 +468,7 @@ jobs:
           path: qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
 
   release:
-    needs: [build-windows, build-android, combine-macos, build-ios]
+    needs: [setup, build-windows, build-android, combine-macos, build-ios]
     runs-on: ubuntu-latest
     if: ${{ !cancelled() && needs.build-windows.result == 'success' && needs.combine-macos.result == 'success'}}
     steps:
