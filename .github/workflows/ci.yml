@@ -272,17 +272,11 @@ jobs:
           cmake --build . -j$(sysctl -n hw.ncpu)
           cmake --install . --strip
           
-      - name: Package artifacts
-        run: |
-          OUTPUT_NAME=qt-macos-x86_64-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
-          find ./$OUTPUT_NAME -type f -exec chmod +x {} +
-          7z a $OUTPUT_NAME.zip ./$OUTPUT_NAME/*
-          
       - name: Upload build artifact
         uses: actions/upload-artifact@v6
         with:
           name: qt-macos-x86_64
-          path: qt-macos-x86_64-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
+          path: qt-macos-x86_64-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
 
   build-macos-arm64:
     needs: setup
@@ -329,17 +323,11 @@ jobs:
           cmake --build . -j$(sysctl -n hw.ncpu)
           cmake --install . --strip
           
-      - name: Package artifacts
-        run: |
-          OUTPUT_NAME=qt-macos-arm64-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
-          find ./$OUTPUT_NAME -type f -exec chmod +x {} +
-          7z a $OUTPUT_NAME.zip ./$OUTPUT_NAME/*
-          
       - name: Upload build artifact
         uses: actions/upload-artifact@v6
         with:
           name: qt-macos-arm64
-          path: qt-macos-arm64-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
+          path: qt-macos-arm64-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
 
   combine-macos:
     needs: [setup, build-macos-x86_64, build-macos-arm64]
@@ -349,50 +337,35 @@ jobs:
         uses: actions/download-artifact@v7
         with:
           name: qt-macos-x86_64
+          path: x86_64
           
       - name: Download arm64 build
         uses: actions/download-artifact@v7
         with:
           name: qt-macos-arm64
+          path: arm64
           
-      - name: Extract builds
+      - name: Verify downloads
         run: |
-          BRANCH="${{ needs.setup.outputs.qt_branch }}"
-          
-          7z x "qt-macos-x86_64/qt-macos-x86_64-release-${BRANCH}.zip" -o"x86_64-extracted"
-          7z x "qt-macos-arm64/qt-macos-arm64-release-${BRANCH}.zip" -o"arm64-extracted"
-          
-          ls -la x86_64-extracted/
-          ls -la arm64-extracted/
+          echo "x86_64 contents:"
+          ls -la x86_64/
+          echo "arm64 contents:"
+          ls -la arm64/
           
       - name: Create universal binaries
         run: |
           BRANCH="${{ needs.setup.outputs.qt_branch }}"
-          SRC_X86="x86_64-extracted/qt-macos-x86_64-release-${BRANCH}"
-          SRC_ARM="arm64-extracted/qt-macos-arm64-release-${BRANCH}"
           OUTPUT_DIR="qt-macos-universal-release-${BRANCH}"
-          
-          if [ ! -d "$SRC_X86" ]; then
-            echo "Error: x86_64 source directory not found"
-            ls -la x86_64-extracted/
-            exit 1
-          fi
-          
-          if [ ! -d "$SRC_ARM" ]; then
-            echo "Error: arm64 source directory not found"
-            ls -la arm64-extracted/
-            exit 1
-          fi
           
           mkdir -p "$OUTPUT_DIR"
           
           echo "Copying arm64 base structure..."
-          cp -R "$SRC_ARM/"* "$OUTPUT_DIR/"
+          cp -R arm64/* "$OUTPUT_DIR/"
           
           echo "Creating universal binaries..."
-          find "$SRC_ARM" \( -type f -o -type l \) \( -name "*.dylib" -o -name "*.a" -o -perm +111 \) -print0 | while IFS= read -r -d '' arm64file; do
-            relpath="${arm64file#$SRC_ARM/}"
-            x86file="$SRC_X86/$relpath"
+          find arm64 \( -type f -o -type l \) \( -name "*.dylib" -o -name "*.a" -o -perm +111 \) -print0 | while IFS= read -r -d '' arm64file; do
+            relpath="${arm64file#arm64/}"
+            x86file="x86_64/$relpath"
             outfile="$OUTPUT_DIR/$relpath"
             
             if [ -L "$outfile" ]; then
@@ -403,7 +376,7 @@ jobs:
               if file "$arm64file" | grep -q "Mach-O"; then
                 echo "Creating universal binary: $relpath"
                 lipo -create "$x86file" "$arm64file" -output "$outfile" 2>/dev/null || {
-                  echo "Warning: Failed to create universal binary for $relpath, using arm64 version"
+                  echo "Warning: Failed to create universal binary for $relpath"
                 }
               fi
             fi
