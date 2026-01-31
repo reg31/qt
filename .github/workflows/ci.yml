@@ -409,10 +409,7 @@ jobs:
           cd qt-macos-release-dev
           QT_ARCHIVE=qt-macos-release-dev.zip
           wget https://github.com/reg31/qt/releases/latest/download/$QT_ARCHIVE
-          7z x $QT_ARCHIVE
-
-      - name: Fix permissions
-        run: find . -type f -exec chmod +x {} +              
+          7z x $QT_ARCHIVE           
         
       - name: Configure and build for iOS
         run: | 
