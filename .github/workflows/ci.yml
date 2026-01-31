@@ -70,10 +70,6 @@ jobs:
           
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.9
-        
-      - name: Get current date
-        id: date
-        run: echo date=%DATE:~-4%-%DATE:~4,2%-%DATE:~7,2% >> %GITHUB_OUTPUT%
             
       - name: Install dependencies
         run: choco install -y wget
@@ -140,10 +136,6 @@ jobs:
           
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.9
-        
-      - name: Get current date
-        id: date
-        run: echo date=%DATE:~-4%-%DATE:~4,2%-%DATE:~7,2% >> %GITHUB_OUTPUT%
       
       - name: Set up JDK
         uses: actions/setup-java@v5
@@ -249,10 +241,6 @@ jobs:
 
       - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1
-
-      - name: Get current date
-        id: date
-        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
       
       - name: Initialize Qt submodules
         run: perl init-repository ${{ env.INIT_FLAGS }}
@@ -300,10 +288,6 @@ jobs:
           
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.9
-        
-      - name: Get current date
-        id: date
-        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
       
       - name: Initialize Qt submodules
         run: perl init-repository ${{ env.INIT_FLAGS }}
@@ -337,65 +321,78 @@ jobs:
         uses: actions/download-artifact@v7
         with:
           name: qt-macos-x86_64
-          path: x86_64
-          
+          path: artifacts/x86_64
+
       - name: Download arm64 build
         uses: actions/download-artifact@v7
         with:
           name: qt-macos-arm64
-          path: arm64
-          
-      - name: Verify downloads
-        run: |
-          echo "x86_64 contents:"
-          ls -la x86_64/
-          echo "arm64 contents:"
-          ls -la arm64/
-          
-      - name: Create universal binaries
+          path: artifacts/arm64
+
+      - name: Prepare
+        id: prep
         run: |
           BRANCH="${{ needs.setup.outputs.qt_branch }}"
-          OUTPUT_DIR="qt-macos-universal-release-${BRANCH}"
           
+          SRC_X86=$(find artifacts/x86_64 -maxdepth 1 -type d -name "qt-macos-*" | head -n 1)
+          SRC_ARM=$(find artifacts/arm64 -maxdepth 1 -type d -name "qt-macos-*" | head -n 1)
+          
+          if [ -z "$SRC_X86" ] || [ -z "$SRC_ARM" ]; then
+            echo "Error: Could not locate Qt directories."
+            exit 1
+          fi
+          
+          echo "Source X86: $SRC_X86"
+          echo "Source ARM: $SRC_ARM"
+          
+          OUTPUT_DIR="qt-macos-universal-release-${BRANCH}"
           mkdir -p "$OUTPUT_DIR"
           
-          echo "Copying arm64 base structure..."
-          cp -R arm64/* "$OUTPUT_DIR/"
+          cp -R "$SRC_ARM/"* "$OUTPUT_DIR/"
           
-          echo "Creating universal binaries..."
-          find arm64 \( -type f -o -type l \) \( -name "*.dylib" -o -name "*.a" -o -perm +111 \) -print0 | while IFS= read -r -d '' arm64file; do
-            relpath="${arm64file#arm64/}"
-            x86file="x86_64/$relpath"
-            outfile="$OUTPUT_DIR/$relpath"
+          echo "SRC_X86=$SRC_X86" >> $GITHUB_ENV
+          echo "OUTPUT_DIR=$OUTPUT_DIR" >> $GITHUB_ENV
+
+      - name: Create Universal Binaries (Lipo)
+        run: |
+          echo "Scanning $OUTPUT_DIR for binaries to merge..."
+          
+          find "$OUTPUT_DIR" -type f -print0 | while IFS= read -r -d '' file; do
             
-            if [ -L "$outfile" ]; then
-              continue
-            fi
-            
-            if [ -f "$x86file" ] && [ -f "$arm64file" ]; then
-              if file "$arm64file" | grep -q "Mach-O"; then
-                echo "Creating universal binary: $relpath"
-                lipo -create "$x86file" "$arm64file" -output "$outfile" 2>/dev/null || {
-                  echo "Warning: Failed to create universal binary for $relpath"
+            if file "$file" | grep -q "Mach-O"; then
+              
+              relpath="${file#$OUTPUT_DIR/}"
+              
+              x86_file="$SRC_X86/$relpath"
+              
+              if [ -f "$x86_file" ]; then
+                lipo -create "$file" "$x86_file" -output "$file" || {
+                  echo "::error::Lipo failed for $relpath"
+                  exit 1
                 }
+              else
+                echo "::warning::Skipping $relpath - No x86_64 counterpart found."
               fi
             fi
           done
           
-          echo "Universal binary creation complete"
-          
-      - name: Package universal build
+          TEST_BIN=$(find "$OUTPUT_DIR/bin" -maxdepth 1 -name "qmake")
+          if [ -f "$TEST_BIN" ]; then
+            echo "Verifying qmake architectures:"
+            lipo -info "$TEST_BIN"
+          fi
+
+      - name: Package Universal Build
         run: |
           BRANCH="${{ needs.setup.outputs.qt_branch }}"
           OUTPUT_NAME="qt-macos-release-${BRANCH}"
-          UNIVERSAL_DIR="qt-macos-universal-release-${BRANCH}"
           
-          find "$UNIVERSAL_DIR" -type f \( -name "*.dylib" -o -perm +111 \) -exec chmod +x {} +
+          find "$OUTPUT_DIR" -type f \( -name "*.dylib" -o -perm +111 \) -exec chmod +x {} +
           
-          7z a "${OUTPUT_NAME}.zip" "./${UNIVERSAL_DIR}/"*
+          7z a "${OUTPUT_NAME}.zip" "./${OUTPUT_DIR}"
           
       - name: Upload universal build
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: qt-macos
           path: qt-macos-release-${{ needs.setup.outputs.qt_branch }}.zip
@@ -422,10 +419,6 @@ jobs:
           ref: ${{ needs.setup.outputs.qt_branch }}
           fetch-depth: 0
           submodules: false
-
-      - name: Get current date
-        id: date
-        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
       
       - name: Initialize Qt submodules
         run: perl init-repository ${{ env.INIT_FLAGS }}
