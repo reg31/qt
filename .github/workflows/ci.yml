@@ -107,7 +107,7 @@ jobs:
       - name: Package artifacts
         run: |
           set "OUTPUT_NAME=qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
-          7z a %OUTPUT_NAME%.zip .\%OUTPUT_NAME%\* -x!.\%OUTPUT_NAME%\src -x!.\%OUTPUT_NAME%\share -x!.\%OUTPUT_NAME%\sbom -x!.\%OUTPUT_NAME%\doc
+          7z a %OUTPUT_NAME%.zip .\%OUTPUT_NAME%\* -x!.\%OUTPUT_NAME%\share -x!.\%OUTPUT_NAME%\sbom -x!.\%OUTPUT_NAME%\doc
           
       - name: Upload build artifact
         uses: actions/upload-artifact@v6
@@ -205,7 +205,7 @@ jobs:
           set "OUTPUT_NAME=qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
           Xcopy .\qt-windows-mingw-release-dev\bin\ .\%OUTPUT_NAME%\bin\ /c /i /s /y /r
           Xcopy .\configFolders\bin\ .\%OUTPUT_NAME%\bin\ /c /i /s /y /r
-          7z a %OUTPUT_NAME%.zip .\%OUTPUT_NAME%\* -x!.\%OUTPUT_NAME%\src -x!.\%OUTPUT_NAME%\share -x!.\%OUTPUT_NAME%\sbom -x!.\%OUTPUT_NAME%\doc
+          7z a %OUTPUT_NAME%.zip .\%OUTPUT_NAME%\* -x!.\%OUTPUT_NAME%\share -x!.\%OUTPUT_NAME%\sbom -x!.\%OUTPUT_NAME%\doc
           
       - name: Upload build artifact
         uses: actions/upload-artifact@v6
@@ -369,7 +369,7 @@ jobs:
           UNIVERSAL_DIR="qt-macos-universal-release-${BRANCH}"
           
           find . -type f -exec chmod +x {} +
-          7z a "${OUTPUT_NAME}.zip" "./${UNIVERSAL_DIR}/"* -x!./${UNIVERSAL_DIR}/src -x!./${UNIVERSAL_DIR}/share -x!./${UNIVERSAL_DIR}/sbom -x!./${UNIVERSAL_DIR}/doc
+          7z a "${OUTPUT_NAME}.zip" "./${UNIVERSAL_DIR}/"* -x!./${UNIVERSAL_DIR}/share -x!./${UNIVERSAL_DIR}/sbom -x!./${UNIVERSAL_DIR}/doc
           
       - name: Upload universal build
         uses: actions/upload-artifact@v6
@@ -432,7 +432,7 @@ jobs:
         run: |
           OUTPUT_NAME=qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
           find ./$OUTPUT_NAME -type f -exec chmod +x {} +
-          7z a $OUTPUT_NAME.zip ./$OUTPUT_NAME/* -x!./$OUTPUT_NAME/src -x!./$OUTPUT_NAME/share -x!./$OUTPUT_NAME/sbom -x!./$OUTPUT_NAME/doc
+          7z a $OUTPUT_NAME.zip ./$OUTPUT_NAME/* -x!./$OUTPUT_NAME/share -x!./$OUTPUT_NAME/sbom -x!./$OUTPUT_NAME/doc
           
       - name: Upload build artifact
         uses: actions/upload-artifact@v6
