@@ -349,46 +349,67 @@ jobs:
         uses: actions/download-artifact@v7
         with:
           name: qt-macos-x86_64
-          path: qt-x86_64
           
       - name: Download arm64 build
         uses: actions/download-artifact@v7
         with:
           name: qt-macos-arm64
-          path: qt-arm64
           
       - name: Extract builds
         run: |
           BRANCH="${{ needs.setup.outputs.qt_branch }}"
           
-          cd qt-x86_64
-          7z x "qt-macos-x86_64-release-${BRANCH}.zip"
-          cd ..
+          7z x "qt-macos-x86_64-release-${BRANCH}.zip" -o"x86_64-extracted"
+          7z x "qt-macos-arm64-release-${BRANCH}.zip" -o"arm64-extracted"
           
-          cd qt-arm64
-          7z x "qt-macos-arm64-release-${BRANCH}.zip"
-          cd ..
+          ls -la x86_64-extracted/
+          ls -la arm64-extracted/
           
       - name: Create universal binaries
         run: |
           BRANCH="${{ needs.setup.outputs.qt_branch }}"
-          SRC_X86="qt-x86_64/qt-macos-x86_64-release-${BRANCH}"
-          SRC_ARM="qt-arm64/qt-macos-arm64-release-${BRANCH}"
-          OUTPUT_DIR="$(pwd)/qt-macos-universal-release-${BRANCH}"
+          SRC_X86="x86_64-extracted/qt-macos-x86_64-release-${BRANCH}"
+          SRC_ARM="arm64-extracted/qt-macos-arm64-release-${BRANCH}"
+          OUTPUT_DIR="qt-macos-universal-release-${BRANCH}"
+          
+          if [ ! -d "$SRC_X86" ]; then
+            echo "Error: x86_64 source directory not found"
+            ls -la x86_64-extracted/
+            exit 1
+          fi
+          
+          if [ ! -d "$SRC_ARM" ]; then
+            echo "Error: arm64 source directory not found"
+            ls -la arm64-extracted/
+            exit 1
+          fi
           
           mkdir -p "$OUTPUT_DIR"
           
-          cp -R "$SRC_X86/"* "$OUTPUT_DIR/"
+          echo "Copying arm64 base structure..."
+          cp -R "$SRC_ARM/"* "$OUTPUT_DIR/"
           
-          find "$SRC_X86" -type f \( -name "*.dylib" -o -name "*.a" -o -perm +111 \) | while read x86file; do
-            relpath="${x86file#$SRC_X86/}"
-            arm64file="$SRC_ARM/$relpath"
+          echo "Creating universal binaries..."
+          find "$SRC_ARM" \( -type f -o -type l \) \( -name "*.dylib" -o -name "*.a" -o -perm +111 \) -print0 | while IFS= read -r -d '' arm64file; do
+            relpath="${arm64file#$SRC_ARM/}"
+            x86file="$SRC_X86/$relpath"
             outfile="$OUTPUT_DIR/$relpath"
             
-            if [ -f "$arm64file" ]; then
-              lipo -create "$x86file" "$arm64file" -output "$outfile"
+            if [ -L "$outfile" ]; then
+              continue
+            fi
+            
+            if [ -f "$x86file" ] && [ -f "$arm64file" ]; then
+              if file "$arm64file" | grep -q "Mach-O"; then
+                echo "Creating universal binary: $relpath"
+                lipo -create "$x86file" "$arm64file" -output "$outfile" 2>/dev/null || {
+                  echo "Warning: Failed to create universal binary for $relpath, using arm64 version"
+                }
+              fi
             fi
           done
+          
+          echo "Universal binary creation complete"
           
       - name: Package universal build
         run: |
@@ -396,7 +417,7 @@ jobs:
           OUTPUT_NAME="qt-macos-release-${BRANCH}"
           UNIVERSAL_DIR="qt-macos-universal-release-${BRANCH}"
           
-          find "./$UNIVERSAL_DIR" -type f -exec chmod +x {} +
+          find "$UNIVERSAL_DIR" -type f \( -name "*.dylib" -o -perm +111 \) -exec chmod +x {} +
           
           7z a "${OUTPUT_NAME}.zip" "./${UNIVERSAL_DIR}/"*
           
