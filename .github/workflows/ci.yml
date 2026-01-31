@@ -107,6 +107,12 @@ jobs:
       - name: Package artifacts
         run: |
           set "OUTPUT_NAME=qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
+          
+           rmdir /s /q .\%OUTPUT_NAME%\src 2>nul
+          rmdir /s /q .\%OUTPUT_NAME%\share 2>nul
+          rmdir /s /q .\%OUTPUT_NAME%\sbom 2>nul
+          rmdir /s /q .\%OUTPUT_NAME%\doc 2>nul
+          
           7z a %OUTPUT_NAME%.zip .\%OUTPUT_NAME%\*
           
       - name: Upload build artifact
@@ -205,6 +211,12 @@ jobs:
           set "OUTPUT_NAME=qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
           Xcopy .\qt-windows-mingw-release-dev\bin\ .\%OUTPUT_NAME%\bin\ /c /i /s /y /r
           Xcopy .\configFolders\bin\ .\%OUTPUT_NAME%\bin\ /c /i /s /y /r
+          
+          rmdir /s /q .\%OUTPUT_NAME%\src 2>nul
+          rmdir /s /q .\%OUTPUT_NAME%\share 2>nul
+          rmdir /s /q .\%OUTPUT_NAME%\sbom 2>nul
+          rmdir /s /q .\%OUTPUT_NAME%\doc 2>nul
+          
           7z a %OUTPUT_NAME%.zip .\%OUTPUT_NAME%\*
           
       - name: Upload build artifact
@@ -368,6 +380,11 @@ jobs:
           OUTPUT_NAME="qt-macos-release-${BRANCH}"
           UNIVERSAL_DIR="qt-macos-universal-release-${BRANCH}"
 
+          rm -rf ./${UNIVERSAL_DIR}/src
+          rm -rf ./${UNIVERSAL_DIR}/share
+          rm -rf ./${UNIVERSAL_DIR}/sbom
+          rm -rf ./${UNIVERSAL_DIR}/doc
+
           find . -type f -exec chmod +x {} +
           7z a "${OUTPUT_NAME}.zip" "./${UNIVERSAL_DIR}/"*
           
@@ -431,6 +448,12 @@ jobs:
       - name: Package artifacts
         run: |
           OUTPUT_NAME=qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
+
+          rm -rf ./$OUTPUT_NAME/src
+          rm -rf ./$OUTPUT_NAME/share
+          rm -rf ./$OUTPUT_NAME/sbom
+          rm -rf ./$OUTPUT_NAME/doc
+          
           find ./$OUTPUT_NAME -type f -exec chmod +x {} +
           7z a $OUTPUT_NAME.zip ./$OUTPUT_NAME/*
           
