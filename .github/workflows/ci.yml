@@ -356,7 +356,6 @@ jobs:
                 lipo -create "$x86file" "$arm64file" -output "$outfile" 2>/dev/null || {
                   echo "Warning: Failed to create universal binary for $relpath"
                 }
-                chmod +x "$outfile"
               fi
             fi
           done
@@ -368,7 +367,8 @@ jobs:
           BRANCH="${{ needs.setup.outputs.qt_branch }}"
           OUTPUT_NAME="qt-macos-release-${BRANCH}"
           UNIVERSAL_DIR="qt-macos-universal-release-${BRANCH}"
-          
+
+          find . -type f -exec chmod +x {} +
           7z a "${OUTPUT_NAME}.zip" "./${UNIVERSAL_DIR}/"*
           
       - name: Upload universal build
@@ -410,6 +410,9 @@ jobs:
           QT_ARCHIVE=qt-macos-release-dev.zip
           wget https://github.com/reg31/qt/releases/latest/download/$QT_ARCHIVE
           7z x $QT_ARCHIVE
+
+      - name: Fix permissions
+        run: find . -type f -exec chmod +x {} +              
         
       - name: Configure and build for iOS
         run: | 
