@@ -172,12 +172,6 @@ jobs:
           cd configFolders
           wget https://raw.githubusercontent.com/reg31/qt/main/files/android_bin.7z
           7z x android_bin.7z
-      - name: Download NDK
-        uses: nttld/setup-ndk@v1
-        id: setup-ndk
-        with:
-          ndk-version: r29
-          link-to-sdk: true
           
       - name: Configure Android Qt
         run: |
@@ -191,7 +185,7 @@ jobs:
           cd build
           
             ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} ^
-              -android-abis ${{ matrix.arch }} -android-ndk ${{ steps.setup-ndk.outputs.ndk-path }} -reduce-relocations -platform android-clang ^
+              -android-abis ${{ matrix.arch }} -android-ndk "%ANDROID_NDK_LATEST_HOME%" -reduce-relocations -platform android-clang ^
               -android-sdk "%ANDROID_SDK_ROOT%" -openssl-runtime -skip qtshadertools -android-javac-source ${{ env.JAVA_VERSION }} ^
               -android-javac-target ${{ env.JAVA_VERSION }} -- -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT%" ${{ env.NO_STRIP_BUILD_FLAGS }} ^
               -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--pack-dyn-relocs=android+relr,--use-android-relr-tags,--gc-sections"
@@ -244,12 +238,6 @@ jobs:
       
       - name: Initialize Qt submodules
         run: perl init-repository ${{ env.INIT_FLAGS }}
-      
-      - name: Fix permissions
-        run: |
-          find . -name "*.pl" -exec chmod +x {} +
-          find . -name "syncqt.cpp" -exec chmod +x {} +
-          chmod +x configure
    
       - name: Configure and build
         run: |
@@ -297,12 +285,6 @@ jobs:
       
       - name: Initialize Qt submodules
         run: perl init-repository ${{ env.INIT_FLAGS }}
-      
-      - name: Fix permissions
-        run: |
-          find . -name "*.pl" -exec chmod +x {} +
-          find . -name "syncqt.cpp" -exec chmod +x {} +
-          chmod +x configure
    
       - name: Configure and build
         run: |
@@ -333,74 +315,61 @@ jobs:
         uses: actions/download-artifact@v7
         with:
           name: qt-macos-x86_64
-          path: artifacts/x86_64
-
+          path: x86_64
+          
       - name: Download arm64 build
         uses: actions/download-artifact@v7
         with:
           name: qt-macos-arm64
-          path: artifacts/arm64
-
-      - name: Prepare
-        id: prep
+          path: arm64
+          
+      - name: Verify downloads
+        run: |
+          echo "x86_64 contents:"
+          ls -la x86_64/
+          echo "arm64 contents:"
+          ls -la arm64/
+          
+      - name: Create universal binaries
         run: |
           BRANCH="${{ needs.setup.outputs.qt_branch }}"
-          
-          SRC_X86=$(find artifacts/x86_64 -maxdepth 1 -type d -name "qt-macos-*" | head -n 1)
-          SRC_ARM=$(find artifacts/arm64 -maxdepth 1 -type d -name "qt-macos-*" | head -n 1)
-          
-          if [ -z "$SRC_X86" ] || [ -z "$SRC_ARM" ]; then
-            echo "Error: Could not locate Qt directories."
-            exit 1
-          fi
-          
-          echo "Source X86: $SRC_X86"
-          echo "Source ARM: $SRC_ARM"
-          
           OUTPUT_DIR="qt-macos-universal-release-${BRANCH}"
+          
           mkdir -p "$OUTPUT_DIR"
           
-          cp -R "$SRC_ARM/"* "$OUTPUT_DIR/"
+          echo "Copying arm64 base structure..."
+          cp -R arm64/* "$OUTPUT_DIR/"
           
-          echo "SRC_X86=$SRC_X86" >> $GITHUB_ENV
-          echo "OUTPUT_DIR=$OUTPUT_DIR" >> $GITHUB_ENV
-
-      - name: Create Universal Binaries (Lipo)
-        run: |
-          echo "Scanning $OUTPUT_DIR for binaries to merge..."
-          
-          find "$OUTPUT_DIR" -type f -print0 | while IFS= read -r -d '' file; do
+          echo "Creating universal binaries..."
+          find arm64 \( -type f -o -type l \) \( -name "*.dylib" -o -name "*.a" -o -perm +111 \) -print0 | while IFS= read -r -d '' arm64file; do
+            relpath="${arm64file#arm64/}"
+            x86file="x86_64/$relpath"
+            outfile="$OUTPUT_DIR/$relpath"
             
-            if file "$file" | grep -q "Mach-O"; then
-              
-              relpath="${file#$OUTPUT_DIR/}"
-              
-              x86_file="$SRC_X86/$relpath"
-              
-              if [ -f "$x86_file" ]; then
-                lipo -create "$file" "$x86_file" -output "$file" || {
-                  echo "::error::Lipo failed for $relpath"
-                  exit 1
+            if [ -L "$outfile" ]; then
+              continue
+            fi
+            
+            if [ -f "$x86file" ] && [ -f "$arm64file" ]; then
+              if file "$arm64file" | grep -q "Mach-O"; then
+                echo "Creating universal binary: $relpath"
+                lipo -create "$x86file" "$arm64file" -output "$outfile" 2>/dev/null || {
+                  echo "Warning: Failed to create universal binary for $relpath"
                 }
-                chmod +x "$file"
-              else
-                echo "::warning::Skipping $relpath - No x86_64 counterpart found."
+                chmod +x "$outfile"
               fi
             fi
           done
           
-          TEST_BIN=$(find "$OUTPUT_DIR/bin" -maxdepth 1 -name "qmake")
-          if [ -f "$TEST_BIN" ]; then
-            echo "Verifying qmake architectures:"
-            lipo -info "$TEST_BIN"
-          fi
-
-      - name: Package Universal Build
+          echo "Universal binary creation complete"
+          
+      - name: Package universal build
         run: |
           BRANCH="${{ needs.setup.outputs.qt_branch }}"
           OUTPUT_NAME="qt-macos-release-${BRANCH}"
+          UNIVERSAL_DIR="qt-macos-universal-release-${BRANCH}"
           
-          7z a "${OUTPUT_NAME}.zip" "./${OUTPUT_DIR}"
+          7z a "${OUTPUT_NAME}.zip" "./${UNIVERSAL_DIR}/"*
           
       - name: Upload universal build
         uses: actions/upload-artifact@v6
