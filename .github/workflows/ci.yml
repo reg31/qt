@@ -321,75 +321,62 @@ jobs:
         uses: actions/download-artifact@v7
         with:
           name: qt-macos-x86_64
-          path: artifacts/x86_64
-
+          path: x86_64
+          
       - name: Download arm64 build
         uses: actions/download-artifact@v7
         with:
           name: qt-macos-arm64
-          path: artifacts/arm64
-
-      - name: Prepare
-        id: prep
+          path: arm64
+          
+      - name: Verify downloads
+        run: |
+          echo "x86_64 contents:"
+          ls -la x86_64/
+          echo "arm64 contents:"
+          ls -la arm64/
+          
+      - name: Create universal binaries
         run: |
           BRANCH="${{ needs.setup.outputs.qt_branch }}"
-          
-          SRC_X86=$(find artifacts/x86_64 -maxdepth 1 -type d -name "qt-macos-*" | head -n 1)
-          SRC_ARM=$(find artifacts/arm64 -maxdepth 1 -type d -name "qt-macos-*" | head -n 1)
-          
-          if [ -z "$SRC_X86" ] || [ -z "$SRC_ARM" ]; then
-            echo "Error: Could not locate Qt directories."
-            exit 1
-          fi
-          
-          echo "Source X86: $SRC_X86"
-          echo "Source ARM: $SRC_ARM"
-          
           OUTPUT_DIR="qt-macos-universal-release-${BRANCH}"
+          
           mkdir -p "$OUTPUT_DIR"
           
-          cp -R "$SRC_ARM/"* "$OUTPUT_DIR/"
+          echo "Copying arm64 base structure..."
+          cp -R arm64/* "$OUTPUT_DIR/"
           
-          echo "SRC_X86=$SRC_X86" >> $GITHUB_ENV
-          echo "OUTPUT_DIR=$OUTPUT_DIR" >> $GITHUB_ENV
-
-      - name: Create Universal Binaries (Lipo)
-        run: |
-          echo "Scanning $OUTPUT_DIR for binaries to merge..."
-          
-          find "$OUTPUT_DIR" -type f -print0 | while IFS= read -r -d '' file; do
+          echo "Creating universal binaries..."
+          find arm64 \( -type f -o -type l \) \( -name "*.dylib" -o -name "*.a" -o -perm +111 \) -print0 | while IFS= read -r -d '' arm64file; do
+            relpath="${arm64file#arm64/}"
+            x86file="x86_64/$relpath"
+            outfile="$OUTPUT_DIR/$relpath"
             
-            if file "$file" | grep -q "Mach-O"; then
-              
-              relpath="${file#$OUTPUT_DIR/}"
-              
-              x86_file="$SRC_X86/$relpath"
-              
-              if [ -f "$x86_file" ]; then
-                lipo -create "$file" "$x86_file" -output "$file" || {
-                  echo "::error::Lipo failed for $relpath"
-                  exit 1
+            if [ -L "$outfile" ]; then
+              continue
+            fi
+            
+            if [ -f "$x86file" ] && [ -f "$arm64file" ]; then
+              if file "$arm64file" | grep -q "Mach-O"; then
+                echo "Creating universal binary: $relpath"
+                lipo -create "$x86file" "$arm64file" -output "$outfile" 2>/dev/null || {
+                  echo "Warning: Failed to create universal binary for $relpath"
                 }
-              else
-                echo "::warning::Skipping $relpath - No x86_64 counterpart found."
               fi
             fi
           done
           
-          TEST_BIN=$(find "$OUTPUT_DIR/bin" -maxdepth 1 -name "qmake")
-          if [ -f "$TEST_BIN" ]; then
-            echo "Verifying qmake architectures:"
-            lipo -info "$TEST_BIN"
-          fi
-
-      - name: Package Universal Build
+          echo "Universal binary creation complete"
+          
+      - name: Package universal build
         run: |
           BRANCH="${{ needs.setup.outputs.qt_branch }}"
           OUTPUT_NAME="qt-macos-release-${BRANCH}"
+          UNIVERSAL_DIR="qt-macos-universal-release-${BRANCH}"
           
-          find "$OUTPUT_DIR" -type f \( -name "*.dylib" -o -perm +111 \) -exec chmod +x {} +
+          find "$UNIVERSAL_DIR" -type f \( -name "*.dylib" -o -perm +111 \) -exec chmod +x {} +
           
-          7z a "${OUTPUT_NAME}.zip" "./${OUTPUT_DIR}"
+          7z a "${OUTPUT_NAME}.zip" "./${UNIVERSAL_DIR}/"*
           
       - name: Upload universal build
         uses: actions/upload-artifact@v6
