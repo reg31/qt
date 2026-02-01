@@ -36,7 +36,7 @@ on:
 
 jobs:
   setup:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     outputs:
       qt_branch: ${{ steps.set-branch.outputs.qt_branch }}
     steps:
