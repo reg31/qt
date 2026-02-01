@@ -1,7 +1,6 @@
 name: Build Qt Library
 env:
   QT_BRANCH: 'dev'
-  JAVA_VERSION: 25
   SCCACHE_GHA_ENABLED: "true"
   OPENSSL_VERSION: openssl-3.6
   INIT_FLAGS: --module-subset=qtbase,qtdeclarative --branch --no-update
@@ -141,7 +140,7 @@ jobs:
         uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
-          java-version: ${{ env.JAVA_VERSION }}
+          java-version: 25
           check-latest: true
       
       - name: Install dependencies
@@ -184,10 +183,9 @@ jobs:
           mkdir build
           cd build
           
-            ..\configure.bat -platform android-clang -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} ^
+            ..\configure.bat -xplatform android-clang -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} ^
               -android-abis ${{ matrix.arch }} -android-ndk "%ANDROID_NDK_LATEST_HOME%" -reduce-relocations -platform android-clang ^
-              -android-sdk "%ANDROID_SDK_ROOT%" -openssl-runtime -skip qtshadertools -android-javac-source ${{ env.JAVA_VERSION }} ^
-              -android-javac-target ${{ env.JAVA_VERSION }} -- -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT%" ${{ env.NO_STRIP_BUILD_FLAGS }} ^
+              -android-sdk "%ANDROID_SDK_ROOT%" -openssl-runtime -skip qtshadertools -- -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT%" ${{ env.NO_STRIP_BUILD_FLAGS }} ^
               -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--pack-dyn-relocs=android+relr,--use-android-relr-tags,--gc-sections"
               
             
