@@ -70,22 +70,14 @@ jobs:
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.9
             
-      - name: Install dependencies
-        run: choco install -y wget
-
-      - name: Download mingw
-        run: |
-          set MINGW_ARCHIVE=x86_64-15.1.0-release-posix-seh-ucrt-rt_v12-rev0.7z
-          wget https://github.com/niXman/mingw-builds-binaries/releases/download/15.1.0-rt_v12-rev0/%MINGW_ARCHIVE%
-          7z x %MINGW_ARCHIVE%
+      - name: Set up MinGW
+        uses: egor-tensin/setup-mingw@v3
         
       - name: Initialize Qt submodules
         run: init-repository.bat ${{ env.INIT_FLAGS }}
           
       - name: Configure
-        run: |
-          set "CC=%CD%\mingw64\bin\gcc"
-          set "CXX=%CD%\mingw64\bin\g++"          
+        run: |          
           set "CMAKE_C_COMPILER_LAUNCHER=sccache"
           set "CMAKE_CXX_COMPILER_LAUNCHER=sccache"
           set "OUTPUT_DIR=%CD%\qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
