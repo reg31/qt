@@ -18,6 +18,8 @@ env:
     -no-feature-undogroup -no-feature-ctf -no-feature-widgets -no-feature-imageformat_xbm -no-feature-sortfilterproxymodel -no-feature-filesystemwatcher
     -DFEATURE_regularexpression=OFF -no-feature-concatenatetablesproxymodel -DFEATURE_no_direct_extern_access=ON
   EXTRA_FLAGS: -no-feature-qml-network -no-feature-qml-ssl -no-feature-quickcontrols2-fusion
+  QT_BASE_CHERRY_PICK:
+  QT_DECLARATIVE_CHERRY_PICK: 708665 709009 708664 695153
     
 on:
   workflow_dispatch:
@@ -75,6 +77,18 @@ jobs:
         
       - name: Initialize Qt submodules
         run: init-repository.bat ${{ env.INIT_FLAGS }}
+
+      - name: Apply qtbase cherry pick
+        if: env.QT_BASE_CHERRY_PICK != ''
+        run: |
+          cd qtbase
+          git cherry-pick --no-commit ${{ env.QT_BASE_CHERRY_PICK }}
+
+      - name: Apply qtdeclarative cherry pick
+        if: env.QT_DECLARATIVE_CHERRY_PICK != ''
+        run: |
+          cd qtbase
+          git cherry-pick --no-commit ${{ env.QT_DECLARATIVE_CHERRY_PICK }}
           
       - name: Configure
         run: |          
@@ -143,6 +157,18 @@ jobs:
         
       - name: Initialize Qt submodules
         run: init-repository.bat ${{ env.INIT_FLAGS }}
+
+      - name: Apply qtbase cherry pick
+        if: env.QT_BASE_CHERRY_PICK != ''
+        run: |
+          cd qtbase
+          git cherry-pick --no-commit ${{ env.QT_BASE_CHERRY_PICK }}
+
+      - name: Apply qtdeclarative cherry pick
+        if: env.QT_DECLARATIVE_CHERRY_PICK != ''
+        run: |
+          cd qtbase
+          git cherry-pick --no-commit ${{ env.QT_DECLARATIVE_CHERRY_PICK }}
 
       - name: Download prebuilt Qt Host
         run: |
@@ -231,6 +257,18 @@ jobs:
       
       - name: Initialize Qt submodules
         run: perl init-repository ${{ env.INIT_FLAGS }}
+
+      - name: Apply qtbase cherry pick
+        if: env.QT_BASE_CHERRY_PICK != ''
+        run: |
+          cd qtbase
+          git cherry-pick --no-commit ${{ env.QT_BASE_CHERRY_PICK }}
+
+      - name: Apply qtdeclarative cherry pick
+        if: env.QT_DECLARATIVE_CHERRY_PICK != ''
+        run: |
+          cd qtbase
+          git cherry-pick --no-commit ${{ env.QT_DECLARATIVE_CHERRY_PICK }}
    
       - name: Configure and build
         run: |
@@ -278,6 +316,18 @@ jobs:
       
       - name: Initialize Qt submodules
         run: perl init-repository ${{ env.INIT_FLAGS }}
+
+      - name: Apply qtbase cherry pick
+        if: env.QT_BASE_CHERRY_PICK != ''
+        run: |
+          cd qtbase
+          git cherry-pick --no-commit ${{ env.QT_BASE_CHERRY_PICK }}
+
+      - name: Apply qtdeclarative cherry pick
+        if: env.QT_DECLARATIVE_CHERRY_PICK != ''
+        run: |
+          cd qtbase
+          git cherry-pick --no-commit ${{ env.QT_DECLARATIVE_CHERRY_PICK }}
    
       - name: Configure and build
         run: |
@@ -377,14 +427,6 @@ jobs:
       matrix:
         build_type: [release]
     steps:
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.9
-        
-      - name: Setup xcode
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: latest-stable
-    
       - name: Checkout Qt
         uses: actions/checkout@v6
         with:
@@ -392,9 +434,29 @@ jobs:
           ref: ${{ needs.setup.outputs.qt_branch }}
           fetch-depth: 0
           submodules: false
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+        
+      - name: Setup xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
       
       - name: Initialize Qt submodules
         run: perl init-repository ${{ env.INIT_FLAGS }}
+
+      - name: Apply qtbase cherry pick
+        if: env.QT_BASE_CHERRY_PICK != ''
+        run: |
+          cd qtbase
+          git cherry-pick --no-commit ${{ env.QT_BASE_CHERRY_PICK }}
+
+      - name: Apply qtdeclarative cherry pick
+        if: env.QT_DECLARATIVE_CHERRY_PICK != ''
+        run: |
+          cd qtbase
+          git cherry-pick --no-commit ${{ env.QT_DECLARATIVE_CHERRY_PICK }}
       
       - name: Download prebuilt Qt Host
         run: |
