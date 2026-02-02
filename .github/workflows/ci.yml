@@ -19,7 +19,7 @@ env:
     -DFEATURE_regularexpression=OFF -no-feature-concatenatetablesproxymodel -DFEATURE_no_direct_extern_access=ON
   EXTRA_FLAGS: -no-feature-qml-network -no-feature-qml-ssl -no-feature-quickcontrols2-fusion
   QT_BASE_CHERRY_PICK:
-  QT_DECLARATIVE_CHERRY_PICK: 708665 709009 708664 695153
+  QT_DECLARATIVE_CHERRY_PICK: 708665 709009 708664 695153 699605
     
 on:
   workflow_dispatch:
@@ -87,7 +87,7 @@ jobs:
       - name: Apply qtdeclarative cherry pick
         if: env.QT_DECLARATIVE_CHERRY_PICK != ''
         run: |
-          cd qtbase
+          cd qtdeclarative
           git cherry-pick --no-commit ${{ env.QT_DECLARATIVE_CHERRY_PICK }}
           
       - name: Configure
@@ -167,7 +167,7 @@ jobs:
       - name: Apply qtdeclarative cherry pick
         if: env.QT_DECLARATIVE_CHERRY_PICK != ''
         run: |
-          cd qtbase
+          cd qtdeclarative
           git cherry-pick --no-commit ${{ env.QT_DECLARATIVE_CHERRY_PICK }}
 
       - name: Download prebuilt Qt Host
@@ -267,7 +267,7 @@ jobs:
       - name: Apply qtdeclarative cherry pick
         if: env.QT_DECLARATIVE_CHERRY_PICK != ''
         run: |
-          cd qtbase
+          cd qtdeclarative
           git cherry-pick --no-commit ${{ env.QT_DECLARATIVE_CHERRY_PICK }}
    
       - name: Configure and build
@@ -326,7 +326,7 @@ jobs:
       - name: Apply qtdeclarative cherry pick
         if: env.QT_DECLARATIVE_CHERRY_PICK != ''
         run: |
-          cd qtbase
+          cd qtdeclarative
           git cherry-pick --no-commit ${{ env.QT_DECLARATIVE_CHERRY_PICK }}
    
       - name: Configure and build
@@ -455,7 +455,7 @@ jobs:
       - name: Apply qtdeclarative cherry pick
         if: env.QT_DECLARATIVE_CHERRY_PICK != ''
         run: |
-          cd qtbase
+          cd qtdeclarative
           git cherry-pick --no-commit ${{ env.QT_DECLARATIVE_CHERRY_PICK }}
       
       - name: Download prebuilt Qt Host
