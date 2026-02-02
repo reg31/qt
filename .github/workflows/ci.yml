@@ -3,7 +3,7 @@ env:
   QT_BRANCH: 'dev'
   SCCACHE_GHA_ENABLED: "true"
   OPENSSL_VERSION: openssl-3.6
-  INIT_FLAGS: --module-subset=qtbase,qtdeclarative --branch --no-update
+  INIT_FLAGS: --module-subset=qtbase,qtdeclarative,-qtlanguageserver,-qtquicktimeline,-qtquick3d,-qtimageformats,-qtsvg --branch --no-update
   NO_STRIP_BUILD_FLAGS: -DCMAKE_CXX_FLAGS_RELEASE="-O2 -DNDEBUG" -DCMAKE_C_FLAGS_RELEASE="-O2 -DNDEBUG"
   WITH_STRIP_BUILD_FLAGS: -DCMAKE_CXX_FLAGS_RELEASE="-O2 -DNDEBUG -s" -DCMAKE_C_FLAGS_RELEASE="-O2 -DNDEBUG -s"
   SHARED_FLAGS: -release -no-feature-testlib -DQT_NO_PACKAGE_VERSION_CHECK=ON -DQT_NO_PACKAGE_VERSION_INCOMPATIBLE_WARNING=ON -c++std c++2b -no-pch
