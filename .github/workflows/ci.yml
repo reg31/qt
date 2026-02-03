@@ -18,7 +18,7 @@ env:
     -no-feature-undogroup -no-feature-ctf -no-feature-widgets -no-feature-imageformat_xbm -no-feature-sortfilterproxymodel -no-feature-filesystemwatcher
     -DFEATURE_regularexpression=OFF -no-feature-concatenatetablesproxymodel -DFEATURE_no_direct_extern_access=ON
   EXTRA_FLAGS: -no-feature-qml-network -no-feature-qml-ssl -no-feature-quickcontrols2-fusion
-  QT_BASE_CHERRY_PICK:
+  QT_BASE_CHERRY_PICK: 678918
   QT_DECLARATIVE_CHERRY_PICK: 708665 709009 708664 695153 699605
     
 on:
@@ -464,8 +464,9 @@ jobs:
 
       - name: Apply QT cherry picks
         if: env.QT_BASE_CHERRY_PICK != '' || env.QT_DECLARATIVE_CHERRY_PICK != ''
-        shell: bash
+        shell: bash --login
         run: |
+          #!/bin/bash
           declare -A repos=(
             ["qtbase"]="${QT_BASE_CHERRY_PICK}"
             ["qtdeclarative"]="${QT_DECLARATIVE_CHERRY_PICK}"
