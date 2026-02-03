@@ -130,8 +130,8 @@ jobs:
     runs-on: windows-2022
     strategy:
       matrix:
-        build_type: [release]
         arch: [arm64-v8a, armeabi-v7a]
+        build_type: [release]
     defaults:
       run:
         shell: cmd
@@ -248,12 +248,12 @@ jobs:
     strategy:
       matrix:
         include:
-          - build_type: [release]
-            arch: x86_64
+          - arch: x86_64
             runner: macos-15-intel
-          - build_type: [release]
-            arch: arm64
+            build_type: [release]
+          - arch: arm64
             runner: macos-latest
+            build_type: [release]
     steps:
       - name: Setup xcode
         uses: maxim-lobanov/setup-xcode@v1
