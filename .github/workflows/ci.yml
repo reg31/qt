@@ -117,6 +117,7 @@ jobs:
       - name: Package artifacts
         run: |
           set "OUTPUT_NAME=qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
+          Xcopy C:\ProgramData\mingw64\mingw64\bin .\%OUTPUT_NAME%\bin\ /c /i /s /y /r
           7z a %OUTPUT_NAME%.zip .\%OUTPUT_NAME%\* -x!.\%OUTPUT_NAME%\share -x!.\%OUTPUT_NAME%\sbom -x!.\%OUTPUT_NAME%\doc
           
       - name: Upload build artifact
@@ -214,9 +215,9 @@ jobs:
           mkdir build
           cd build
           
-            ..\configure.bat -xplatform android-clang -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} ^
-              -android-abis ${{ matrix.arch }} -android-ndk "%ANDROID_NDK_LATEST_HOME%" -reduce-relocations -platform android-clang ^
-              -android-sdk "%ANDROID_SDK_ROOT%" -openssl-runtime -skip qtshadertools -- -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT%" ${{ env.NO_STRIP_BUILD_FLAGS }} ^
+            ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} -skip qtshadertools ^
+              -android-abis ${{ matrix.arch }} -android-ndk "%ANDROID_NDK_LATEST_HOME%" -android-sdk "%ANDROID_SDK_ROOT%" ^
+              -reduce-relocations -openssl-runtime -- -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT%" ${{ env.NO_STRIP_BUILD_FLAGS }} ^
               -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--pack-dyn-relocs=android+relr,--use-android-relr-tags,--gc-sections"
               
             
@@ -233,7 +234,7 @@ jobs:
         run: |
           set "OUTPUT_NAME=qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
           Xcopy .\qt-windows-mingw-release-dev\bin\ .\%OUTPUT_NAME%\bin\ /c /i /s /y /r
-          Xcopy .\configFolders\bin\ .\%OUTPUT_NAME%\bin\ /c /i /s /y /r
+          Xcopy .\configFolders\bin\ .\%OUTPUT_NAME%\bin\ /c /i /s /y /r          
           7z a %OUTPUT_NAME%.zip .\%OUTPUT_NAME%\* -x!.\%OUTPUT_NAME%\share -x!.\%OUTPUT_NAME%\sbom -x!.\%OUTPUT_NAME%\doc
           
       - name: Upload build artifact
