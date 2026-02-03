@@ -247,6 +247,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
+        build_type: [release]
         include:
           - arch: x86_64
             runner: macos-15-intel
