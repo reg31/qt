@@ -18,7 +18,7 @@ env:
     -no-feature-undogroup -no-feature-ctf -no-feature-widgets -no-feature-imageformat_xbm -no-feature-sortfilterproxymodel -no-feature-filesystemwatcher
     -DFEATURE_regularexpression=OFF -no-feature-concatenatetablesproxymodel -DFEATURE_no_direct_extern_access=ON
   EXTRA_FLAGS: -no-feature-qml-network -no-feature-qml-ssl -no-feature-quickcontrols2-fusion
-  QT_BASE_CHERRY_PICK: 678918
+  QT_BASE_CHERRY_PICK: 678918 524178
   QT_DECLARATIVE_CHERRY_PICK: 708665 709009 708664 695153 699605
     
 on:
@@ -82,17 +82,17 @@ jobs:
         if: env.QT_BASE_CHERRY_PICK != '' || env.QT_DECLARATIVE_CHERRY_PICK != ''
         shell: bash
         run: |
-          declare -A repos=(
-            ["qtbase"]="${QT_BASE_CHERRY_PICK}"
-            ["qtdeclarative"]="${QT_DECLARATIVE_CHERRY_PICK}"
-          )
-          for repo in "${!repos[@]}"; do
-            for change in ${repos[$repo]}; do
+          apply_changes() {
+            local repo=$1
+            shift
+            for change in "$@"; do
               cd ${{ github.workspace }}/$repo
               suffix=$(printf "%02d" $((change % 100)))
               git fetch https://codereview.qt-project.org/qt/$repo $(git ls-remote https://codereview.qt-project.org/qt/$repo "refs/changes/$suffix/$change/*" | sort -t/ -k5 -n | tail -1 | awk '{print $2}') && git cherry-pick --no-commit FETCH_HEAD
             done
-          done
+          }
+          [ -n "${QT_BASE_CHERRY_PICK}" ] && apply_changes qtbase ${QT_BASE_CHERRY_PICK}
+          [ -n "${QT_DECLARATIVE_CHERRY_PICK}" ] && apply_changes qtdeclarative ${QT_DECLARATIVE_CHERRY_PICK}
           
       - name: Configure
         run: |          
@@ -166,17 +166,17 @@ jobs:
         if: env.QT_BASE_CHERRY_PICK != '' || env.QT_DECLARATIVE_CHERRY_PICK != ''
         shell: bash
         run: |
-          declare -A repos=(
-            ["qtbase"]="${QT_BASE_CHERRY_PICK}"
-            ["qtdeclarative"]="${QT_DECLARATIVE_CHERRY_PICK}"
-          )
-          for repo in "${!repos[@]}"; do
-            for change in ${repos[$repo]}; do
+          apply_changes() {
+            local repo=$1
+            shift
+            for change in "$@"; do
               cd ${{ github.workspace }}/$repo
               suffix=$(printf "%02d" $((change % 100)))
               git fetch https://codereview.qt-project.org/qt/$repo $(git ls-remote https://codereview.qt-project.org/qt/$repo "refs/changes/$suffix/$change/*" | sort -t/ -k5 -n | tail -1 | awk '{print $2}') && git cherry-pick --no-commit FETCH_HEAD
             done
-          done
+          }
+          [ -n "${QT_BASE_CHERRY_PICK}" ] && apply_changes qtbase ${QT_BASE_CHERRY_PICK}
+          [ -n "${QT_DECLARATIVE_CHERRY_PICK}" ] && apply_changes qtdeclarative ${QT_DECLARATIVE_CHERRY_PICK}
 
       - name: Download prebuilt Qt Host
         run: |
@@ -270,17 +270,17 @@ jobs:
         if: env.QT_BASE_CHERRY_PICK != '' || env.QT_DECLARATIVE_CHERRY_PICK != ''
         shell: bash
         run: |
-          declare -A repos=(
-            ["qtbase"]="${QT_BASE_CHERRY_PICK}"
-            ["qtdeclarative"]="${QT_DECLARATIVE_CHERRY_PICK}"
-          )
-          for repo in "${!repos[@]}"; do
-            for change in ${repos[$repo]}; do
+          apply_changes() {
+            local repo=$1
+            shift
+            for change in "$@"; do
               cd ${{ github.workspace }}/$repo
               suffix=$(printf "%02d" $((change % 100)))
               git fetch https://codereview.qt-project.org/qt/$repo $(git ls-remote https://codereview.qt-project.org/qt/$repo "refs/changes/$suffix/$change/*" | sort -t/ -k5 -n | tail -1 | awk '{print $2}') && git cherry-pick --no-commit FETCH_HEAD
             done
-          done
+          }
+          [ -n "${QT_BASE_CHERRY_PICK}" ] && apply_changes qtbase ${QT_BASE_CHERRY_PICK}
+          [ -n "${QT_DECLARATIVE_CHERRY_PICK}" ] && apply_changes qtdeclarative ${QT_DECLARATIVE_CHERRY_PICK}
    
       - name: Configure and build
         run: |
@@ -333,17 +333,17 @@ jobs:
         if: env.QT_BASE_CHERRY_PICK != '' || env.QT_DECLARATIVE_CHERRY_PICK != ''
         shell: bash
         run: |
-          declare -A repos=(
-            ["qtbase"]="${QT_BASE_CHERRY_PICK}"
-            ["qtdeclarative"]="${QT_DECLARATIVE_CHERRY_PICK}"
-          )
-          for repo in "${!repos[@]}"; do
-            for change in ${repos[$repo]}; do
+          apply_changes() {
+            local repo=$1
+            shift
+            for change in "$@"; do
               cd ${{ github.workspace }}/$repo
               suffix=$(printf "%02d" $((change % 100)))
               git fetch https://codereview.qt-project.org/qt/$repo $(git ls-remote https://codereview.qt-project.org/qt/$repo "refs/changes/$suffix/$change/*" | sort -t/ -k5 -n | tail -1 | awk '{print $2}') && git cherry-pick --no-commit FETCH_HEAD
             done
-          done
+          }
+          [ -n "${QT_BASE_CHERRY_PICK}" ] && apply_changes qtbase ${QT_BASE_CHERRY_PICK}
+          [ -n "${QT_DECLARATIVE_CHERRY_PICK}" ] && apply_changes qtdeclarative ${QT_DECLARATIVE_CHERRY_PICK}
    
       - name: Configure and build
         run: |
@@ -464,20 +464,19 @@ jobs:
 
       - name: Apply QT cherry picks
         if: env.QT_BASE_CHERRY_PICK != '' || env.QT_DECLARATIVE_CHERRY_PICK != ''
-        shell: bash --login
+        shell: bash
         run: |
-          #!/bin/bash
-          declare -A repos=(
-            ["qtbase"]="${QT_BASE_CHERRY_PICK}"
-            ["qtdeclarative"]="${QT_DECLARATIVE_CHERRY_PICK}"
-          )
-          for repo in "${!repos[@]}"; do
-            for change in ${repos[$repo]}; do
+          apply_changes() {
+            local repo=$1
+            shift
+            for change in "$@"; do
               cd ${{ github.workspace }}/$repo
               suffix=$(printf "%02d" $((change % 100)))
               git fetch https://codereview.qt-project.org/qt/$repo $(git ls-remote https://codereview.qt-project.org/qt/$repo "refs/changes/$suffix/$change/*" | sort -t/ -k5 -n | tail -1 | awk '{print $2}') && git cherry-pick --no-commit FETCH_HEAD
             done
-          done
+          }
+          [ -n "${QT_BASE_CHERRY_PICK}" ] && apply_changes qtbase ${QT_BASE_CHERRY_PICK}
+          [ -n "${QT_DECLARATIVE_CHERRY_PICK}" ] && apply_changes qtdeclarative ${QT_DECLARATIVE_CHERRY_PICK}
       
       - name: Download prebuilt Qt Host
         run: |
