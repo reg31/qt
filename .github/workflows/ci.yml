@@ -85,8 +85,9 @@ jobs:
           apply_changes() {
             local repo=$1
             shift
+            local workspace=$(echo "${{ github.workspace }}" | sed 's/\\/\//g')
             for change in "$@"; do
-              cd ${{ github.workspace }}/$repo
+              cd "$workspace/$repo"
               suffix=$(printf "%02d" $((change % 100)))
               git fetch https://codereview.qt-project.org/qt/$repo $(git ls-remote https://codereview.qt-project.org/qt/$repo "refs/changes/$suffix/$change/*" | sort -t/ -k5 -n | tail -1 | awk '{print $2}') && git cherry-pick --no-commit FETCH_HEAD
             done
@@ -169,8 +170,9 @@ jobs:
           apply_changes() {
             local repo=$1
             shift
+            local workspace=$(echo "${{ github.workspace }}" | sed 's/\\/\//g')
             for change in "$@"; do
-              cd ${{ github.workspace }}/$repo
+              cd "$workspace/$repo"
               suffix=$(printf "%02d" $((change % 100)))
               git fetch https://codereview.qt-project.org/qt/$repo $(git ls-remote https://codereview.qt-project.org/qt/$repo "refs/changes/$suffix/$change/*" | sort -t/ -k5 -n | tail -1 | awk '{print $2}') && git cherry-pick --no-commit FETCH_HEAD
             done
