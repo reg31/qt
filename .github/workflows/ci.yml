@@ -264,6 +264,8 @@ jobs:
 
       - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1
+        with:
+          max-size: "2000MB"
       
       - name: Initialize Qt submodules
         run: perl init-repository ${{ env.INIT_FLAGS }}
