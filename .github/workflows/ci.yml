@@ -247,12 +247,13 @@ jobs:
     runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
-        build_type: [release]
         include:
           - arch: x86_64
             runner: macos-15-intel
+            build_type: [release]
           - arch: arm64
             runner: macos-latest
+            build_type: [release]
     steps:
       - name: Setup xcode
         uses: maxim-lobanov/setup-xcode@v1
