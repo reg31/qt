@@ -242,83 +242,22 @@ jobs:
           name: qt-android-${{ matrix.arch }}
           path: ./qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
 
-  build-macos-x86_64:
+  build-macos:
     needs: setup
-    runs-on: macos-15-intel
+    runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
-        build_type: [release]
-    steps:      
-      - name: Setup xcode
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: latest-stable
-          
-      - name: Checkout Qt
-        uses: actions/checkout@v6
-        with:
-          repository: qt/qt5
-          ref: ${{ needs.setup.outputs.qt_branch }}
-          fetch-depth: 0
-          submodules: false
-
-      - name: Setup ccache
-        uses: hendrikmuhs/ccache-action@v1
-        with:
-          max-size: "2000MB"
-      
-      - name: Initialize Qt submodules
-        run: perl init-repository ${{ env.INIT_FLAGS }}
-
-      - name: Apply QT cherry picks
-        if: env.QT_BASE_CHERRY_PICK != '' || env.QT_DECLARATIVE_CHERRY_PICK != ''
-        shell: bash
-        run: |
-          apply_changes() {
-            local repo=$1
-            shift
-            for change in "$@"; do
-              cd ${{ github.workspace }}/$repo
-              suffix=$(printf "%02d" $((change % 100)))
-              git fetch https://codereview.qt-project.org/qt/$repo $(git ls-remote https://codereview.qt-project.org/qt/$repo "refs/changes/$suffix/$change/*" | sort -t/ -k5 -n | tail -1 | awk '{print $2}') && git cherry-pick --no-commit FETCH_HEAD
-            done
-          }
-          [ -n "${QT_BASE_CHERRY_PICK}" ] && apply_changes qtbase ${QT_BASE_CHERRY_PICK}
-          [ -n "${QT_DECLARATIVE_CHERRY_PICK}" ] && apply_changes qtdeclarative ${QT_DECLARATIVE_CHERRY_PICK}
-   
-      - name: Configure and build
-        run: |
-          OUTPUT_DIR=$(pwd)/qt-macos-x86_64-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
-          export CMAKE_CXX_COMPILER_LAUNCHER="ccache"
-          export CMAKE_C_COMPILER_LAUNCHER="ccache"
-          mkdir -p build
-          cd build
-          
-          ../configure ${{ env.SHARED_FLAGS }} -securetransport -feature-appstore-compliant -prefix $OUTPUT_DIR \
-          -- -DCMAKE_OSX_ARCHITECTURES="x86_64" ${{ env.NO_STRIP_BUILD_FLAGS }} -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-dead_strip"
-          ../configure -list-features
-          
-          cmake --build . -j$(sysctl -n hw.ncpu)
-          cmake --install . --strip
-          
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v6
-        with:
-          name: qt-macos-x86_64
-          path: qt-macos-x86_64-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
-
-  build-macos-arm64:
-    needs: setup
-    runs-on: macos-latest
-    strategy:
-      matrix:
-        build_type: [release]
+        include:
+          - arch: x86_64
+            runner: macos-15-intel
+          - arch: arm64
+            runner: macos-latest
     steps:
       - name: Setup xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: latest-stable
-          
+
       - name: Checkout Qt
         uses: actions/checkout@v6
         with:
@@ -326,10 +265,17 @@ jobs:
           ref: ${{ needs.setup.outputs.qt_branch }}
           fetch-depth: 0
           submodules: false
-          
-      - name: Setup sccache
+
+      - name: Setup sccache (intel)
+        if: matrix.arch == 'x86_64'
         uses: mozilla-actions/sccache-action@v0.0.9
-      
+        with:
+          version: "v0.12.0"
+
+      - name: Setup sccache (arm64)
+        if: matrix.arch == 'arm64'
+        uses: mozilla-actions/sccache-action@v0.0.9
+
       - name: Initialize Qt submodules
         run: perl init-repository ${{ env.INIT_FLAGS }}
 
@@ -348,30 +294,30 @@ jobs:
           }
           [ -n "${QT_BASE_CHERRY_PICK}" ] && apply_changes qtbase ${QT_BASE_CHERRY_PICK}
           [ -n "${QT_DECLARATIVE_CHERRY_PICK}" ] && apply_changes qtdeclarative ${QT_DECLARATIVE_CHERRY_PICK}
-   
+
       - name: Configure and build
         run: |
-          OUTPUT_DIR=$(pwd)/qt-macos-arm64-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
+          OUTPUT_DIR=$(pwd)/qt-macos-${{ matrix.arch }}-release-${{ needs.setup.outputs.qt_branch }}
           export CMAKE_CXX_COMPILER_LAUNCHER="sccache"
           export CMAKE_C_COMPILER_LAUNCHER="sccache"
           mkdir -p build
           cd build
-          
+
           ../configure ${{ env.SHARED_FLAGS }} -securetransport -feature-appstore-compliant -prefix $OUTPUT_DIR \
-          -- -DCMAKE_OSX_ARCHITECTURES="arm64" ${{ env.NO_STRIP_BUILD_FLAGS }} -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-dead_strip"
+          -- -DCMAKE_OSX_ARCHITECTURES="${{ matrix.arch }}" ${{ env.NO_STRIP_BUILD_FLAGS }} -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-dead_strip"
           ../configure -list-features
-          
+
           cmake --build . -j$(sysctl -n hw.ncpu)
           cmake --install . --strip
-          
+
       - name: Upload build artifact
         uses: actions/upload-artifact@v6
         with:
-          name: qt-macos-arm64
-          path: qt-macos-arm64-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
+          name: qt-macos-${{ matrix.arch }}
+          path: qt-macos-${{ matrix.arch }}-release-${{ needs.setup.outputs.qt_branch }}
 
   combine-macos:
-    needs: [setup, build-macos-x86_64, build-macos-arm64]
+    needs: [setup, build-macos]
     runs-on: macos-latest
     steps:
       - name: Download x86_64 build
