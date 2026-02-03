@@ -117,7 +117,7 @@ jobs:
       - name: Package artifacts
         run: |
           set "OUTPUT_NAME=qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
-          Xcopy C:\ProgramData\mingw64\mingw64\bin .\%OUTPUT_NAME%\bin\ /c /i /s /y /r
+          Xcopy C:\ProgramData\mingw64\mingw64\bin\*.dll .\%OUTPUT_NAME%\bin\ /c /i /s /y /r
           7z a %OUTPUT_NAME%.zip .\%OUTPUT_NAME%\* -x!.\%OUTPUT_NAME%\share -x!.\%OUTPUT_NAME%\sbom -x!.\%OUTPUT_NAME%\doc
           
       - name: Upload build artifact
