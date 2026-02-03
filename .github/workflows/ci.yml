@@ -82,13 +82,27 @@ jobs:
         if: env.QT_BASE_CHERRY_PICK != ''
         run: |
           cd qtbase
-          git cherry-pick --no-commit ${{ env.QT_BASE_CHERRY_PICK }}
-
+          for %change% in (${{ env.QT_BASE_CHERRY_PICK }}) do (
+            git ls-remote https://codereview.qt-project.org/qt/qtbase "refs/changes/*/%change%/*" > %TEMP%\refs.txt
+            for /f "tokens=2" %ref% in (%TEMP%\refs.txt) do (
+              set LATEST=%ref%
+            )
+            git fetch https://codereview.qt-project.org/qt/qtbase %LATEST%
+            git cherry-pick --no-commit FETCH_HEAD
+          )
+      
       - name: Apply qtdeclarative cherry pick
         if: env.QT_DECLARATIVE_CHERRY_PICK != ''
         run: |
           cd qtdeclarative
-          git cherry-pick --no-commit ${{ env.QT_DECLARATIVE_CHERRY_PICK }}
+          for %change% in (${{ env.QT_DECLARATIVE_CHERRY_PICK }}) do (
+            git ls-remote https://codereview.qt-project.org/qt/qtdeclarative "refs/changes/*/%change%/*" > %TEMP%\refs.txt
+            for /f "tokens=2" %ref% in (%TEMP%\refs.txt) do (
+              set LATEST=%ref%
+            )
+            git fetch https://codereview.qt-project.org/qt/qtdeclarative %LATEST%
+            git cherry-pick --no-commit FETCH_HEAD
+          )
           
       - name: Configure
         run: |          
@@ -162,13 +176,27 @@ jobs:
         if: env.QT_BASE_CHERRY_PICK != ''
         run: |
           cd qtbase
-          git cherry-pick --no-commit ${{ env.QT_BASE_CHERRY_PICK }}
-
+          for %change% in (${{ env.QT_BASE_CHERRY_PICK }}) do (
+            git ls-remote https://codereview.qt-project.org/qt/qtbase "refs/changes/*/%change%/*" > %TEMP%\refs.txt
+            for /f "tokens=2" %ref% in (%TEMP%\refs.txt) do (
+              set LATEST=%ref%
+            )
+            git fetch https://codereview.qt-project.org/qt/qtbase %LATEST%
+            git cherry-pick --no-commit FETCH_HEAD
+          )
+      
       - name: Apply qtdeclarative cherry pick
         if: env.QT_DECLARATIVE_CHERRY_PICK != ''
         run: |
           cd qtdeclarative
-          git cherry-pick --no-commit ${{ env.QT_DECLARATIVE_CHERRY_PICK }}
+          for %change% in (${{ env.QT_DECLARATIVE_CHERRY_PICK }}) do (
+            git ls-remote https://codereview.qt-project.org/qt/qtdeclarative "refs/changes/*/%change%/*" > %TEMP%\refs.txt
+            for /f "tokens=2" %ref% in (%TEMP%\refs.txt) do (
+              set LATEST=%ref%
+            )
+            git fetch https://codereview.qt-project.org/qt/qtdeclarative %LATEST%
+            git cherry-pick --no-commit FETCH_HEAD
+          )
 
       - name: Download prebuilt Qt Host
         run: |
@@ -262,13 +290,23 @@ jobs:
         if: env.QT_BASE_CHERRY_PICK != ''
         run: |
           cd qtbase
-          git cherry-pick --no-commit ${{ env.QT_BASE_CHERRY_PICK }}
-
+          for change in ${{ env.QT_BASE_CHERRY_PICK }}; do
+            suffix=$(printf "%02d" $((change % 100)))
+            ref=$(git ls-remote https://codereview.qt-project.org/qt/qtbase "refs/changes/$suffix/$change/*" | sort -t/ -k5 -n | tail -1 | awk '{print $2}')
+            git fetch https://codereview.qt-project.org/qt/qtbase $ref
+            git cherry-pick --no-commit FETCH_HEAD
+          done
+      
       - name: Apply qtdeclarative cherry pick
         if: env.QT_DECLARATIVE_CHERRY_PICK != ''
         run: |
           cd qtdeclarative
-          git cherry-pick --no-commit ${{ env.QT_DECLARATIVE_CHERRY_PICK }}
+          for change in ${{ env.QT_DECLARATIVE_CHERRY_PICK }}; do
+            suffix=$(printf "%02d" $((change % 100)))
+            ref=$(git ls-remote https://codereview.qt-project.org/qt/qtdeclarative "refs/changes/$suffix/$change/*" | sort -t/ -k5 -n | tail -1 | awk '{print $2}')
+            git fetch https://codereview.qt-project.org/qt/qtdeclarative $ref
+            git cherry-pick --no-commit FETCH_HEAD
+          done
    
       - name: Configure and build
         run: |
@@ -321,13 +359,23 @@ jobs:
         if: env.QT_BASE_CHERRY_PICK != ''
         run: |
           cd qtbase
-          git cherry-pick --no-commit ${{ env.QT_BASE_CHERRY_PICK }}
-
+          for change in ${{ env.QT_BASE_CHERRY_PICK }}; do
+            suffix=$(printf "%02d" $((change % 100)))
+            ref=$(git ls-remote https://codereview.qt-project.org/qt/qtbase "refs/changes/$suffix/$change/*" | sort -t/ -k5 -n | tail -1 | awk '{print $2}')
+            git fetch https://codereview.qt-project.org/qt/qtbase $ref
+            git cherry-pick --no-commit FETCH_HEAD
+          done
+      
       - name: Apply qtdeclarative cherry pick
         if: env.QT_DECLARATIVE_CHERRY_PICK != ''
         run: |
           cd qtdeclarative
-          git cherry-pick --no-commit ${{ env.QT_DECLARATIVE_CHERRY_PICK }}
+          for change in ${{ env.QT_DECLARATIVE_CHERRY_PICK }}; do
+            suffix=$(printf "%02d" $((change % 100)))
+            ref=$(git ls-remote https://codereview.qt-project.org/qt/qtdeclarative "refs/changes/$suffix/$change/*" | sort -t/ -k5 -n | tail -1 | awk '{print $2}')
+            git fetch https://codereview.qt-project.org/qt/qtdeclarative $ref
+            git cherry-pick --no-commit FETCH_HEAD
+          done
    
       - name: Configure and build
         run: |
@@ -450,13 +498,23 @@ jobs:
         if: env.QT_BASE_CHERRY_PICK != ''
         run: |
           cd qtbase
-          git cherry-pick --no-commit ${{ env.QT_BASE_CHERRY_PICK }}
-
+          for change in ${{ env.QT_BASE_CHERRY_PICK }}; do
+            suffix=$(printf "%02d" $((change % 100)))
+            ref=$(git ls-remote https://codereview.qt-project.org/qt/qtbase "refs/changes/$suffix/$change/*" | sort -t/ -k5 -n | tail -1 | awk '{print $2}')
+            git fetch https://codereview.qt-project.org/qt/qtbase $ref
+            git cherry-pick --no-commit FETCH_HEAD
+          done
+      
       - name: Apply qtdeclarative cherry pick
         if: env.QT_DECLARATIVE_CHERRY_PICK != ''
         run: |
           cd qtdeclarative
-          git cherry-pick --no-commit ${{ env.QT_DECLARATIVE_CHERRY_PICK }}
+          for change in ${{ env.QT_DECLARATIVE_CHERRY_PICK }}; do
+            suffix=$(printf "%02d" $((change % 100)))
+            ref=$(git ls-remote https://codereview.qt-project.org/qt/qtdeclarative "refs/changes/$suffix/$change/*" | sort -t/ -k5 -n | tail -1 | awk '{print $2}')
+            git fetch https://codereview.qt-project.org/qt/qtdeclarative $ref
+            git cherry-pick --no-commit FETCH_HEAD
+          done
       
       - name: Download prebuilt Qt Host
         run: |
