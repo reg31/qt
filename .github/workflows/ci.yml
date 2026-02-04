@@ -16,10 +16,10 @@ env:
     -no-feature-quickcontrols2-imagine -no-feature-quickcontrols2-universal -no-feature-gssapi -no-feature-whatsthis -no-feature-graphicsframecapture 
     -no-feature-quickcontrols2-fluentwinui3 -no-feature-textmarkdownreader -no-feature-textmarkdownwriter -no-feature-movie -no-feature-undocommand 
     -no-feature-undogroup -no-feature-ctf -no-feature-widgets -no-feature-imageformat_xbm -no-feature-sortfilterproxymodel -no-feature-filesystemwatcher
-    -DFEATURE_regularexpression=OFF -no-feature-concatenatetablesproxymodel -DFEATURE_no_direct_extern_access=ON
+    -DFEATURE_regularexpression=OFF -no-feature-concatenatetablesproxymodel -DFEATURE_no_direct_extern_access=ON -no-feature-qml-labs
   EXTRA_FLAGS: -no-feature-qml-network -no-feature-qml-ssl -no-feature-quickcontrols2-fusion
   QT_BASE_CHERRY_PICK: 524178
-  QT_DECLARATIVE_CHERRY_PICK: 695153 699605
+  QT_DECLARATIVE_CHERRY_PICK: 695153 699605 702018
     
 on:
   workflow_dispatch:
