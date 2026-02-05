@@ -159,7 +159,7 @@ jobs:
           check-latest: true
       
       - name: Install dependencies
-        run: winget install -e --id JernejSimoncic.Wget
+        run: choco install -y wget
         
       - name: Initialize Qt submodules
         run: init-repository.bat ${{ env.INIT_FLAGS }}
