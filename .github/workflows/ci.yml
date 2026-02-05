@@ -7,17 +7,17 @@ env:
   NO_STRIP_BUILD_FLAGS: -DCMAKE_CXX_FLAGS_RELEASE="-O2 -DNDEBUG -Xclang -fno-pch-timestamp" -DCMAKE_C_FLAGS_RELEASE="-O2 -DNDEBUG -Xclang -fno-pch-timestamp"
   WITH_STRIP_BUILD_FLAGS: -DCMAKE_CXX_FLAGS_RELEASE="-O2 -DNDEBUG -s" -DCMAKE_C_FLAGS_RELEASE="-O2 -DNDEBUG -s"
   SHARED_FLAGS: -release -no-feature-testlib -DQT_NO_PACKAGE_VERSION_CHECK=ON -DQT_NO_PACKAGE_VERSION_INCOMPATIBLE_WARNING=ON -c++std c++2b
-    -no-feature-hijricalendar -no-feature-islamiccivilcalendar -nomake tests -nomake examples -submodules qtbase,qtdeclarative -no-feature-sql -no-sbom
+    -no-feature-hijricalendar -no-feature-islamiccivilcalendar -nomake tests -nomake examples -submodules qtbase,qtdeclarative -no-feature-whatsthis
     -skip qtlanguageserver,qtquicktimeline,qtquick3d,qtimageformats,qtsvg -qt-zlib -qt-libjpeg -qt-libpng -qt-pcre -qt-harfbuzz -qt-freetype -reduce-exports
     -DQT_BUILD_EXAMPLES_BY_DEFAULT=OFF -DQT_BUILD_TESTS_BY_DEFAULT=OFF -DQT_BUILD_TOOLS_BY_DEFAULT=ON -no-feature-calendarwidget -no-feature-textodfwriter
     -no-feature-imageformat_ppm -no-warnings-are-errors -disable-deprecated-up-to 0x070000 -no-feature-test_gui -no-feature-jalalicalendar -no-feature-sctp
-    -no-feature-imageformat_bmp -feature-relocatable -no-feature-pdf -no-feature-private_tests -no-feature-dbus -no-feature-vnc -no-feature-openvg
-    -no-feature-localserver -no-feature-libproxy -no-feature-vkgen -no-feature-xml -no-feature-printsupport -no-feature-udpsocket -no-feature-brotli
-    -no-feature-quickcontrols2-fluentwinui3 -no-feature-quickcontrols2-imagine -no-feature-quickcontrols2-universal -no-feature-gssapi -no-feature-whatsthis
+    -no-feature-imageformat_bmp -feature-relocatable -no-feature-pdf -no-feature-private_tests -no-feature-dbus -no-feature-vnc -no-feature-openvg -no-sbom  
+    -no-feature-localserver -no-feature-libproxy -no-feature-vkgen -no-feature-xml -no-feature-printsupport -no-feature-udpsocket -no-feature-brotli 
+    -no-feature-quickcontrols2-fluentwinui3 -no-feature-quickcontrols2-imagine -no-feature-quickcontrols2-universal -no-feature-quickcontrols2-fusion
     -no-feature-textmarkdownreader -no-feature-textmarkdownwriter -no-feature-movie -no-feature-undocommand -no-feature-concatenatetablesproxymodel
-    -no-feature-undogroup -no-feature-ctf -no-feature-widgets -no-feature-imageformat_xbm -no-feature-sortfilterproxymodel -no-feature-filesystemwatcher
-    -no-feature-quickcontrols2-macos -no-feature-quickcontrols2-fusion
-    -no-feature-graphicsframecapture -DFEATURE_regularexpression=OFF -DFEATURE_no_direct_extern_access=ON -no-feature-qml-labs
+    -no-feature-undogroup -no-feature-ctf -no-feature-widgets -no-feature-imageformat_xbm -no-feature-sortfilterproxymodel -no-feature-filesystemwatcher    
+    -no-feature-sql -no-feature-gssapi -no-feature-graphicsframecapture -DFEATURE_regularexpression=OFF -DFEATURE_no_direct_extern_access=ON -no-feature-qml-labs
+  EXTRA_FLAGS: -no-feature-qml-network -no-feature-qml-ssl
   QT_BASE_CHERRY_PICK: 524178 709831
   QT_DECLARATIVE_CHERRY_PICK: 695153 699605 702018 708664 708665 709045 709046
     
