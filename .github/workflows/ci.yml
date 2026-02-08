@@ -469,7 +469,7 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/convert_to_m_object.sh \
             -o convert_to_m_object.sh
           
-          sed -i 's/\r$//' convert_to_m_object.sh
+          dos2unix convert_to_m_object.sh 2>/dev/null || sed -i.bak $'s/\r$//' convert_to_m_object.sh || perl -pi -e 's/\r\n/\n/g' convert_to_m_object.sh
           
           chmod +x convert_to_m_object.sh
           
