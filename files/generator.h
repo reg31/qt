@@ -1,10 +1,10 @@
-// Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
-
 #ifndef GENERATOR_H
 #define GENERATOR_H
 
 #include "moc.h"
+#include <vector>
+#include <unordered_map>
+#include <span>
 
 QT_BEGIN_NAMESPACE
 
@@ -27,12 +27,12 @@ public:
 private:
     bool registerableMetaType(const QByteArray &propertyType);
     void registerClassInfoStrings();
-    void registerFunctionStrings(const QList<FunctionDef> &list);
-    void registerByteArrayVector(const QList<QByteArray> &list);
-    void addStrings(const QByteArrayList &strings);
+    void registerFunctionStrings(std::span<const FunctionDef> list);
+    void registerByteArrayVector(std::span<const QByteArray> list);
+    void addStrings(const std::vector<StringDef> &strings);
     void addProperties();
     void addEnums();
-    void addFunctions(const QList<FunctionDef> &list, const char *functype);
+    void addFunctions(std::span<const FunctionDef> list, const char *functype);
     void addClassInfos();
     void generateTypeInfo(const QByteArray &typeName, bool allowEmptyName = false);
     void registerEnumStrings();
@@ -44,13 +44,14 @@ private:
     QByteArray disambiguatedTypeName(const QByteArray &name);
     QByteArray disambiguatedTypeName(const QByteArray &name, TypeTags tag);
     QByteArray disambiguatedTypeNameForCast(const QByteArray &name);
-    QMultiMap<QByteArray, int> automaticPropertyMetaTypesHelper();
-    QMap<int, QMultiMap<QByteArray, int>>
-    methodsWithAutomaticTypesHelper(const QList<FunctionDef> &methodList);
+    std::unordered_map<QByteArray, int> automaticPropertyMetaTypesHelper();
+    std::unordered_map<int, std::unordered_map<QByteArray, int>>
+    methodsWithAutomaticTypesHelper(const std::vector<FunctionDef> &methodList);
 
-    void strreg(const QByteArray &); // registers a string
-    int stridx(const QByteArray &); // returns a string's id
-    QList<QByteArray> strings;
+    void strreg(const QByteArray &);
+    int stridx(const QByteArray &);
+    std::vector<StringDef> strings;
+    std::unordered_map<QByteArray, int> stringCache;
     QByteArray purestSuperClass;
     QList<QByteArray> metaTypes;
     QHash<QByteArray, QByteArray> knownQObjectClasses;
@@ -61,4 +62,4 @@ private:
 
 QT_END_NAMESPACE
 
-#endif // GENERATOR_H
+#endif
