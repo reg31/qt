@@ -17,7 +17,6 @@
 #include <QtCore/qtmocconstants.h>
 
 #include <math.h>
-#include <stdio.h>
 
 #include <private/qmetaobject_p.h> 
 #include <private/qplugin_p.h> 
@@ -619,7 +618,7 @@ void Generator::generateTypeInfo(const QByteArray &typeName, bool allowEmptyName
         }
     } else {
         Q_ASSERT(!typeName.isEmpty() || allowEmptyName);
-        fprintf(out, "0x%.8x | %d", IsUnresolvedType, stridx(typeName));
+        fprintf(out, "0x%.8x | static_cast<uint>(%d)", IsUnresolvedType, stridx(typeName));
     }
 }
 
@@ -911,7 +910,7 @@ void Generator::generateStaticMetacall()
         fprintf(out, "    if (_c == QMetaObject::InvokeMetaMethod) [[likely]] {\n");
         fprintf(out, "        Q_ASSERT(_id >= 0 && _id < %d);\n", int(methodList.size()));
         fprintf(out, "        using Func = void (*)(%s *, void **);\n", cdef->classname.constData());
-        fprintf(out, "        static const std::array<Func, %d> vtable {{\n", int(methodList.size()));
+        fprintf(out, "        static constexpr std::array<Func, %d> vtable = {{\n", int(methodList.size()));
         
         for (int i = 0; i < methodList.size(); ++i) {
             const auto &f = methodList.at(i);
