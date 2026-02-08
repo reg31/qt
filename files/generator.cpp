@@ -452,9 +452,9 @@ static constexpr auto qt_staticMetaObjectRelocatingContent%s =
 
     fprintf(out, "\nvoid *%s::qt_metacast(const char *_clname)\n{\n", cdef->qualified.constData());
     fprintf(out, "    if (!_clname) return nullptr;\n");
-    fprintf(out, "    if (!strcmp(_clname, qt_staticMetaObjectStaticContent<qt_meta_tag_%s_t>.strings))\n"
+    fprintf(out, "    if (!strcmp(_clname, qt_staticMetaObjectStaticContent%s.strings))\n"
                   "        return static_cast<void*>(this);\n",
-            qualifiedClassNameIdentifier.constData());
+            metaVarNameSuffix.constData());
 
     if (cdef->superclassList.size() > 1) {
         auto it = cdef->superclassList.cbegin() + 1;
