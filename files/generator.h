@@ -3,13 +3,10 @@
 
 #ifndef GENERATOR_H
 #define GENERATOR_H
-
 #include "moc.h"
 #include <cstdio>
 #include <unordered_map>
-
 QT_BEGIN_NAMESPACE
-
 class Generator final
 {
     Moc *parser = nullptr;
@@ -19,6 +16,13 @@ class Generator final
     QList<QByteArray> strings;
     std::unordered_map<QByteArray, int> stringCache;
     
+    struct TypeInfo {
+        int builtinType = 0;
+        const char *valueString = nullptr;
+        bool isBuiltin = false;
+    };
+    std::unordered_map<QByteArray, TypeInfo> typeCache;
+    
     const QList<QByteArray> metaTypes;
     const QHash<QByteArray, QByteArray> knownQObjectClasses;
     const QHash<QByteArray, QByteArray> knownGadgets;
@@ -26,7 +30,6 @@ class Generator final
     
     QByteArray purestSuperClass;
     const bool requireCompleteTypes = false;
-
 public:
     Generator(Moc *moc, const ClassDef *classDef, const QList<QByteArray> &metaTypes,
               const QHash<QByteArray, QByteArray> &knownQObjectClasses,
@@ -37,7 +40,6 @@ public:
     void generateCode();
     
     [[nodiscard]] qsizetype registeredStringsCount() const { return strings.size(); }
-
 private:
     bool registerableMetaType(const QByteArray &propertyType);
     void registerClassInfoStrings();
@@ -56,6 +58,10 @@ private:
     void generateSignal(const FunctionDef *def, int index);
     void generatePluginMetaData();
     
+    void precomputeTypeInfo(const QByteArray &typeName);
+    void precomputeTypesForFunctions(const QList<FunctionDef> &list);
+    void precomputeTypesForProperties();
+    
     QByteArray disambiguatedTypeName(const QByteArray &name);
     QByteArray disambiguatedTypeName(const QByteArray &name, TypeTags tag);
     QByteArray disambiguatedTypeNameForCast(const QByteArray &name);
@@ -67,7 +73,5 @@ private:
     void strreg(const QByteArray &s);
     int stridx(const QByteArray &s);
 };
-
 QT_END_NAMESPACE
-
 #endif
