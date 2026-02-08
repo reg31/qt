@@ -911,7 +911,7 @@ void Generator::generateStaticMetacall()
         fprintf(out, "    if (_c == QMetaObject::InvokeMetaMethod) [[likely]] {\n");
         fprintf(out, "        Q_ASSERT(_id >= 0 && _id < %d);\n", int(methodList.size()));
         fprintf(out, "        using Func = void (*)(%s *, void **);\n", cdef->classname.constData());
-        fprintf(out, "        static const std::array<Func, %d> vtable = {{\n", int(methodList.size()));
+        fprintf(out, "        static const std::array<Func, %d> vtable {{\n", int(methodList.size()));
         
         for (int i = 0; i < methodList.size(); ++i) {
             const auto &f = methodList.at(i);
