@@ -97,6 +97,15 @@ jobs:
           }
           [ -n "${QT_BASE_CHERRY_PICK}" ] && apply_changes qtbase ${QT_BASE_CHERRY_PICK}
           [ -n "${QT_DECLARATIVE_CHERRY_PICK}" ] && apply_changes qtdeclarative ${QT_DECLARATIVE_CHERRY_PICK}
+
+      - name: Experimental moc improvement
+        shell: bash
+        run: |
+          set -e
+          
+          echo echo "Downloading optimized generator.cpp..."
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/generator.cpp \
+            -o qtbase/src/tools/moc/generator.cpp
           
       - name: Configure
         run: |          
@@ -206,6 +215,11 @@ jobs:
           cd configFolders
           wget https://raw.githubusercontent.com/reg31/qt/main/files/android_bin.7z
           7z x android_bin.7z
+
+      - name: Experimental moc improvement
+        shell: bash
+        run: |
+          set -e
           
       - name: Configure Android Qt
         run: |
@@ -303,6 +317,11 @@ jobs:
           }
           [ -n "${QT_BASE_CHERRY_PICK}" ] && apply_changes qtbase ${QT_BASE_CHERRY_PICK}
           [ -n "${QT_DECLARATIVE_CHERRY_PICK}" ] && apply_changes qtdeclarative ${QT_DECLARATIVE_CHERRY_PICK}
+
+      - name: Experimental moc improvement
+        shell: bash
+        run: |
+          set -e
 
       - name: Configure and build
         run: |
@@ -447,6 +466,32 @@ jobs:
           QT_ARCHIVE=qt-macos-release-dev.zip
           wget https://github.com/reg31/qt/releases/latest/download/$QT_ARCHIVE
           7z x $QT_ARCHIVE
+
+      - name: Experimental moc improvement
+        shell: bash
+        run: |
+          set -e
+          
+          echo echo "Downloading optimized generator.cpp..."
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/generator.cpp \
+            -o qtbase/src/tools/moc/generator.cpp
+
+      - name: Configure and build for iOS
+        run: | 
+          OUTPUT_DIR=$(pwd)/qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
+          export CMAKE_CXX_COMPILER_LAUNCHER="sccache"
+          export CMAKE_C_COMPILER_LAUNCHER="sccache"
+          HOST_PATH=$(pwd)/qt-macos-release-dev
+          mkdir -p build
+          cd build
+          
+          ../configure -platform macx-ios-clang ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} -securetransport -feature-appstore-compliant \
+          -skip qtshadertools -gc-binaries -prefix $OUTPUT_DIR -qt-host-path $HOST_PATH -- -DCMAKE_OSX_ARCHITECTURES="arm64" \
+          -DCMAKE_C_FLAGS="-march=armv8.2-a+dotprod -O2 -DNDEBUG" -DCMAKE_CXX_FLAGS="-march=armv8.2-a+dotprod -O2 -DNDEBUG"
+          ../configure -list-features
+          
+          cmake --build . -j$(sysctl -n hw.ncpu)
+          cmake --install . --strip
           
       - name: Package artifacts
         run: |
