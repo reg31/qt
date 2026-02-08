@@ -87,6 +87,7 @@ Generator::Generator(Moc *moc, const ClassDef *classDef, const QList<QByteArray>
     if (!cdef->superclassList.empty())
         purestSuperClass = cdef->superclassList.constFirst().classname;
     stringCache.reserve(256);
+    typeCache.reserve(128);
 }
 
 static inline qsizetype lengthOfEscapeSequence(const QByteArray &s, qsizetype i)
@@ -144,6 +145,27 @@ int Generator::stridx(const QByteArray &s)
     }
     Q_ASSERT_X(false, Q_FUNC_INFO, "We forgot to register some strings");
     return -1;
+}
+
+void Generator::precomputeTypeInfo(const QByteArray &typeName)
+{
+    if (typeCache.contains(typeName))
+        return;
+    
+    TypeInfo info;
+    info.builtinType = nameToBuiltinType(typeName);
+    info.isBuiltin = (info.builtinType != QMetaType::UnknownType);
+    
+    if (info.isBuiltin) {
+        if (typeName == "qreal") {
+            info.builtinType = QMetaType::UnknownType;
+            info.valueString = "QReal";
+        } else {
+            info.valueString = metaTypeEnumValueString(info.builtinType);
+        }
+    }
+    
+    typeCache[typeName] = info;
 }
 
 bool Generator::registerableMetaType(const QByteArray &propertyType)
@@ -225,6 +247,12 @@ void Generator::generateCode()
     registerByteArrayVector(cdef->nonClassSignalList);
     registerPropertyStrings();
     registerEnumStrings();
+    
+    precomputeTypesForFunctions(cdef->signalList);
+    precomputeTypesForFunctions(cdef->slotList);
+    precomputeTypesForFunctions(cdef->methodList);
+    precomputeTypesForFunctions(cdef->constructorList);
+    precomputeTypesForProperties();
 
     const bool requireCompleteness = requireCompleteTypes || cdef->requireCompleteMethodTypes;
     bool hasStaticMetaCall =
@@ -493,6 +521,25 @@ static constexpr auto qt_staticMetaObjectRelocatingContent%s =
     }
 }
 
+void Generator::precomputeTypesForFunctions(const QList<FunctionDef> &list)
+{
+    for (const auto &f : list) {
+        if (!isBuiltinType(f.normalizedType))
+            precomputeTypeInfo(f.normalizedType);
+        for (const auto &a : f.arguments) {
+            if (!isBuiltinType(a.normalizedType))
+                precomputeTypeInfo(a.normalizedType);
+        }
+    }
+}
+
+void Generator::precomputeTypesForProperties()
+{
+    for (const PropertyDef &p : std::as_const(cdef->propertyList)) {
+        if (!isBuiltinType(p.type))
+            precomputeTypeInfo(p.type);
+    }
+}
 
 void Generator::registerClassInfoStrings()
 {
@@ -566,7 +613,7 @@ void Generator::addFunctions(const QList<FunctionDef> &list, const char *functyp
         if (f.isConstructor)
             fprintf(out, "Constructor(");
         else
-            fprintf(out, "%s(", disambiguatedTypeName(f.type.name).constData());   // return type
+            fprintf(out, "%s(", disambiguatedTypeName(f.type.name).constData());
 
         const char *comma = "";
         for (const auto &argument : f.arguments) {
@@ -617,28 +664,26 @@ void Generator::addFunctions(const QList<FunctionDef> &list, const char *functyp
     }
 }
 
-
 void Generator::generateTypeInfo(const QByteArray &typeName, bool allowEmptyName)
 {
     Q_UNUSED(allowEmptyName);
-    if (int type = nameToBuiltinType(typeName); type != QMetaType::UnknownType) {
-        const char *valueString;
-        if (typeName == "qreal") {
-            type = QMetaType::UnknownType;
-            valueString = "QReal";
-        } else {
-            valueString = metaTypeEnumValueString(type);
+    
+    auto it = typeCache.find(typeName);
+    if (it != typeCache.end()) [[likely]] {
+        const TypeInfo &info = it->second;
+        if (info.isBuiltin) {
+            if (info.valueString) {
+                fprintf(out, "QMetaType::%s", info.valueString);
+            } else {
+                Q_ASSERT(info.builtinType != QMetaType::UnknownType);
+                fprintf(out, "%4d", info.builtinType);
+            }
+            return;
         }
-        if (valueString) {
-            fprintf(out, "QMetaType::%s", valueString);
-        } else {
-            Q_ASSERT(type != QMetaType::UnknownType);
-            fprintf(out, "%4d", type);
-        }
-    } else {
-        Q_ASSERT(!typeName.isEmpty() || allowEmptyName);
-        fprintf(out, "0x%.8x | uint16_t(%d)", IsUnresolvedType, stridx(typeName));
     }
+    
+    Q_ASSERT(!typeName.isEmpty() || allowEmptyName);
+    fprintf(out, "0x%.8x | uint16_t(%d)", IsUnresolvedType, stridx(typeName));
 }
 
 void Generator::registerPropertyStrings()
@@ -824,7 +869,6 @@ void Generator::generateMetacall()
     fprintf(out,"    return _id;\n}\n");
 }
 
-
 QMultiMap<QByteArray, int> Generator::automaticPropertyMetaTypesHelper()
 {
     QMultiMap<QByteArray, int> automaticPropertyMetaTypes;
@@ -935,46 +979,45 @@ void Generator::generateStaticMetacall()
             fprintf(out, "        using Func = void (*)(%s *, void **);\n", cdef->classname.constData());
             fprintf(out, "        static constexpr std::array<Func, %d> vtable = {{\n", int(methodList.size()));
         
-        for (int i = 0; i < methodList.size(); ++i) {
-            const auto &f = methodList.at(i);
-            if (i > 0) fprintf(out, ",\n");
-            fprintf(out, "            [](%s *t, void **a) { ", cdef->classname.constData());
+            for (int i = 0; i < methodList.size(); ++i) {
+                const auto &f = methodList.at(i);
+                if (i > 0) fprintf(out, ",\n");
+                fprintf(out, "            [](%s *t, void **a) { ", cdef->classname.constData());
             
-            if (f.normalizedType != "void") fprintf(out, "if (auto r = ");
-            fprintf(out, "t->");
-            if (f.inPrivateClass.size()) fprintf(out, "%s->", f.inPrivateClass.constData());
-            fprintf(out, "%s(", f.name.constData());
+                if (f.normalizedType != "void") fprintf(out, "if (auto r = ");
+                fprintf(out, "t->");
+                if (f.inPrivateClass.size()) fprintf(out, "%s->", f.inPrivateClass.constData());
+                fprintf(out, "%s(", f.name.constData());
             
-            if (f.isRawSlot) {
-                fprintf(out, "QMethodRawArguments{a}");
-                usedArgs |= UsedA;
-            } else {
-                int offset = 1;
-                for (auto it = f.arguments.cbegin(); it != f.arguments.cend(); ++it, ++offset) {
-                    if (it != f.arguments.cbegin()) fprintf(out, ",");
-                    fprintf(out, "(*reinterpret_cast<%s>(a[%d]))",
-                            disambiguatedTypeNameForCast(it->normalizedType).constData(), offset);
+                if (f.isRawSlot) {
+                    fprintf(out, "QMethodRawArguments{a}");
+                    usedArgs |= UsedA;
+                } else {
+                    int offset = 1;
+                    for (auto it = f.arguments.cbegin(); it != f.arguments.cend(); ++it, ++offset) {
+                        if (it != f.arguments.cbegin()) fprintf(out, ",");
+                        fprintf(out, "(*reinterpret_cast<%s>(a[%d]))",
+                                disambiguatedTypeNameForCast(it->normalizedType).constData(), offset);
+                        usedArgs |= UsedA;
+                    }
+                    if (f.isPrivateSignal) {
+                        if (!f.arguments.isEmpty()) fprintf(out, ", ");
+                        fprintf(out, "QPrivateSignal()");
+                    }
+                }
+                fprintf(out, ")");
+                if (f.normalizedType != "void") {
+                    fprintf(out, "; a[0]) *reinterpret_cast<%s*>(a[0]) = std::move(r)",
+                            disambiguatedTypeName(noRef(f.normalizedType)).constData());
                     usedArgs |= UsedA;
                 }
-                if (f.isPrivateSignal) {
-                    if (!f.arguments.isEmpty()) fprintf(out, ", ");
-                    fprintf(out, "QPrivateSignal()");
-                }
+                fprintf(out, "; }");
             }
-            fprintf(out, ")");
-            if (f.normalizedType != "void") {
-                fprintf(out, "; a[0]) *reinterpret_cast<%s*>(a[0]) = std::move(r)",
-                        disambiguatedTypeName(noRef(f.normalizedType)).constData());
-                usedArgs |= UsedA;
-            }
-            fprintf(out, "; }");
-        }
         
-        if (useVtable) {
             fprintf(out, "\n        }};\n");
             fprintf(out, "        vtable[_id](_t, _a);\n");
         } else {
-            fprintf(out, "\n        switch (_id) {\n");
+            fprintf(out, "        switch (_id) {\n");
             for (int methodindex = 0; methodindex < methodList.size(); ++methodindex) {
                 const FunctionDef &f = methodList.at(methodindex);
                 Q_ASSERT(!f.normalizedType.isEmpty());
