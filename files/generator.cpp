@@ -1,5 +1,5 @@
 // Copyright (C) 2020 The Qt Company Ltd.
-// Copyright (C) 2019 Olivier Goffart <ogoffart@woboq.com>
+// Copyright (C) 2019 Olivier Goffart <ogoffart@woboq.com>const
 // Copyright (C) 2018 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
@@ -48,7 +48,7 @@ static bool isBuiltinType(const QByteArray &type)
     return id != QMetaType::UnknownType;
 }
 
-constexpr const char *cxxTypeTag(TypeTags t)
+const char *cxxTypeTag(TypeTags t)
 {
     if (t & TypeTag::HasEnum) {
         if (t & TypeTag::HasClass)
@@ -115,7 +115,7 @@ static inline qsizetype lengthOfEscapeSequence(const QByteArray &s, qsizetype i)
 
 static void printStringWithIndentation(FILE *out, const QByteArray &s)
 {
-    static constexpr int ColumnWidth = 68;
+    static const int ColumnWidth = 68;
     const qsizetype len = s.size();
     qsizetype idx = 0;
 
@@ -303,7 +303,7 @@ void Generator::generateCode()
     addEnums();
     fprintf(out, "    };\n");
 
-    fprintf(out, "    constexpr auto qt_metaObjectHashIndex = %d;\n", stridx(hashes[cdef->qualified]));
+    fprintf(out, "    const auto qt_metaObjectHashIndex = %d;\n", stridx(hashes[cdef->qualified]));
 
     const char *uintDataParams = "";
     if (isConstructible || !cdef->classInfoList.isEmpty()) {
@@ -988,7 +988,7 @@ void Generator::generateStaticMetacall()
         if (useVtable) {
             fprintf(out, "        if (_id < 0 || _id >= %d) [[unlikely]] std::unreachable();\n", int(methodList.size()));
             fprintf(out, "        using Func = void (*)(%s *, void **);\n", cdef->classname.constData());
-            fprintf(out, "        static constexpr std::array<Func, %d> vtable = {{\n", int(methodList.size()));
+            fprintf(out, "        static const std::array<Func, %d> vtable = {{\n", int(methodList.size()));
         
             for (int i = 0; i < methodList.size(); ++i) {
                 const auto &f = methodList.at(i);
@@ -1489,14 +1489,14 @@ void Generator::generatePluginMetaData()
 
     fputs("\n#ifdef QT_MOC_EXPORT_PLUGIN_V2", out);
 
-    fprintf(out, "\nstatic constexpr unsigned char qt_pluginMetaDataV2_%s[] = {",
+    fprintf(out, "\nstatic const unsigned char qt_pluginMetaDataV2_%s[] = {",
           cdef->classname.constData());
     outputCborData();
     fprintf(out, "\n};\nQT_MOC_EXPORT_PLUGIN_V2(%s, %s, qt_pluginMetaDataV2_%s)\n",
             cdef->qualified.constData(), cdef->classname.constData(), cdef->classname.constData());
 
     fprintf(out, "#else\nQT_PLUGIN_METADATA_SECTION\n"
-          "Q_CONSTINIT static constexpr unsigned char qt_pluginMetaData_%s[] = {\n"
+          "Q_CONSTINIT static const unsigned char qt_pluginMetaData_%s[] = {\n"
           "    'Q', 'T', 'M', 'E', 'T', 'A', 'D', 'A', 'T', 'A', ' ', '!',\n"
           "    // metadata version, Qt version, architectural requirements\n"
           "    0, QT_VERSION_MAJOR, QT_VERSION_MINOR, qPluginArchRequirements(),",
