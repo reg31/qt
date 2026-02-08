@@ -5,7 +5,6 @@
 #define GENERATOR_H
 
 #include "moc.h"
-#include <cstdio>
 #include <unordered_map>
 
 QT_BEGIN_NAMESPACE
