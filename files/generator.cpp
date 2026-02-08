@@ -13,12 +13,6 @@
 
 #include <math.h>
 #include <stdio.h>
-#include <ranges>
-#include <algorithm>
-#include <string_view>
-
-namespace rng = std::ranges;
-namespace vws = std::views;
 
 #include <private/qmetaobject_p.h> 
 #include <private/qplugin_p.h> 
@@ -514,16 +508,17 @@ void Generator::registerFunctionStrings(const QList<FunctionDef> &list)
         strreg(f.name);
         if (!isBuiltinType(f.normalizedType)) strreg(f.normalizedType);
         strreg(f.tag);
-        rng::for_each(f.arguments, [this](const auto &a) {
+		for (const auto& a : f.arguments) {
             if (!isBuiltinType(a.normalizedType)) strreg(a.normalizedType);
             strreg(a.name);
-        });
+        }
     }
 }
 
 void Generator::registerByteArrayVector(const QList<QByteArray> &list)
 {
-    rng::for_each(list, [this](const auto &ba) { strreg(ba); });
+    for (const QByteArray &ba : list)
+        strreg(ba);
 }
 
 void Generator::addStrings(const QByteArrayList &strings)
@@ -770,7 +765,6 @@ void Generator::generateMetacall()
         QByteArray superClass = purestSuperClass;
         fprintf(out, "    _id = %s::qt_metacall(_c, _id, _a);\n", superClass.constData());
     }
-
 
     QList<FunctionDef> methodList;
     methodList += cdef->signalList;
