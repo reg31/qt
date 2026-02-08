@@ -577,7 +577,10 @@ void Generator::addFunctions(const QList<FunctionDef> &list, const char *functyp
             return val;
         }();
 
-       fprintf(out, "0x%02x)%s\n", flags, f.revision > 0 ? (QByteArray(", ") + QByteArray::number(f.revision)).constData() : "");
+		fprintf(out, "0x%02x)", flags);
+		if (f.revision > 0)
+			fprintf(out, ", %#x", f.revision);
+		fprintf(out, "\n");
     }
 }
 
