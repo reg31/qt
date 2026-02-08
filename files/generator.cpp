@@ -138,8 +138,10 @@ void Generator::strreg(const QByteArray &s)
 
 int Generator::stridx(const QByteArray &s)
 {
-    if (auto it = stringCache.find(s); it != stringCache.end()) [[likely]]
+    if (auto it = stringCache.find(s); it != stringCache.end()) [[likely]] {
+        Q_ASSERT_X(it->second <= 0xFFFF, Q_FUNC_INFO, "Too many strings (>65535)");
         return it->second;
+    }
     Q_ASSERT_X(false, Q_FUNC_INFO, "We forgot to register some strings");
     return -1;
 }
@@ -527,13 +529,30 @@ void Generator::registerByteArrayVector(const QList<QByteArray> &list)
 
 void Generator::addStrings(const QByteArrayList &strings)
 {
-    char comma = 0;
-    for (const QByteArray &str : strings) {
-        if (comma)
-            fputc(comma, out);
-        printStringWithIndentation(out, str);
-        comma = ',';
+    if (strings.isEmpty()) {
+        fprintf(out, " \"\" ");
+        return;
     }
+    
+    QByteArray combined;
+    QList<uint16_t> offsets;
+    
+    for (const QByteArray &str : strings) {
+        offsets.append(combined.size());
+        combined.append(str);
+        combined.append('\0');
+    }
+    
+    fprintf(out, "\n        .data = ");
+    printStringWithIndentation(out, combined);
+    fprintf(out, ",\n        .offsets = {");
+    
+    for (int i = 0; i < offsets.size(); ++i) {
+        if (i % 16 == 0) fprintf(out, "\n            ");
+        fprintf(out, "%u", offsets[i]);
+        if (i < offsets.size() - 1) fprintf(out, ", ");
+    }
+    fprintf(out, "\n        },\n        .size = %d", offsets.size());
 }
 
 void Generator::addFunctions(const QList<FunctionDef> &list, const char *functype)
@@ -590,7 +609,7 @@ void Generator::addFunctions(const QList<FunctionDef> &list, const char *functyp
                 const ArgumentDef &arg = f.arguments.at(i);
                 fprintf(out, " { ");
                 generateTypeInfo(arg.normalizedType);
-                fprintf(out, ", static_cast<uint>(%d) },", stridx(arg.name));
+                fprintf(out, ", uint16_t(%d) },", stridx(arg.name));
             }
 
             fprintf(out, "\n        }}),\n");
@@ -618,7 +637,7 @@ void Generator::generateTypeInfo(const QByteArray &typeName, bool allowEmptyName
         }
     } else {
         Q_ASSERT(!typeName.isEmpty() || allowEmptyName);
-        fprintf(out, "0x%.8x | static_cast<uint>(%d)", IsUnresolvedType, stridx(typeName));
+        fprintf(out, "0x%.8x | uint16_t(%d)", IsUnresolvedType, stridx(typeName));
     }
 }
 
@@ -908,9 +927,13 @@ void Generator::generateStaticMetacall()
     if (!methodList.isEmpty()) {
         usedArgs |= UsedT | UsedC | UsedId;
         fprintf(out, "    if (_c == QMetaObject::InvokeMetaMethod) [[likely]] {\n");
-        fprintf(out, "        if (_id < 0 || _id >= %d) [[unlikely]] std::unreachable();\n", int(methodList.size()));
-        fprintf(out, "        using Func = void (*)(%s *, void **);\n", cdef->classname.constData());
-        fprintf(out, "        static constexpr std::array<Func, %d> vtable = {{\n", int(methodList.size()));
+        
+        const bool useVtable = methodList.size() <= 16;
+        
+        if (useVtable) {
+            fprintf(out, "        if (_id < 0 || _id >= %d) [[unlikely]] std::unreachable();\n", int(methodList.size()));
+            fprintf(out, "        using Func = void (*)(%s *, void **);\n", cdef->classname.constData());
+            fprintf(out, "        static constexpr std::array<Func, %d> vtable = {{\n", int(methodList.size()));
         
         for (int i = 0; i < methodList.size(); ++i) {
             const auto &f = methodList.at(i);
@@ -947,8 +970,51 @@ void Generator::generateStaticMetacall()
             fprintf(out, "; }");
         }
         
-        fprintf(out, "\n        }};\n");
-        fprintf(out, "        vtable[_id](_t, _a);\n");
+        if (useVtable) {
+            fprintf(out, "\n        }};\n");
+            fprintf(out, "        vtable[_id](_t, _a);\n");
+        } else {
+            fprintf(out, "\n        switch (_id) {\n");
+            for (int methodindex = 0; methodindex < methodList.size(); ++methodindex) {
+                const FunctionDef &f = methodList.at(methodindex);
+                Q_ASSERT(!f.normalizedType.isEmpty());
+                fprintf(out, "        case %d: ", methodindex);
+                if (f.normalizedType != "void")
+                    fprintf(out, "{ %s _r = ", disambiguatedTypeName(noRef(f.normalizedType)).constData());
+                fprintf(out, "_t->");
+                if (f.inPrivateClass.size())
+                    fprintf(out, "%s->", f.inPrivateClass.constData());
+                fprintf(out, "%s(", f.name.constData());
+                int offset = 1;
+
+                if (f.isRawSlot) {
+                    fprintf(out, "QMethodRawArguments{ _a }");
+                    usedArgs |= UsedA;
+                } else {
+                    for (auto it = f.arguments.cbegin(); it != f.arguments.cend(); ++it) {
+                        if (it != f.arguments.cbegin())
+                            fprintf(out, ",");
+                        fprintf(out, "(*reinterpret_cast<%s>(_a[%d]))", 
+                                disambiguatedTypeNameForCast(it->normalizedType).constData(), offset++);
+                        usedArgs |= UsedA;
+                    }
+                    if (f.isPrivateSignal) {
+                        if (!f.arguments.isEmpty())
+                            fprintf(out, ", ");
+                        fprintf(out, "%s", "QPrivateSignal()");
+                    }
+                }
+                fprintf(out, ");");
+                if (f.normalizedType != "void") {
+                    fprintf(out, "\n            if (_a[0]) *reinterpret_cast<%s*>(_a[0]) = std::move(_r); } ",
+                            disambiguatedTypeName(noRef(f.normalizedType)).constData());
+                    usedArgs |= UsedA;
+                }
+                fprintf(out, " break;\n");
+            }
+            fprintf(out, "        default: std::unreachable();\n");
+            fprintf(out, "        }\n");
+        }
         fprintf(out, "    }\n");
 
         QMap<int, QMultiMap<QByteArray, int> > methodsWithAutomaticTypes = methodsWithAutomaticTypesHelper(methodList);
