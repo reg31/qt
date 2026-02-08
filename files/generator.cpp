@@ -344,11 +344,11 @@ void Generator::generateCode()
         metaVarNameSuffix = '_' + qualifiedClassNameIdentifier;
         const char *n = metaVarNameSuffix.constData();
         fprintf(out, R"(
-static constexpr auto qt_staticMetaObjectContent%s =
+static const auto qt_staticMetaObjectContent%s =
     %s::qt_create_metaobjectdata<qt_meta_tag%s_t>();
-static constexpr auto qt_staticMetaObjectStaticContent%s =
+static const auto qt_staticMetaObjectStaticContent%s =
     qt_staticMetaObjectContent%s.staticData;
-static constexpr auto qt_staticMetaObjectRelocatingContent%s =
+static const auto qt_staticMetaObjectRelocatingContent%s =
     qt_staticMetaObjectContent%s.relocatingData;
 
 )",
