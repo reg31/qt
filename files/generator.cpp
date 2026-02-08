@@ -798,10 +798,12 @@ void Generator::generateMetacall()
 
     }
 
-    if (f.isConstructor)
-		fprintf(out, ")>(%d, ", stridx(f.tag));
-	else
-		fprintf(out, ")%s>(%d, %d, ", f.isConst ? " const" : "", stridx(f.name), stridx(f.tag));
+    if (cdef->propertyList.size()) {
+        fprintf(out,
+            "    else if (_c >= QMetaObject::ReadProperty && _c <= QMetaObject::RegisterPropertyMetaType) {\n"
+            "        qt_static_metacall(this, _c, _id, _a);\n"
+            "        _id -= %d;\n    }\n", int(cdef->propertyList.size()));
+    }
     fprintf(out,"    return _id;\n}\n");
 }
 
