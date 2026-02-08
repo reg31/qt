@@ -561,7 +561,7 @@ void Generator::addFunctions(const QList<FunctionDef> &list, const char *functyp
             first = false;
         }
 
-        fprintf(out, f.isConstructor ? ")>(%d, " : ")%s>(%d, %d, ",
+        fprintf(out, f.isConstructor ? ")>(%s, " : ")%s>(%d, %d, ",
                 f.isConst && !f.isConstructor ? " const" : "",
                 f.isConstructor ? stridx(f.tag) : stridx(f.name),
                 f.isConstructor ? -1 : stridx(f.tag));
@@ -577,7 +577,7 @@ void Generator::addFunctions(const QList<FunctionDef> &list, const char *functyp
             return val;
         }();
 
-        fprintf(out, "0x%02x)%s\n", flags, f.revision > 0 ? ", " + QByteArray::number(f.revision) : "");
+        fprintf(out, "0x%02x)%s\n", flags, f.revision > 0 ? (QByteArray(", ") + QByteArray::number(f.revision)).constData() : "");
     }
 }
 
@@ -780,7 +780,7 @@ void Generator::generateMetacall()
 
     }
 
-    if constexpr (auto hasProps = !cdef->propertyList.isEmpty(); hasProps) {
+    if (!cdef->propertyList.isEmpty()) {
         fprintf(out,
             "    else if (_c >= QMetaObject::ReadProperty && _c <= QMetaObject::RegisterPropertyMetaType) {\n"
             "        qt_static_metacall(this, _c, _id, _a);\n"
@@ -1191,7 +1191,7 @@ void Generator::generateSignal(const FunctionDef *def, int index)
     if (def->wasCloned || def->isAbstract)
         return;
     fprintf(out, "\n// SIGNAL %d\n%s %s::%s(",
-            def->type.name.constData(), cdef->qualified.constData(), def->name.constData());
+        index, def->type.name.constData(), cdef->qualified.constData(), def->name.constData());
 
     QByteArray thisPtr = "this";
     const char *constQualifier = "";
