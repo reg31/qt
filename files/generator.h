@@ -5,16 +5,27 @@
 #define GENERATOR_H
 
 #include "moc.h"
+#include <cstdio>
 #include <unordered_map>
 
 QT_BEGIN_NAMESPACE
 
-class Generator
+class Generator final
 {
     Moc *parser = nullptr;
-    FILE *out;
-    const ClassDef *cdef;
-    QList<uint> meta_data;
+    FILE *out = nullptr;
+    const ClassDef *cdef = nullptr;
+    
+    QList<QByteArray> strings;
+    std::unordered_map<QByteArray, int> stringCache;
+    
+    const QList<QByteArray> metaTypes;
+    const QHash<QByteArray, QByteArray> knownQObjectClasses;
+    const QHash<QByteArray, QByteArray> knownGadgets;
+    const QHash<QByteArray, QByteArray> hashes;
+    
+    QByteArray purestSuperClass;
+    const bool requireCompleteTypes = false;
 
 public:
     Generator(Moc *moc, const ClassDef *classDef, const QList<QByteArray> &metaTypes,
@@ -22,8 +33,10 @@ public:
               const QHash<QByteArray, QByteArray> &knownGadgets,
               const QHash<QByteArray, QByteArray> &hashes,
               FILE *outfile = nullptr, bool requireCompleteTypes = false);
+    
     void generateCode();
-    qsizetype registeredStringsCount() { return strings.size(); }
+    
+    [[nodiscard]] qsizetype registeredStringsCount() const { return strings.size(); }
 
 private:
     bool registerableMetaType(const QByteArray &propertyType);
@@ -42,23 +55,17 @@ private:
     void generateStaticMetacall();
     void generateSignal(const FunctionDef *def, int index);
     void generatePluginMetaData();
+    
     QByteArray disambiguatedTypeName(const QByteArray &name);
     QByteArray disambiguatedTypeName(const QByteArray &name, TypeTags tag);
     QByteArray disambiguatedTypeNameForCast(const QByteArray &name);
+    
     QMultiMap<QByteArray, int> automaticPropertyMetaTypesHelper();
     QMap<int, QMultiMap<QByteArray, int>>
     methodsWithAutomaticTypesHelper(const QList<FunctionDef> &methodList);
-
-    void strreg(const QByteArray &);
-    int stridx(const QByteArray &);
-    QList<QByteArray> strings;
-    std::unordered_map<QByteArray, int> stringCache;
-    QByteArray purestSuperClass;
-    QList<QByteArray> metaTypes;
-    QHash<QByteArray, QByteArray> knownQObjectClasses;
-    QHash<QByteArray, QByteArray> knownGadgets;
-    QHash<QByteArray, QByteArray> hashes;
-    bool requireCompleteTypes;
+    
+    void strreg(const QByteArray &s);
+    int stridx(const QByteArray &s);
 };
 
 QT_END_NAMESPACE
