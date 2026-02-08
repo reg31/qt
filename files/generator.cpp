@@ -539,48 +539,63 @@ void Generator::addStrings(const QByteArrayList &strings)
 
 void Generator::addFunctions(const QList<FunctionDef> &list, const char *functype)
 {
-    for (const auto &f : list) {
+    for (const FunctionDef &f : list) {
         if (!f.isConstructor)
-            fprintf(out, "        QtMocHelpers::%s%sData<", 
-                    f.revision > 0 ? "Revisioned" : "", functype);
-        else
-            fprintf(out, "        QtMocHelpers::%sData<", functype);
+            fprintf(out, "        // %s '%s'\n", functype, f.name.constData());
+        fprintf(out, "        QtMocHelpers::%s%sData<",
+                f.revision > 0 ? "Revisioned" : "", functype);
 
         if (f.isConstructor)
             fprintf(out, "Constructor(");
         else
-            fprintf(out, "%s(", disambiguatedTypeName(f.type.name).constData());
+            fprintf(out, "%s(", disambiguatedTypeName(f.type.name).constData());   // return type
 
-        auto args = f.arguments | vws::transform([this](const auto &a) {
-            return disambiguatedTypeName(a.type.name);
-        });
-        bool first = true;
-        for (const auto &arg : args) {
-            if (!first) fprintf(out, ", ");
-            fprintf(out, "%s", arg.constData());
-            first = false;
+        const char *comma = "";
+        for (const auto &argument : f.arguments) {
+            fprintf(out, "%s%s", comma, disambiguatedTypeName(argument.type.name).constData());
+            comma = ", ";
         }
 
-        fprintf(out, f.isConstructor ? ")>(%s, " : ")%s>(%d, %d, ",
-        f.isConst && !f.isConstructor ? " const" : "",
-        f.isConstructor ? stridx(f.tag) : stridx(f.name),
-        f.isConstructor ? -1 : stridx(f.tag));
+        if (f.isConstructor)
+            fprintf(out, ")>(%d, ", stridx(f.tag));
+        else
+            fprintf(out, ")%s>(%d, %d, ", f.isConst ? " const" : "", stridx(f.name), stridx(f.tag));
 
-        const auto flags = [&] {
-            uint val = 0;
-            if (f.access == FunctionDef::Private) val |= 0x02;
-            else if (f.access == FunctionDef::Public) val |= 0x01;
-            if (f.isCompat) val |= 0x10;
-            if (f.wasCloned) val |= 0x20;
-            if (f.isScriptable) val |= 0x40;
-            if (f.revision > 0) val |= 0x80;
-            return val;
-        }();
+        if (f.access == FunctionDef::Private)
+            fprintf(out, "QMC::AccessPrivate");
+        else if (f.access == FunctionDef::Public)
+            fprintf(out, "QMC::AccessPublic");
+        else if (f.access == FunctionDef::Protected)
+            fprintf(out, "QMC::AccessProtected");
+        if (f.isCompat)
+            fprintf(out, " | QMC::MethodCompatibility");
+        if (f.wasCloned)
+            fprintf(out, " | QMC::MethodCloned");
+        if (f.isScriptable)
+            fprintf(out, " | QMC::MethodScriptable");
+        if (f.revision > 0)
+            fprintf(out, ", %#x", f.revision);
 
-		fprintf(out, "0x%02x)", flags);
-		if (f.revision > 0)
-			fprintf(out, ", %#x", f.revision);
-		fprintf(out, "\n");
+        if (!f.isConstructor) {
+            fprintf(out, ", ");
+            generateTypeInfo(f.normalizedType);
+        }
+
+        if (f.arguments.isEmpty()) {
+            fprintf(out, "),\n");
+        } else {
+            fprintf(out, ", {{");
+            for (qsizetype i = 0; i < f.arguments.size(); ++i) {
+                if ((i % 4) == 0)
+                    fprintf(out, "\n           ");
+                const ArgumentDef &arg = f.arguments.at(i);
+                fprintf(out, " { ");
+                generateTypeInfo(arg.normalizedType);
+                fprintf(out, ", %d },", stridx(arg.name));
+            }
+
+            fprintf(out, "\n        }}),\n");
+        }
     }
 }
 
@@ -783,12 +798,10 @@ void Generator::generateMetacall()
 
     }
 
-    if (!cdef->propertyList.isEmpty()) {
-    fprintf(out,
-        "    else if (_c >= QMetaObject::ReadProperty && _c <= QMetaObject::RegisterPropertyMetaType) {\n"
-        "        qt_static_metacall(this, _c, _id, _a);\n"
-        "        _id -= %d;\n    }\n", int(cdef->propertyList.size()));
-    }
+    if (f.isConstructor)
+		fprintf(out, ")>(%d, ", stridx(f.tag));
+	else
+		fprintf(out, ")%s>(%d, %d, ", f.isConst ? " const" : "", stridx(f.name), stridx(f.tag));
     fprintf(out,"    return _id;\n}\n");
 }
 
