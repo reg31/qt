@@ -1,3 +1,5 @@
+--- START OF FILE generator.cpp ---
+
 #include "generator.h"
 #include "cbordevice.h"
 #include "outputrevision.h"
@@ -586,7 +588,7 @@ void Generator::addFunctions(const QList<FunctionDef> &list, const char *functyp
                 const ArgumentDef &arg = f.arguments.at(i);
                 fprintf(out, " { ");
                 generateTypeInfo(arg.normalizedType);
-                fprintf(out, ", %d },", stridx(arg.name));
+                fprintf(out, ", static_cast<uint>(%d) },", stridx(arg.name));
             }
 
             fprintf(out, "\n        }}),\n");
@@ -905,13 +907,13 @@ void Generator::generateStaticMetacall()
         usedArgs |= UsedT | UsedC | UsedId;
         fprintf(out, "    if (_c == QMetaObject::InvokeMetaMethod) [[likely]] {\n");
         fprintf(out, "        Q_ASSERT(_id >= 0 && _id < %d);\n", int(methodList.size()));
-        fprintf(out, "        constexpr auto invoke = []<size_t I>(auto *_t, void **_a) {\n");
-        fprintf(out, "            static constexpr auto vtable = std::array{");
+        fprintf(out, "        using Func = void (*)(%s *, void **);\n", cdef->classname.constData());
+        fprintf(out, "        static const std::array<Func, %d> vtable = {{\n", int(methodList.size()));
         
         for (int i = 0; i < methodList.size(); ++i) {
             const auto &f = methodList.at(i);
-            if (i > 0) fprintf(out, ",");
-            fprintf(out, "\n                [](%s *t, void **a) { ", cdef->classname.constData());
+            if (i > 0) fprintf(out, ",\n");
+            fprintf(out, "            [](%s *t, void **a) { ", cdef->classname.constData());
             
             if (f.normalizedType != "void") fprintf(out, "if (auto r = ");
             fprintf(out, "t->");
@@ -943,10 +945,8 @@ void Generator::generateStaticMetacall()
             fprintf(out, "; }");
         }
         
-        fprintf(out, "\n            };\n");
-        fprintf(out, "            vtable[I](_t, _a);\n");
-        fprintf(out, "        };\n");
-        fprintf(out, "        invoke.template operator()<std::dynamic_extent>(_t, _a);\n");
+        fprintf(out, "\n        }};\n");
+        fprintf(out, "        vtable[_id](_t, _a);\n");
         fprintf(out, "    }\n");
 
         QMap<int, QMultiMap<QByteArray, int> > methodsWithAutomaticTypes = methodsWithAutomaticTypesHelper(methodList);
@@ -1416,5 +1416,3 @@ QT_WARNING_DISABLE_MSVC(4334)
 #define CBOR_ENCODER_WRITE_FUNCTION     CborDevice::callback
 
 QT_END_NAMESPACE
-
-#include "cborencoder.c"
