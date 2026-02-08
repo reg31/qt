@@ -908,7 +908,7 @@ void Generator::generateStaticMetacall()
     if (!methodList.isEmpty()) {
         usedArgs |= UsedT | UsedC | UsedId;
         fprintf(out, "    if (_c == QMetaObject::InvokeMetaMethod) [[likely]] {\n");
-        fprintf(out, "        Q_ASSERT(_id >= 0 && _id < %d);\n", int(methodList.size()));
+        fprintf(out, "        if (_id < 0 || _id >= %d) [[unlikely]] std::unreachable();\n", int(methodList.size()));
         fprintf(out, "        using Func = void (*)(%s *, void **);\n", cdef->classname.constData());
         fprintf(out, "        static constexpr std::array<Func, %d> vtable = {{\n", int(methodList.size()));
         
@@ -1091,7 +1091,7 @@ void Generator::generateStaticMetacall()
                             propindex, cxxTypeTag(p.typeTag), disambiguatedTypeName(p.type, p.typeTag).constData(),
                             prefix.constData(), p.member.constData());
             }
-            fprintf(out, "        default: break;\n");
+            fprintf(out, "        default: std::unreachable();\n");
             fprintf(out, "        }\n");
             fprintf(out, "    }\n");
         }
