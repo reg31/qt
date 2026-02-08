@@ -119,16 +119,16 @@ process_file() {
     
     local skip_reason=$(has_skip_macros "$file" "$qobject_line")
     if [ $? -eq 0 ]; then
-        echo "SKIP: $file (has $skip_reason)" | tee -a "$LOG_FILE"
         skipped_files=$((skipped_files + 1))
+        echo "SKIP: $file ($skip_reason)" >> "$LOG_FILE"
         return
     fi
     
     local class_name=$(extract_class_name "$file" "$qobject_line")
     
     if [ -z "$class_name" ]; then
-        echo "SKIP: $file (cannot extract class name)" | tee -a "$LOG_FILE"
         skipped_files=$((skipped_files + 1))
+        echo "SKIP: $file (no class name)" >> "$LOG_FILE"
         return
     fi
     
@@ -150,17 +150,25 @@ process_file() {
             mv "$temp_file" "$file"
         fi
         
-        sed -i.bak "s/Q_OBJECT/M_OBJECT($class_name)/g" "$file"
-        
-        sed -i.bak 's/^[[:space:]]*signals[[:space:]]*:/public:/g' "$file"
-        sed -i.bak 's/^[[:space:]]*Q_SIGNALS[[:space:]]*:/public:/g' "$file"
-        sed -i.bak '/^[[:space:]]*slots[[:space:]]*:/d' "$file"
-        sed -i.bak '/^[[:space:]]*Q_SLOTS[[:space:]]*:/d' "$file"
-        sed -i.bak 's/^[[:space:]]*public[[:space:]]*slots[[:space:]]*:/public:/g' "$file"
-        sed -i.bak 's/^[[:space:]]*private[[:space:]]*slots[[:space:]]*:/private:/g' "$file"
-        sed -i.bak 's/^[[:space:]]*protected[[:space:]]*slots[[:space:]]*:/protected:/g' "$file"
-        
-        rm -f "${file}.bak"
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            sed -i '' "s/Q_OBJECT/M_OBJECT($class_name)/g" "$file"
+            sed -i '' 's/^[[:space:]]*signals[[:space:]]*:/public:/g' "$file"
+            sed -i '' 's/^[[:space:]]*Q_SIGNALS[[:space:]]*:/public:/g' "$file"
+            sed -i '' '/^[[:space:]]*slots[[:space:]]*:/d' "$file"
+            sed -i '' '/^[[:space:]]*Q_SLOTS[[:space:]]*:/d' "$file"
+            sed -i '' 's/^[[:space:]]*public[[:space:]]*slots[[:space:]]*:/public:/g' "$file"
+            sed -i '' 's/^[[:space:]]*private[[:space:]]*slots[[:space:]]*:/private:/g' "$file"
+            sed -i '' 's/^[[:space:]]*protected[[:space:]]*slots[[:space:]]*:/protected:/g' "$file"
+        else
+            sed -i "s/Q_OBJECT/M_OBJECT($class_name)/g" "$file"
+            sed -i 's/^[[:space:]]*signals[[:space:]]*:/public:/g' "$file"
+            sed -i 's/^[[:space:]]*Q_SIGNALS[[:space:]]*:/public:/g' "$file"
+            sed -i '/^[[:space:]]*slots[[:space:]]*:/d' "$file"
+            sed -i '/^[[:space:]]*Q_SLOTS[[:space:]]*:/d' "$file"
+            sed -i 's/^[[:space:]]*public[[:space:]]*slots[[:space:]]*:/public:/g' "$file"
+            sed -i 's/^[[:space:]]*private[[:space:]]*slots[[:space:]]*:/private:/g' "$file"
+            sed -i 's/^[[:space:]]*protected[[:space:]]*slots[[:space:]]*:/protected:/g' "$file"
+        fi
     fi
 }
 
@@ -190,7 +198,14 @@ echo "========================================" | tee -a "$LOG_FILE"
 echo "Total files with Q_OBJECT: $total_files" | tee -a "$LOG_FILE"
 echo "Files converted: $converted_files" | tee -a "$LOG_FILE"
 echo "Files skipped: $skipped_files" | tee -a "$LOG_FILE"
-echo "Conversion rate: $(awk "BEGIN {printf \"%.1f\", ($converted_files/$total_files)*100}")%" | tee -a "$LOG_FILE"
+
+if [ "$total_files" -gt 0 ]; then
+    conversion_rate=$(echo "scale=1; ($converted_files * 100) / $total_files" | bc)
+    echo "Conversion rate: ${conversion_rate}%" | tee -a "$LOG_FILE"
+else
+    echo "Conversion rate: 0.0%" | tee -a "$LOG_FILE"
+fi
+
 echo "========================================" | tee -a "$LOG_FILE"
 
 if [ "$DRY_RUN" = true ]; then
