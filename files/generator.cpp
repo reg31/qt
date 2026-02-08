@@ -275,8 +275,19 @@ void Generator::generateCode()
                  "    namespace QMC = QtMocConstants;\n",
             cdef->qualified.constData(), qualifiedClassNameIdentifier.constData());
 
-    fprintf(out, "    QtMocHelpers::StringRefStorage qt_stringData {");
-    addStrings(strings);
+    fprintf(out, "    Q_CONSTINIT static const QtMocHelpers::StringRefStorage qt_stringData {\n");
+    for (int i = 0; i < strings.size(); ++i) {
+        if (i > 0)
+            fprintf(out, ",\n");
+        fprintf(out, "        \"");
+        const QByteArray &s = strings.at(i);
+        for (int j = 0; j < s.size(); ++j) {
+            if (s[j] == '\\' || s[j] == '"')
+                fprintf(out, "\\");
+            fprintf(out, "%c", s[j]);
+        }
+        fprintf(out, "\"");
+    }
     fprintf(out, "\n    };\n\n");
 
     fprintf(out, "    QtMocHelpers::UintData qt_methods {\n");
