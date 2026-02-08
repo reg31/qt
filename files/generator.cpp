@@ -270,7 +270,7 @@ void Generator::generateCode()
                  "} // unnamed namespace\n\n",
             qualifiedClassNameIdentifier.constData());
 
-    fprintf(out, "template <> constexpr inline auto %s::qt_create_metaobjectdata<qt_meta_tag_%s_t>()\n"
+    fprintf(out, "template <> inline auto %s::qt_create_metaobjectdata<qt_meta_tag_%s_t>()\n"
                  "{\n"
                  "    namespace QMC = QtMocConstants;\n",
             cdef->qualified.constData(), qualifiedClassNameIdentifier.constData());
