@@ -199,7 +199,7 @@ jobs:
           mkdir qt-windows-mingw-release-dev
           cd qt-windows-mingw-release-dev
           set QT_ARCHIVE=qt-windows-mingw-release-dev.zip
-          curl -fsSL -o https://github.com/reg31/qt/releases/latest/download/%QT_ARCHIVE%
+          curl -fsSL -o %QT_ARCHIVE% https://github.com/reg31/qt/releases/latest/download/%QT_ARCHIVE%
           7z x %QT_ARCHIVE%
           
       - name: Download prebuilt openssl
@@ -207,14 +207,14 @@ jobs:
           mkdir openssl
           cd openssl
           set OPENSSL_ARCHIVE=${{ env.OPENSSL_VERSION }}-${{ matrix.arch }}.zip
-          curl -fsSL -o https://github.com/reg31/openssl/releases/latest/download/%OPENSSL_ARCHIVE%
+          curl -fsSL -o %OPENSSL_ARCHIVE% https://github.com/reg31/openssl/releases/latest/download/%OPENSSL_ARCHIVE%
           7z x %OPENSSL_ARCHIVE%
     
       - name: Extract config folders
         run: |
           mkdir configFolders
           cd configFolders
-          curl -fsSL -o https://raw.githubusercontent.com/reg31/qt/main/files/android_bin.7z
+          curl -fsSL -o android_bin.7z https://raw.githubusercontent.com/reg31/qt/main/files/android_bin.7z
           7z x android_bin.7z
 
       - name: Experimental moc improvement
@@ -481,7 +481,7 @@ jobs:
           mkdir -p qt-macos-release-dev
           cd qt-macos-release-dev
           QT_ARCHIVE=qt-macos-release-dev.zip
-          curl -fsSL -o https://github.com/reg31/qt/releases/latest/download/$QT_ARCHIVE
+          curl -fsSL -o $QT_ARCHIVE https://github.com/reg31/qt/releases/latest/download/$QT_ARCHIVE
           7z x $QT_ARCHIVE
 
       - name: Experimental moc improvement
