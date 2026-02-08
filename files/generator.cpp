@@ -1418,3 +1418,5 @@ QT_WARNING_DISABLE_MSVC(4334)
 #define CBOR_ENCODER_WRITE_FUNCTION     CborDevice::callback
 
 QT_END_NAMESPACE
+
+#include "cborencoder.c"
