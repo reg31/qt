@@ -1,5 +1,3 @@
---- START OF FILE generator.cpp ---
-
 #include "generator.h"
 #include "cbordevice.h"
 #include "outputrevision.h"
