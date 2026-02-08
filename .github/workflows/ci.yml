@@ -446,7 +446,52 @@ jobs:
           cd qt-macos-release-dev
           QT_ARCHIVE=qt-macos-release-dev.zip
           wget https://github.com/reg31/qt/releases/latest/download/$QT_ARCHIVE
-          7z x $QT_ARCHIVE           
+          7z x $QT_ARCHIVE
+
+      - name: Experimental moc replacement
+        shell: bash
+        run: |
+          set -e
+          
+          echo "Downloading m_object.h..."
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/m_object.h \
+            -o qtbase/src/corelib/kernel/m_object.h
+          
+          if [ ! -f qtbase/src/corelib/kernel/m_object.h ]; then
+            echo "ERROR: Failed to download m_object.h"
+            exit 1
+          fi
+          
+          echo "m_object.h downloaded successfully"
+          echo ""
+          
+          echo "Downloading conversion script..."
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/convert_to_m_object.sh \
+            -o convert_to_m_object.sh
+          
+          chmod +x convert_to_m_object.sh
+          
+          echo "Running conversion script (dry-run)..."
+          ./convert_to_m_object.sh
+          
+          echo ""
+          echo "=========================================="
+          echo "Applying changes..."
+          echo "=========================================="
+          ./convert_to_m_object.sh --apply
+          
+          if [ -f m_object_conversion.log ]; then
+            echo ""
+            echo "Conversion log:"
+            cat m_object_conversion.log
+            
+            CONVERTED=$(grep "Files converted:" m_object_conversion.log | awk '{print $3}')
+            TOTAL=$(grep "Total files with Q_OBJECT:" m_object_conversion.log | awk '{print $5}')
+            RATE=$(grep "Conversion rate:" m_object_conversion.log | awk '{print $3}')
+            
+            echo ""
+            echo "::notice title=M_OBJECT Conversion::Converted $CONVERTED/$TOTAL Q_OBJECT classes ($RATE)"
+          fi
         
       - name: Configure and build for iOS
         run: | 
