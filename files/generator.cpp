@@ -76,14 +76,15 @@ QT_FOR_EACH_STATIC_TYPE(RETURN_METATYPENAME_STRING)
     return nullptr;
  }
 
-Generator::Generator(Moc *moc, const ClassDef *classDef, const QList<QByteArray> &metaTypes,
-                     const QHash<QByteArray, QByteArray> &knownQObjectClasses,
-                     const QHash<QByteArray, QByteArray> &knownGadgets,
-                     const QHash<QByteArray, QByteArray> &hashes,
-                     FILE *outfile, bool requireCompleteTypes)
-    : parser(moc), out(outfile), cdef(classDef), metaTypes(metaTypes),
-      knownQObjectClasses(knownQObjectClasses), knownGadgets(knownGadgets),
-      hashes(hashes), requireCompleteTypes(requireCompleteTypes)
+Generator::Generator(Moc *moc, const ClassDef *classDef, const QList<QByteArray> &metaTypesArg,
+                     const QHash<QByteArray, QByteArray> &knownQObjectClassesArg,
+                     const QHash<QByteArray, QByteArray> &knownGadgetsArg,
+                     const QHash<QByteArray, QByteArray> &hashesArg,
+                     FILE *outfile, bool requireCompleteTypesArg)
+    : parser(moc), out(outfile), cdef(classDef),
+      metaTypes(metaTypesArg), knownQObjectClasses(knownQObjectClassesArg),
+      knownGadgets(knownGadgetsArg), hashes(hashesArg),
+      requireCompleteTypes(requireCompleteTypesArg)
 {
     if (!cdef->superclassList.empty())
         purestSuperClass = cdef->superclassList.constFirst().classname;
