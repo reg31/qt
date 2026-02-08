@@ -102,6 +102,10 @@ jobs:
         shell: bash
         run: |
           set -e
+
+          echo "Downloading optimized generator.h..."
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/generator.h \
+            -o qtbase/src/tools/moc/generator.h
           
           echo echo "Downloading optimized generator.cpp..."
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/generator.cpp \
@@ -220,6 +224,14 @@ jobs:
         shell: bash
         run: |
           set -e
+
+          echo "Downloading optimized generator.h..."
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/generator.h \
+            -o qtbase/src/tools/moc/generator.h
+          
+          echo echo "Downloading optimized generator.cpp..."
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/generator.cpp \
+            -o qtbase/src/tools/moc/generator.cpp
           
       - name: Configure Android Qt
         run: |
@@ -322,6 +334,14 @@ jobs:
         shell: bash
         run: |
           set -e
+
+          echo "Downloading optimized generator.h..."
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/generator.h \
+            -o qtbase/src/tools/moc/generator.h
+          
+          echo echo "Downloading optimized generator.cpp..."
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/generator.cpp \
+            -o qtbase/src/tools/moc/generator.cpp
 
       - name: Configure and build
         run: |
@@ -471,6 +491,10 @@ jobs:
         shell: bash
         run: |
           set -e
+
+          echo "Downloading optimized generator.h..."
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/generator.h \
+            -o qtbase/src/tools/moc/generator.h
           
           echo echo "Downloading optimized generator.cpp..."
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/generator.cpp \
