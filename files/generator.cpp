@@ -36,6 +36,17 @@ struct std::formatter<QByteArray, char> : std::formatter<std::string_view, char>
     }
 };
 
+template<>
+struct std::formatter<QString, char> : std::formatter<std::string_view, char>
+{
+    auto format(const QString& s, std::format_context& ctx) const
+    {
+        QByteArray utf8 = s.toUtf8();
+        return std::formatter<std::string_view, char>::format(
+            std::string_view(utf8.constData(), static_cast<size_t>(utf8.size())), ctx);
+    }
+};
+
 QT_BEGIN_NAMESPACE
 
 using namespace QtMiscUtils;
@@ -378,23 +389,6 @@ static constexpr auto qt_staticMetaObjectRelocatingContent{0} =
     }
 }
 
-void Generator::precomputeTypeInfo(const QByteArray &typeName)
-{
-    if (typeCache.contains(typeName)) return;
-    TypeInfo info;
-    info.builtinType = nameToBuiltinType(typeName);
-    info.isBuiltin = (info.builtinType != QMetaType::UnknownType);
-    if (info.isBuiltin) {
-        if (typeName == "qreal") {
-            info.builtinType = QMetaType::UnknownType;
-            info.valueString = "QReal";
-        } else {
-            info.valueString = metaTypeEnumValueString(info.builtinType);
-        }
-    }
-    typeCache[typeName] = info;
-}
-
 void Generator::precomputeTypesForFunctions(const QList<FunctionDef> &list)
 {
     for (const auto &f : list) {
@@ -729,10 +723,6 @@ QT_WARNING_DISABLE_CLANG("-Wunused-function")
 QT_WARNING_DISABLE_CLANG("-Wundefined-internal")
 QT_WARNING_DISABLE_MSVC(4334) 
 #define CBOR_NO_HALF_FLOAT_TYPE 1
-#define CBOR_ENCODER_WRITER_CONTROL 1
-#define CBOR_ENCODER_WRITE_FUNCTION CborDevice::callback
-QT_END_NAMESPACE
-#include "cborencoder.c"
 #define CBOR_ENCODER_WRITER_CONTROL 1
 #define CBOR_ENCODER_WRITE_FUNCTION CborDevice::callback
 QT_END_NAMESPACE
