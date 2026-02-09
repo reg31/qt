@@ -566,9 +566,16 @@ void Generator::addClassInfos()
         const int nameIdx = stridx(c.name);
         const int valueIdx = stridx(c.value);
 
-        fprintf(out, "            { %s, %s },\n",
-                nameIdx == -1 ? "~uint32_t(0)" : (QByteArray("uint32_t(") + QByteArray::number(nameIdx) + ")").constData(),
-                valueIdx == -1 ? "~uint32_t(0)" : (QByteArray("uint32_t(") + QByteArray::number(valueIdx) + ")").constData());
+        fputs("            { ", out);
+        if (nameIdx == -1) fputs("~uint32_t(0)", out);
+        else fprintf(out, "uint32_t(%d)", nameIdx);
+        
+        fputs(", ", out);
+        
+        if (valueIdx == -1) fputs("~uint32_t(0)", out);
+        else fprintf(out, "uint32_t(%d)", valueIdx);
+        
+        fputs(" },\n", out);
     }
 }
 
@@ -628,7 +635,7 @@ void Generator::addFunctions(const QList<FunctionDef> &list, const char *functyp
                 f.revision > 0 ? "Revisioned" : "", functype);
 
         if (f.isConstructor)
-            fprintf(out, "Constructor(");
+            fputs("Constructor(", out);
         else
             fprintf(out, "%s(", disambiguatedTypeName(f.type.name).constData());
 
@@ -642,52 +649,63 @@ void Generator::addFunctions(const QList<FunctionDef> &list, const char *functyp
         int tagIdx = stridx(f.tag);
 
         if (f.isConstructor) {
-            fprintf(out, ")>(%s, ",
-                    tagIdx == -1 ? "~uint32_t(0)" : ("uint32_t(" + QByteArray::number(tagIdx) + ")").constData());
+            fputs(")>(", out);
+            if (tagIdx == -1) fputs("~uint32_t(0)", out);
+            else fprintf(out, "uint32_t(%d)", tagIdx);
+            fputs(", ", out);
         } else {
-            fprintf(out, ")%s>(%s, %s, ", 
-                    f.isConst ? " const" : "",
-                    nameIdx == -1 ? "~uint32_t(0)" : ("uint32_t(" + QByteArray::number(nameIdx) + ")").constData(),
-                    tagIdx == -1 ? "~uint32_t(0)" : ("uint32_t(" + QByteArray::number(tagIdx) + ")").constData());
+            fprintf(out, ")%s>(", f.isConst ? " const" : "");
+            
+            if (nameIdx == -1) fputs("~uint32_t(0)", out);
+            else fprintf(out, "uint32_t(%d)", nameIdx);
+            
+            fputs(", ", out);
+            
+            if (tagIdx == -1) fputs("~uint32_t(0)", out);
+            else fprintf(out, "uint32_t(%d)", tagIdx);
+            
+            fputs(", ", out);
         }
 
         if (f.access == FunctionDef::Private)
-            fprintf(out, "QMC::AccessPrivate");
+            fputs("QMC::AccessPrivate", out);
         else if (f.access == FunctionDef::Public)
-            fprintf(out, "QMC::AccessPublic");
+            fputs("QMC::AccessPublic", out);
         else if (f.access == FunctionDef::Protected)
-            fprintf(out, "QMC::AccessProtected");
-        if (f.isCompat)
-            fprintf(out, " | QMC::MethodCompatibility");
-        if (f.wasCloned)
-            fprintf(out, " | QMC::MethodCloned");
-        if (f.isScriptable)
-            fprintf(out, " | QMC::MethodScriptable");
+            fputs("QMC::AccessProtected", out);
+
+        if (f.isCompat) fputs(" | QMC::MethodCompatibility", out);
+        if (f.wasCloned) fputs(" | QMC::MethodCloned", out);
+        if (f.isScriptable) fputs(" | QMC::MethodScriptable", out);
+        
         if (f.revision > 0)
             fprintf(out, ", %#x", f.revision);
 
         if (!f.isConstructor) {
-            fprintf(out, ", ");
+            fputs(", ", out);
             generateTypeInfo(f.normalizedType);
         }
 
         if (f.arguments.isEmpty()) {
-            fprintf(out, "),\n");
+            fputs("),\n", out);
         } else {
-            fprintf(out, ", {{");
+            fputs(", {{", out);
             for (qsizetype i = 0; i < f.arguments.size(); ++i) {
                 if ((i % 4) == 0)
-                    fprintf(out, "\n           ");
+                    fputs("\n           ", out);
                 const ArgumentDef &arg = f.arguments.at(i);
-                int argNameIdx = stridx(arg.name); // Argument names use uint16_t
+                int argNameIdx = stridx(arg.name);
                 
-                fprintf(out, " { ");
+                fputs(" { ", out);
                 generateTypeInfo(arg.normalizedType);
-                fprintf(out, ", %s },",
-                        argNameIdx == -1 ? "~uint16_t(0)" : ("uint16_t(" + QByteArray::number(argNameIdx) + ")").constData());
-            }
+                fputs(", ", out);
 
-            fprintf(out, "\n        }}),\n");
+                if (argNameIdx == -1) fputs("~uint16_t(0)", out);
+                else fprintf(out, "uint16_t(%d)", argNameIdx);
+
+                fputs(" },", out);
+            }
+            fputs("\n        }}),\n", out);
         }
     }
 }
@@ -823,42 +841,53 @@ void Generator::addEnums()
         int nameIdx = stridx(e.name);
         int typeNameIdx = stridx(typeName);
 
-        fprintf(out, "        // %s '%s'\n"
-                     "        QtMocHelpers::EnumData<%s>(%s, %s,",
-                e.flags & EnumIsFlag ? "flag" : "enum", e.name.constData(),
-                disambiguatedTypeName(e.name).constData(),
-                nameIdx == -1 ? "~uint32_t(0)" : ("uint32_t(" + QByteArray::number(nameIdx) + ")").constData(),
-                typeNameIdx == -1 ? "~uint32_t(0)" : ("uint32_t(" + QByteArray::number(typeNameIdx) + ")").constData());
+        fprintf(out, "        // %s '%s'\n", 
+                e.flags & EnumIsFlag ? "flag" : "enum", e.name.constData());
+        
+        fprintf(out, "        QtMocHelpers::EnumData<%s>(", 
+                disambiguatedTypeName(e.name).constData());
+
+        if (nameIdx == -1) fputs("~uint32_t(0)", out);
+        else fprintf(out, "uint32_t(%d)", nameIdx);
+        
+        fputs(", ", out);
+
+        if (typeNameIdx == -1) fputs("~uint32_t(0)", out);
+        else fprintf(out, "uint32_t(%d)", typeNameIdx);
+
+        fputs(",", out);
 
         if (e.flags) {
             const char *separator = "";
-            auto addFlag = [this, &separator](const char *text) {
-                fprintf(out, "%s QMC::%s", separator, text);
+            if (e.flags & EnumIsFlag) {
+                fputs(" QMC::EnumIsFlag", out);
                 separator = " |";
-            };
-            if (e.flags & EnumIsFlag)
-                addFlag("EnumIsFlag");
-            if (e.flags & EnumIsScoped)
-                addFlag("EnumIsScoped");
+            }
+            if (e.flags & EnumIsScoped) {
+                fprintf(out, "%s QMC::EnumIsScoped", separator);
+            }
         } else {
-            fprintf(out, " QMC::EnumFlags{}");
+            fputs(" QMC::EnumFlags{}", out);
         }
 
-       if (e.values.isEmpty()) {
-            fprintf(out, "),\n");
+        if (e.values.isEmpty()) {
+            fputs("),\n", out);
             continue;
         }
 
-        fprintf(out, ").add({\n");
+        fputs(").add({\n", out);
         QByteArray prefix = (e.enumName.isNull() ? e.name : e.enumName);
         for (const QByteArray &val : e.values) {
             int valIdx = stridx(val);
-            fprintf(out, "            { %s, %s::%s },\n", 
-                    valIdx == -1 ? "~uint32_t(0)" : ("uint32_t(" + QByteArray::number(valIdx) + ")").constData(),
-                    prefix.constData(), val.constData());
+            
+            fputs("            { ", out);
+            if (valIdx == -1) fputs("~uint32_t(0)", out);
+            else fprintf(out, "uint32_t(%d)", valIdx);
+
+            fprintf(out, ", %s::%s },\n", prefix.constData(), val.constData());
         }
 
-        fprintf(out, "        }),\n");
+        fputs("        }),\n", out);
     }
 }
 
