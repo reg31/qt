@@ -562,8 +562,14 @@ void Generator::registerClassInfoStrings()
 
 void Generator::addClassInfos()
 {
-    for (const ClassInfoDef &c : std::as_const(cdef->classInfoList))
-        fprintf(out, "            { uint32_t(%d), uint32_t(%d) },\n", stridx(c.name), stridx(c.value));
+    for (const ClassInfoDef &c : std::as_const(cdef->classInfoList)) {
+        const int nameIdx = stridx(c.name);
+        const int valueIdx = stridx(c.value);
+
+        fprintf(out, "            { %s, %s },\n",
+                nameIdx == -1 ? "~uint32_t(0)" : (QByteArray("uint32_t(") + QByteArray::number(nameIdx) + ")").constData(),
+                valueIdx == -1 ? "~uint32_t(0)" : (QByteArray("uint32_t(") + QByteArray::number(valueIdx) + ")").constData());
+    }
 }
 
 void Generator::registerFunctionStrings(const QList<FunctionDef> &list)
@@ -632,10 +638,18 @@ void Generator::addFunctions(const QList<FunctionDef> &list, const char *functyp
             comma = ", ";
         }
 
-        if (f.isConstructor)
-            fprintf(out, ")>(uint32_t(%d), ", stridx(f.tag));
-        else
-            fprintf(out, ")%s>(uint32_t(%d), uint32_t(%d), ", f.isConst ? " const" : "", stridx(f.name), stridx(f.tag));
+        int nameIdx = stridx(f.name);
+        int tagIdx = stridx(f.tag);
+
+        if (f.isConstructor) {
+            fprintf(out, ")>(%s, ",
+                    tagIdx == -1 ? "~uint32_t(0)" : ("uint32_t(" + QByteArray::number(tagIdx) + ")").constData());
+        } else {
+            fprintf(out, ")%s>(%s, %s, ", 
+                    f.isConst ? " const" : "",
+                    nameIdx == -1 ? "~uint32_t(0)" : ("uint32_t(" + QByteArray::number(nameIdx) + ")").constData(),
+                    tagIdx == -1 ? "~uint32_t(0)" : ("uint32_t(" + QByteArray::number(tagIdx) + ")").constData());
+        }
 
         if (f.access == FunctionDef::Private)
             fprintf(out, "QMC::AccessPrivate");
@@ -665,9 +679,12 @@ void Generator::addFunctions(const QList<FunctionDef> &list, const char *functyp
                 if ((i % 4) == 0)
                     fprintf(out, "\n           ");
                 const ArgumentDef &arg = f.arguments.at(i);
+                int argNameIdx = stridx(arg.name); // Argument names use uint16_t
+                
                 fprintf(out, " { ");
                 generateTypeInfo(arg.normalizedType);
-                fprintf(out, ", uint16_t(%d) },", stridx(arg.name));
+                fprintf(out, ", %s },",
+                        argNameIdx == -1 ? "~uint16_t(0)" : ("uint16_t(" + QByteArray::number(argNameIdx) + ")").constData());
             }
 
             fprintf(out, "\n        }}),\n");
@@ -776,7 +793,7 @@ void Generator::addProperties()
             }
 
             if (notifyId == -1)
-                fprintf(out, "uint32_t(-1)");
+                fprintf(out, "~uint32_t(0)");
             else
                 fprintf(out, "uint32_t(%d)", notifyId);
 
@@ -803,10 +820,15 @@ void Generator::addEnums()
 {
     for (const EnumDef &e : std::as_const(cdef->enumList)) {
         const QByteArray &typeName = e.enumName.isNull() ? e.name : e.enumName;
+        int nameIdx = stridx(e.name);
+        int typeNameIdx = stridx(typeName);
+
         fprintf(out, "        // %s '%s'\n"
-                     "        QtMocHelpers::EnumData<%s>(uint32_t(%d), uint32_t(%d),",
+                     "        QtMocHelpers::EnumData<%s>(%s, %s,",
                 e.flags & EnumIsFlag ? "flag" : "enum", e.name.constData(),
-                disambiguatedTypeName(e.name).constData(), stridx(e.name), stridx(typeName));
+                disambiguatedTypeName(e.name).constData(),
+                nameIdx == -1 ? "~uint32_t(0)" : ("uint32_t(" + QByteArray::number(nameIdx) + ")").constData(),
+                typeNameIdx == -1 ? "~uint32_t(0)" : ("uint32_t(" + QByteArray::number(typeNameIdx) + ")").constData());
 
         if (e.flags) {
             const char *separator = "";
@@ -822,7 +844,7 @@ void Generator::addEnums()
             fprintf(out, " QMC::EnumFlags{}");
         }
 
-        if (e.values.isEmpty()) {
+       if (e.values.isEmpty()) {
             fprintf(out, "),\n");
             continue;
         }
@@ -830,7 +852,9 @@ void Generator::addEnums()
         fprintf(out, ").add({\n");
         QByteArray prefix = (e.enumName.isNull() ? e.name : e.enumName);
         for (const QByteArray &val : e.values) {
-            fprintf(out, "            { uint32_t(%d), %s::%s },\n", stridx(val),
+            int valIdx = stridx(val);
+            fprintf(out, "            { %s, %s::%s },\n", 
+                    valIdx == -1 ? "~uint32_t(0)" : ("uint32_t(" + QByteArray::number(valIdx) + ")").constData(),
                     prefix.constData(), val.constData());
         }
 
