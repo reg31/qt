@@ -275,7 +275,7 @@ void Generator::generateCode()
                  "    namespace QMC = QtMocConstants;\n",
             cdef->qualified.constData(), qualifiedClassNameIdentifier.constData());
 
-    fprintf(out, "    Q_CONSTINIT static const QtMocHelpers::StringRefStorage qt_stringData {\n");
+    fprintf(out, "    constexpr QtMocHelpers::StringRefStorage qt_stringData {\n");
     for (int i = 0; i < strings.size(); ++i) {
         if (i > 0)
             fprintf(out, ",\n");
@@ -290,16 +290,16 @@ void Generator::generateCode()
     }
     fprintf(out, "\n    };\n\n");
 
-    fprintf(out, "    QtMocHelpers::UintData qt_methods {\n");
+    fprintf(out, "   constexpr QtMocHelpers::UintData qt_methods {\n");
 
     addFunctions(cdef->signalList, "Signal");
     addFunctions(cdef->slotList, "Slot");
     addFunctions(cdef->methodList, "Method");
     fprintf(out, "    };\n"
-                 "    QtMocHelpers::UintData qt_properties {\n");
+                 "    constexpr QtMocHelpers::UintData qt_properties {\n");
     addProperties();
     fprintf(out, "    };\n"
-                 "    QtMocHelpers::UintData qt_enums {\n");
+                 "    constexpr QtMocHelpers::UintData qt_enums {\n");
     addEnums();
     fprintf(out, "    };\n");
 
@@ -309,16 +309,16 @@ void Generator::generateCode()
     if (isConstructible || !cdef->classInfoList.isEmpty()) {
         if (isConstructible) {
             fprintf(out, "    using Constructor = QtMocHelpers::NoType;\n"
-                         "    QtMocHelpers::UintData qt_constructors {\n");
+                         "    constexpr QtMocHelpers::UintData qt_constructors {\n");
             addFunctions(cdef->constructorList, "Constructor");
             fprintf(out, "    };\n");
         } else {
-            fputs("    QtMocHelpers::UintData qt_constructors {};\n", out);
+            fputs("    constexpr QtMocHelpers::UintData qt_constructors {};\n", out);
         }
 
         uintDataParams = ", qt_constructors";
         if (!cdef->classInfoList.isEmpty()) {
-            fprintf(out, "    QtMocHelpers::ClassInfos qt_classinfo({\n");
+            fprintf(out, "    constexpr QtMocHelpers::ClassInfos qt_classinfo({\n");
             addClassInfos();
             fprintf(out, "    });\n");
             uintDataParams = ", qt_constructors, qt_classinfo";
