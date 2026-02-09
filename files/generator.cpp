@@ -438,123 +438,6 @@ void Generator::generateCode()
     generatePluginMetaData();
 }
 
-void Generator::generateStaticMetacall()
-{
-    fprintf(out, "void %s::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id, void **_a)\n{\n",
-            cdef->qualified.constData());
-
-    enum UsedArgs { UsedT = 1, UsedC = 2, UsedId = 4, UsedA = 8 };
-    uint usedArgs = 0;
-
-    if (cdef->hasQObject) {
-        fprintf(out, "    auto *_t = static_cast<%s *>(_o);\n", cdef->classname.constData());
-    } else {
-        fprintf(out, "    auto *_t = reinterpret_cast<%s *>(_o);\n", cdef->classname.constData());
-    }
-
-    const auto generateCtorArguments = [&](int ctorindex) {
-        const FunctionDef &f = cdef->constructorList.at(ctorindex);
-        int offset = 1;
-        for (auto it = f.arguments.cbegin(); it != f.arguments.cend(); ++it) {
-            if (it != f.arguments.cbegin()) fprintf(out, ",");
-            fprintf(out, "(*reinterpret_cast<%s>(_a[%d]))",
-                    disambiguatedTypeNameForCast(it->normalizedType).constData(), offset++);
-        }
-    };
-
-    if (!cdef->constructorList.isEmpty()) {
-        fprintf(out, "    if (_c == QMetaObject::CreateInstance) {\n        switch (_id) {\n");
-        for (int i = 0; i < (int)cdef->constructorList.size(); ++i) {
-            fprintf(out, "        case %d: { %s *_r = new %s(", i, cdef->classname.constData(), cdef->classname.constData());
-            generateCtorArguments(i);
-            fprintf(out, ");\n            if (_a[0]) *reinterpret_cast<%s**>(_a[0]) = _r; } break;\n",
-                    (cdef->hasQGadget || cdef->hasQNamespace) ? "void" : "QObject");
-        }
-        fprintf(out, "        default: break;\n        }\n    }\n");
-        fprintf(out, "    if (_c == QMetaObject::ConstructInPlace) {\n        switch (_id) {\n");
-        for (int i = 0; i < (int)cdef->constructorList.size(); ++i) {
-            fprintf(out, "        case %d: { new (_a[0]) %s(", i, cdef->classname.constData());
-            generateCtorArguments(i);
-            fprintf(out, "); } break;\n");
-        }
-        fprintf(out, "        default: break;\n        }\n    }\n");
-        usedArgs |= UsedC | UsedId | UsedA;
-    }
-
-    QList<FunctionDef> methodList;
-    methodList += cdef->signalList;
-    methodList += cdef->slotList;
-    methodList += cdef->methodList;
-
-    if (!methodList.isEmpty()) {
-        usedArgs |= UsedT | UsedC | UsedId;
-        fprintf(out, "    if (_c == QMetaObject::InvokeMetaMethod) {\n        switch (_id) {\n");
-        for (int i = 0; i < methodList.size(); ++i) {
-            const FunctionDef &f = methodList.at(i);
-            fprintf(out, "        case %d: ", i);
-            if (f.normalizedType != "void")
-                fprintf(out, "{ %s _r = ", disambiguatedTypeName(noRef(f.normalizedType)).constData());
-            fprintf(out, "_t->");
-            if (f.inPrivateClass.size()) fprintf(out, "%s->", f.inPrivateClass.constData());
-            fprintf(out, "%s(", f.name.constData());
-            int offset = 1;
-            if (f.isRawSlot) {
-                fprintf(out, "QMethodRawArguments{ _a }");
-                usedArgs |= UsedA;
-            } else {
-                for (auto it = f.arguments.cbegin(); it != f.arguments.cend(); ++it) {
-                    if (it != f.arguments.cbegin()) fprintf(out, ",");
-                    fprintf(out, "(*reinterpret_cast<%s>(_a[%d]))", 
-                            disambiguatedTypeNameForCast(it->normalizedType).constData(), offset++);
-                    usedArgs |= UsedA;
-                }
-                if (f.isPrivateSignal) {
-                    if (!f.arguments.isEmpty()) fprintf(out, ", ");
-                    fprintf(out, "QPrivateSignal()");
-                }
-            }
-            fprintf(out, ");");
-            if (f.normalizedType != "void") {
-                fprintf(out, "\n            if (_a[0]) *reinterpret_cast<%s*>(_a[0]) = std::move(_r); } ",
-                        disambiguatedTypeName(noRef(f.normalizedType)).constData());
-                usedArgs |= UsedA;
-            }
-            fprintf(out, " break;\n");
-        }
-        fprintf(out, "        default: break;\n        }\n    }\n");
-    }
-
-    if (!cdef->signalList.isEmpty()) {
-        usedArgs |= UsedC | UsedA;
-        fprintf(out, "    if (_c == QMetaObject::IndexOfMethod) {\n");
-        for (int i = 0; i < int(cdef->signalList.size()); ++i) {
-            const FunctionDef &f = cdef->signalList.at(i);
-            if (f.wasCloned || !f.inPrivateClass.isEmpty() || f.isStatic) continue;
-            fprintf(out, "        if (QtMocHelpers::indexOfMethod<%s (%s::*)(", f.type.rawName.constData(), cdef->classname.constData());
-            for (auto it = f.arguments.cbegin(); it != f.arguments.cend(); ++it) {
-                if (it != f.arguments.cbegin()) fprintf(out, ", ");
-                fprintf(out, "%s", QByteArray(it->type.name + ' ' + it->rightType).constData());
-            }
-            if (f.isPrivateSignal) {
-                if (!f.arguments.isEmpty()) fprintf(out, ", ");
-                fprintf(out, "QPrivateSignal");
-            }
-            fprintf(out, ")%s>(_a, &%s::%s, %d)) return;\n", f.isConst ? " const" : "",
-                    cdef->classname.constData(), f.name.constData(), i);
-        }
-        fprintf(out, "    }\n");
-    }
-
-    auto printUnused = [&](UsedArgs entry, const char *name) {
-        if ((usedArgs & entry) == 0) fprintf(out, "    (void)%s;\n", name);
-    };
-    printUnused(UsedT, "_t");
-    printUnused(UsedC, "_c");
-    printUnused(UsedId, "_id");
-    printUnused(UsedA, "_a");
-    fprintf(out, "}\n");
-}
-
 void Generator::precomputeTypesForFunctions(const QList<FunctionDef> &list)
 {
     for (const auto &f : list) {
@@ -935,424 +818,98 @@ Generator::methodsWithAutomaticTypesHelper(const QList<FunctionDef> &methodList)
     return methodsWithAutomaticTypes;
 }
 
+code
+C++
+download
+content_copy
+expand_less
 void Generator::generateStaticMetacall()
 {
     fprintf(out, "void %s::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id, void **_a)\n{\n",
             cdef->qualified.constData());
 
-    enum UsedArgs {
-        UsedT = 1,
-        UsedC = 2,
-        UsedId = 4,
-        UsedA = 8,
-    };
-    uint usedArgs = 0;
-
     if (cdef->hasQObject) {
-#ifndef QT_NO_DEBUG
-        fprintf(out, "    Q_ASSERT(_o == nullptr || staticMetaObject.cast(_o));\n");
-#endif
         fprintf(out, "    auto *_t = static_cast<%s *>(_o);\n", cdef->classname.constData());
     } else {
         fprintf(out, "    auto *_t = reinterpret_cast<%s *>(_o);\n", cdef->classname.constData());
     }
 
-    const auto generateCtorArguments = [&](int ctorindex) {
-        const FunctionDef &f = cdef->constructorList.at(ctorindex);
-        Q_ASSERT(!f.isPrivateSignal); 
-        int offset = 1;
-
-        const auto begin = f.arguments.cbegin();
-        const auto end = f.arguments.cend();
-        for (auto it = begin; it != end; ++it) {
-            const ArgumentDef &a = *it;
-            if (it != begin)
-                fprintf(out, ",");
-            fprintf(out, "(*reinterpret_cast<%s>(_a[%d]))",
-                    disambiguatedTypeNameForCast(a.normalizedType).constData(), offset++);
-        }
-    };
-
     if (!cdef->constructorList.isEmpty()) {
-        fprintf(out, "    if (_c == QMetaObject::CreateInstance) {\n");
-        fprintf(out, "        switch (_id) {\n");
-        const int ctorend = int(cdef->constructorList.size());
-        for (int ctorindex = 0; ctorindex < ctorend; ++ctorindex) {
-            fprintf(out, "        case %d: { %s *_r = new %s(", ctorindex,
-                    cdef->classname.constData(), cdef->classname.constData());
-            generateCtorArguments(ctorindex);
-            fprintf(out, ");\n");
-            fprintf(out, "            if (_a[0]) *reinterpret_cast<%s**>(_a[0]) = _r; } break;\n",
+        fprintf(out, "    if (_c == QMetaObject::CreateInstance) {\n        switch (_id) {\n");
+        for (int i = 0; i < (int)cdef->constructorList.size(); ++i) {
+            const FunctionDef &f = cdef->constructorList.at(i);
+            fprintf(out, "        case %d: { %s *_r = new %s(", i, cdef->classname.constData(), cdef->classname.constData());
+            for (int j = 0; j < f.arguments.size(); ++j) {
+                fprintf(out, "%s(*reinterpret_cast<%s>(_a[%d]))", (j == 0 ? "" : ", "),
+                        disambiguatedTypeNameForCast(f.arguments.at(j).normalizedType).constData(), j + 1);
+            }
+            fprintf(out, ");\n            if (_a[0]) *reinterpret_cast<%s**>(_a[0]) = _r; } break;\n",
                     (cdef->hasQGadget || cdef->hasQNamespace) ? "void" : "QObject");
         }
-        fprintf(out, "        default: break;\n");
-        fprintf(out, "        }\n");
-        fprintf(out, "    }\n");
-        fprintf(out, "    if (_c == QMetaObject::ConstructInPlace) {\n");
-        fprintf(out, "        switch (_id) {\n");
-        for (int ctorindex = 0; ctorindex < ctorend; ++ctorindex) {
-            fprintf(out, "        case %d: { new (_a[0]) %s(",
-                    ctorindex, cdef->classname.constData());
-            generateCtorArguments(ctorindex);
+        fprintf(out, "        default: break;\n        }\n    }\n");
+
+        fprintf(out, "    if (_c == QMetaObject::ConstructInPlace) {\n        switch (_id) {\n");
+        for (int i = 0; i < (int)cdef->constructorList.size(); ++i) {
+            const FunctionDef &f = cdef->constructorList.at(i);
+            fprintf(out, "        case %d: { new (_a[0]) %s(", i, cdef->classname.constData());
+            for (int j = 0; j < f.arguments.size(); ++j) {
+                fprintf(out, "%s(*reinterpret_cast<%s>(_a[%d]))", (j == 0 ? "" : ", "),
+                        disambiguatedTypeNameForCast(f.arguments.at(j).normalizedType).constData(), j + 1);
+            }
             fprintf(out, "); } break;\n");
         }
-        fprintf(out, "        default: break;\n");
-        fprintf(out, "        }\n");
-        fprintf(out, "    }\n");
-        usedArgs |= UsedC | UsedId | UsedA;
+        fprintf(out, "        default: break;\n        }\n    }\n");
     }
 
-    QList<FunctionDef> methodList;
-    methodList += cdef->signalList;
-    methodList += cdef->slotList;
-    methodList += cdef->methodList;
-
+    QList<FunctionDef> methodList = cdef->signalList + cdef->slotList + cdef->methodList;
     if (!methodList.isEmpty()) {
-        usedArgs |= UsedT | UsedC | UsedId;
-        fprintf(out, "    if (_c == QMetaObject::InvokeMetaMethod) [[likely]] {\n");
-        
-        const bool useVtable = methodList.size() <= 16;
-        
-        if (useVtable) {
-            fprintf(out, "        if (_id < 0 || _id >= %d) [[unlikely]] std::unreachable();\n", int(methodList.size()));
-            fprintf(out, "        using Func = void (*)(%s *, void **);\n", cdef->classname.constData());
-            fprintf(out, "        static constexpr std::array<Func, %d> vtable = {{\n", int(methodList.size()));
-        
-            for (int i = 0; i < methodList.size(); ++i) {
-            const auto &f = methodList.at(i);
-            if (i > 0) fprintf(out, ",\n");
-            fprintf(out, "            [](%s *t, void **a) { ", cdef->classname.constData());
+        fprintf(out, "    if (_c == QMetaObject::InvokeMetaMethod) {\n        switch (_id) {\n");
+        for (int i = 0; i < methodList.size(); ++i) {
+            const FunctionDef &f = methodList.at(i);
+            fprintf(out, "        case %d: ", i);
+            if (f.normalizedType != "void")
+                fprintf(out, "{ %s _r = ", disambiguatedTypeName(noRef(f.normalizedType)).constData());
             
-            bool usesA = (f.normalizedType != "void" || f.isRawSlot || !f.arguments.isEmpty());
-            if (!usesA)
-                fprintf(out, "(void)a; ");
+            fprintf(out, "_t->%s%s(", (f.inPrivateClass.isEmpty() ? "" : (f.inPrivateClass + "->").constData()), f.name.constData());
             
-            if (f.isStatic)
-                fprintf(out, "(void)t; ");
-
-            if (f.normalizedType != "void") fprintf(out, "if (auto r = ");
-                fprintf(out, "t->");
-                if (f.inPrivateClass.size()) fprintf(out, "%s->", f.inPrivateClass.constData());
-                fprintf(out, "%s(", f.name.constData());
-            
-                if (f.isRawSlot) {
-                    fprintf(out, "QMethodRawArguments{a}");
-                    usedArgs |= UsedA;
-                } else {
-                    int offset = 1;
-                    for (auto it = f.arguments.cbegin(); it != f.arguments.cend(); ++it, ++offset) {
-                        if (it != f.arguments.cbegin()) fprintf(out, ",");
-                        fprintf(out, "(*reinterpret_cast<%s>(a[%d]))",
-                                disambiguatedTypeNameForCast(it->normalizedType).constData(), offset);
-                        usedArgs |= UsedA;
-                    }
-                    if (f.isPrivateSignal) {
-                        if (!f.arguments.isEmpty()) fprintf(out, ", ");
-                        fprintf(out, "QPrivateSignal()");
-                    }
+            if (f.isRawSlot) {
+                fprintf(out, "QMethodRawArguments{ _a }");
+            } else {
+                for (int j = 0; j < f.arguments.size(); ++j) {
+                    fprintf(out, "%s(*reinterpret_cast<%s>(_a[%d]))", (j == 0 ? "" : ","), 
+                            disambiguatedTypeNameForCast(f.arguments.at(j).normalizedType).constData(), j + 1);
                 }
-                fprintf(out, ")");
-                if (f.normalizedType != "void") {
-                    fprintf(out, "; a[0]) *reinterpret_cast<%s*>(a[0]) = std::move(r)",
-                            disambiguatedTypeName(noRef(f.normalizedType)).constData());
-                    usedArgs |= UsedA;
-                }
-                fprintf(out, "; }");
+                if (f.isPrivateSignal)
+                    fprintf(out, "%sQPrivateSignal()", (f.arguments.isEmpty() ? "" : ", "));
             }
-        
-            fprintf(out, "\n        }};\n");
-            fprintf(out, "        vtable[_id](_t, _a);\n");
-        } else {
-            fprintf(out, "        switch (_id) {\n");
-            for (int methodindex = 0; methodindex < methodList.size(); ++methodindex) {
-                const FunctionDef &f = methodList.at(methodindex);
-                Q_ASSERT(!f.normalizedType.isEmpty());
-                fprintf(out, "        case %d: ", methodindex);
-                if (f.normalizedType != "void")
-                    fprintf(out, "{ %s _r = ", disambiguatedTypeName(noRef(f.normalizedType)).constData());
-                fprintf(out, "_t->");
-                if (f.inPrivateClass.size())
-                    fprintf(out, "%s->", f.inPrivateClass.constData());
-                fprintf(out, "%s(", f.name.constData());
-                int offset = 1;
+            fprintf(out, ");");
 
-                if (f.isRawSlot) {
-                    fprintf(out, "QMethodRawArguments{ _a }");
-                    usedArgs |= UsedA;
-                } else {
-                    for (auto it = f.arguments.cbegin(); it != f.arguments.cend(); ++it) {
-                        if (it != f.arguments.cbegin())
-                            fprintf(out, ",");
-                        fprintf(out, "(*reinterpret_cast<%s>(_a[%d]))", 
-                                disambiguatedTypeNameForCast(it->normalizedType).constData(), offset++);
-                        usedArgs |= UsedA;
-                    }
-                    if (f.isPrivateSignal) {
-                        if (!f.arguments.isEmpty())
-                            fprintf(out, ", ");
-                        fprintf(out, "%s", "QPrivateSignal()");
-                    }
-                }
-                fprintf(out, ");");
-                if (f.normalizedType != "void") {
-                    fprintf(out, "\n            if (_a[0]) *reinterpret_cast<%s*>(_a[0]) = std::move(_r); } ",
-                            disambiguatedTypeName(noRef(f.normalizedType)).constData());
-                    usedArgs |= UsedA;
-                }
-                fprintf(out, " break;\n");
+            if (f.normalizedType != "void") {
+                fprintf(out, "\n            if (_a[0]) *reinterpret_cast<%s*>(_a[0]) = std::move(_r); } ",
+                        disambiguatedTypeName(noRef(f.normalizedType)).constData());
             }
-            fprintf(out, "        default: std::unreachable();\n");
-            fprintf(out, "        }\n");
+            fprintf(out, " break;\n");
         }
-        fprintf(out, "    }\n");
-
-        QMap<int, QMultiMap<QByteArray, int> > methodsWithAutomaticTypes = methodsWithAutomaticTypesHelper(methodList);
-
-        if (!methodsWithAutomaticTypes.isEmpty()) {
-            fprintf(out, "    if (_c == QMetaObject::RegisterMethodArgumentMetaType) {\n");
-            fprintf(out, "        switch (_id) {\n");
-            fprintf(out, "        default: *reinterpret_cast<QMetaType *>(_a[0]) = QMetaType(); break;\n");
-            QMap<int, QMultiMap<QByteArray, int> >::const_iterator it = methodsWithAutomaticTypes.constBegin();
-            const QMap<int, QMultiMap<QByteArray, int> >::const_iterator end = methodsWithAutomaticTypes.constEnd();
-            for ( ; it != end; ++it) {
-                fprintf(out, "        case %d:\n", it.key());
-                fprintf(out, "            switch (*reinterpret_cast<int*>(_a[1])) {\n");
-                fprintf(out, "            default: *reinterpret_cast<QMetaType *>(_a[0]) = QMetaType(); break;\n");
-                auto jt = it->begin();
-                const auto jend = it->end();
-                while (jt != jend) {
-                    fprintf(out, "            case %d:\n", jt.value());
-                    const QByteArray &lastKey = jt.key();
-                    ++jt;
-                    if (jt == jend || jt.key() != lastKey)
-                        fprintf(out, "                *reinterpret_cast<QMetaType *>(_a[0]) = QMetaType::fromType< %s >(); break;\n", lastKey.constData());
-                }
-                fprintf(out, "            }\n");
-                fprintf(out, "            break;\n");
-            }
-            fprintf(out, "        }\n");
-            fprintf(out, "    }\n");
-            usedArgs |= UsedC | UsedId | UsedA;
-        }
-
+        fprintf(out, "        default: break;\n        }\n    }\n");
     }
+
     if (!cdef->signalList.isEmpty()) {
-        usedArgs |= UsedC | UsedA;
         fprintf(out, "    if (_c == QMetaObject::IndexOfMethod) {\n");
-        for (int methodindex = 0; methodindex < int(cdef->signalList.size()); ++methodindex) {
-            const FunctionDef &f = cdef->signalList.at(methodindex);
-            if (f.wasCloned || !f.inPrivateClass.isEmpty() || f.isStatic)
-                continue;
-            fprintf(out, "        if (QtMocHelpers::indexOfMethod<%s (%s::*)(",
-                    f.type.rawName.constData() , cdef->classname.constData());
-
-            const auto begin = f.arguments.cbegin();
-            const auto end = f.arguments.cend();
-            for (auto it = begin; it != end; ++it) {
-                const ArgumentDef &a = *it;
-                if (it != begin)
-                    fprintf(out, ", ");
-                fprintf(out, "%s", QByteArray(a.type.name + ' ' + a.rightType).constData());
+        for (int i = 0; i < (int)cdef->signalList.size(); ++i) {
+            const FunctionDef &f = cdef->signalList.at(i);
+            if (f.wasCloned || !f.inPrivateClass.isEmpty() || f.isStatic) continue;
+            fprintf(out, "        if (QtMocHelpers::indexOfMethod<%s (%s::*)(", f.type.rawName.constData(), cdef->classname.constData());
+            for (int j = 0; j < f.arguments.size(); ++j) {
+                fprintf(out, "%s%s", (j == 0 ? "" : ", "), QByteArray(f.arguments.at(j).type.name + ' ' + f.arguments.at(j).rightType).constData());
             }
-            if (f.isPrivateSignal) {
-                if (!f.arguments.isEmpty())
-                    fprintf(out, ", ");
-                fprintf(out, "%s", "QPrivateSignal");
-            }
-            fprintf(out, ")%s>(_a, &%s::%s, %d))\n",
-                    f.isConst ? " const" : "",
-                    cdef->classname.constData(), f.name.constData(), methodindex);
-            fprintf(out, "            return;\n");
+            if (f.isPrivateSignal) fprintf(out, "%sQPrivateSignal", (f.arguments.isEmpty() ? "" : ", "));
+            fprintf(out, ")%s>(_a, &%s::%s, %d)) return;\n", f.isConst ? " const" : "",
+                    cdef->classname.constData(), f.name.constData(), i);
         }
         fprintf(out, "    }\n");
     }
 
-    const QMultiMap<QByteArray, int> automaticPropertyMetaTypes = automaticPropertyMetaTypesHelper();
-
-    if (!automaticPropertyMetaTypes.isEmpty()) {
-        fprintf(out, "    if (_c == QMetaObject::RegisterPropertyMetaType) {\n");
-        fprintf(out, "        switch (_id) {\n");
-        fprintf(out, "        default: *reinterpret_cast<int*>(_a[0]) = -1; break;\n");
-        auto it = automaticPropertyMetaTypes.begin();
-        const auto end = automaticPropertyMetaTypes.end();
-        while (it != end) {
-            fprintf(out, "        case %d:\n", it.value());
-            const QByteArray &lastKey = it.key();
-            ++it;
-            if (it == end || it.key() != lastKey)
-                fprintf(out, "            *reinterpret_cast<int*>(_a[0]) = qRegisterMetaType< %s >(); break;\n", lastKey.constData());
-        }
-        fprintf(out, "        }\n");
-        fprintf(out, "    }\n");
-        usedArgs |= UsedC | UsedId | UsedA;
-    }
-
-    if (!cdef->propertyList.empty()) {
-        bool needGet = false;
-        bool needTempVarForGet = false;
-        bool needSet = false;
-        bool needReset = false;
-        bool hasBindableProperties = false;
-        for (const PropertyDef &p : std::as_const(cdef->propertyList)) {
-            needGet |= !p.read.isEmpty() || !p.member.isEmpty();
-            if (!p.read.isEmpty() || !p.member.isEmpty())
-                needTempVarForGet |= (p.gspec != PropertyDef::PointerSpec
-                                      && p.gspec != PropertyDef::ReferenceSpec);
-
-            needSet |= !p.write.isEmpty() || (!p.member.isEmpty() && !p.constant);
-            needReset |= !p.reset.isEmpty();
-            hasBindableProperties |= !p.bind.isEmpty();
-        }
-        if (needGet || needSet || hasBindableProperties || needReset)
-            usedArgs |= UsedT | UsedC | UsedId;
-        if (needGet || needSet || hasBindableProperties)
-            usedArgs |= UsedA;  
-
-        if (needGet) {
-            fprintf(out, "    if (_c == QMetaObject::ReadProperty) {\n");
-            if (needTempVarForGet)
-                fprintf(out, "        void *_v = _a[0];\n");
-            fprintf(out, "        switch (_id) {\n");
-            for (int propindex = 0; propindex < int(cdef->propertyList.size()); ++propindex) {
-                const PropertyDef &p = cdef->propertyList.at(propindex);
-                if (p.read.isEmpty() && p.member.isEmpty())
-                    continue;
-                QByteArray prefix = "_t->";
-                if (p.inPrivateClass.size()) {
-                    prefix += p.inPrivateClass + "->";
-                }
-
-                if (p.gspec == PropertyDef::PointerSpec)
-                    fprintf(out, "        case %d: _a[0] = const_cast<void*>(reinterpret_cast<const void*>(%s%s())); break;\n",
-                            propindex, prefix.constData(), p.read.constData());
-                else if (p.gspec == PropertyDef::ReferenceSpec)
-                    fprintf(out, "        case %d: _a[0] = const_cast<void*>(reinterpret_cast<const void*>(&%s%s())); break;\n",
-                            propindex, prefix.constData(), p.read.constData());
-#if QT_VERSION <= QT_VERSION_CHECK(7, 0, 0)
-                else if (auto eflags = cdef->enumDeclarations.value(p.type); eflags & EnumIsFlag)
-                    fprintf(out, "        case %d: QtMocHelpers::assignFlags<%s>(_v, %s%s()); break;\n",
-                            propindex, disambiguatedTypeName(p.type, p.typeTag).constData(), prefix.constData(), p.read.constData());
-#endif
-                else if (p.read == "default")
-                    fprintf(out, "        case %d: *reinterpret_cast<%s%s*>(_v) = %s%s().value(); break;\n",
-                            propindex, cxxTypeTag(p.typeTag), disambiguatedTypeName(p.type, p.typeTag).constData(),
-                            prefix.constData(), p.bind.constData());
-                else if (!p.read.isEmpty())
-                    fprintf(out, "        case %d: *reinterpret_cast<%s%s*>(_v) = %s%s(); break;\n",
-                            propindex, cxxTypeTag(p.typeTag), disambiguatedTypeName(p.type, p.typeTag).constData(),
-                            prefix.constData(), p.read.constData());
-                else
-                    fprintf(out, "        case %d: *reinterpret_cast<%s%s*>(_v) = %s%s; break;\n",
-                            propindex, cxxTypeTag(p.typeTag), disambiguatedTypeName(p.type, p.typeTag).constData(),
-                            prefix.constData(), p.member.constData());
-            }
-            fprintf(out, "        default: std::unreachable();\n");
-            fprintf(out, "        }\n");
-            fprintf(out, "    }\n");
-        }
-
-        if (needSet) {
-            fprintf(out, "    if (_c == QMetaObject::WriteProperty) {\n");
-            fprintf(out, "        void *_v = _a[0];\n");
-            fprintf(out, "        switch (_id) {\n");
-            for (int propindex = 0; propindex < int(cdef->propertyList.size()); ++propindex) {
-                const PropertyDef &p = cdef->propertyList.at(propindex);
-                if (p.constant)
-                    continue;
-                if (p.write.isEmpty() && p.member.isEmpty())
-                    continue;
-                QByteArray prefix = "_t->";
-                if (p.inPrivateClass.size()) {
-                    prefix += p.inPrivateClass + "->";
-                }
-                if (p.write == "default") {
-                    fprintf(out, "        case %d: {\n", propindex);
-                    fprintf(out, "            %s%s().setValue(*reinterpret_cast<%s%s*>(_v));\n",
-                            prefix.constData(), p.bind.constData(), cxxTypeTag(p.typeTag),
-                            disambiguatedTypeName(p.type, p.typeTag).constData());
-                    fprintf(out, "            break;\n");
-                    fprintf(out, "        }\n");
-                } else if (!p.write.isEmpty()) {
-                    fprintf(out, "        case %d: %s%s(*reinterpret_cast<%s%s*>(_v)); break;\n",
-                            propindex, prefix.constData(), p.write.constData(),
-                            cxxTypeTag(p.typeTag), disambiguatedTypeName(p.type, p.typeTag).constData());
-                } else {
-                    fprintf(out, "        case %d:", propindex);
-                    if (p.notify.isEmpty()) {
-                        fprintf(out, " QtMocHelpers::setProperty(%s%s, *reinterpret_cast<%s%s*>(_v)); break;\n",
-                                prefix.constData(), p.member.constData(), cxxTypeTag(p.typeTag),
-                                disambiguatedTypeName(p.type, p.typeTag).constData());
-                    } else {
-                        fprintf(out, "\n            if (QtMocHelpers::setProperty(%s%s, *reinterpret_cast<%s%s*>(_v)))\n",
-                                prefix.constData(), p.member.constData(), cxxTypeTag(p.typeTag),
-                                disambiguatedTypeName(p.type, p.typeTag).constData());
-                        fprintf(out, "                Q_EMIT _t->%s(", p.notify.constData());
-                        if (p.notifyId > -1) {
-                            const FunctionDef &f = cdef->signalList.at(p.notifyId);
-                            if (f.arguments.size() == 1 && f.arguments.at(0).normalizedType == p.type)
-                                fprintf(out, "%s%s", prefix.constData(), p.member.constData());
-                        }
-                        fprintf(out, ");\n");
-                        fprintf(out, "            break;\n");
-                    }
-                }
-            }
-            fprintf(out, "        default: break;\n");
-            fprintf(out, "        }\n");
-            fprintf(out, "    }\n");
-        }
-
-        if (needReset) {
-            fprintf(out, "    if (_c == QMetaObject::ResetProperty) {\n");
-            fprintf(out, "        switch (_id) {\n");
-            for (int propindex = 0; propindex < int(cdef->propertyList.size()); ++propindex) {
-                const PropertyDef &p = cdef->propertyList.at(propindex);
-                if (p.reset.isEmpty())
-                    continue;
-                QByteArray prefix = "_t->";
-                if (p.inPrivateClass.size()) {
-                    prefix += p.inPrivateClass + "->";
-                }
-                fprintf(out, "        case %d: %s%s(); break;\n",
-                        propindex, prefix.constData(), p.reset.constData());
-            }
-            fprintf(out, "        default: break;\n");
-            fprintf(out, "        }\n");
-            fprintf(out, "    }\n");
-        }
-
-        if (hasBindableProperties) {
-            fprintf(out, "    if (_c == QMetaObject::BindableProperty) {\n");
-            fprintf(out, "        switch (_id) {\n");
-            for (int propindex = 0; propindex < int(cdef->propertyList.size()); ++propindex) {
-                const PropertyDef &p = cdef->propertyList.at(propindex);
-                if (p.bind.isEmpty())
-                    continue;
-                QByteArray prefix = "_t->";
-                if (p.inPrivateClass.size()) {
-                    prefix += p.inPrivateClass + "->";
-                }
-                fprintf(out,
-                        "        case %d: *static_cast<QUntypedBindable *>(_a[0]) = %s%s(); "
-                        "break;\n",
-                        propindex, prefix.constData(), p.bind.constData());
-            }
-            fprintf(out, "        default: break;\n");
-            fprintf(out, "        }\n");
-            fprintf(out, "    }\n");
-        }
-    }
-
-    auto printUnused = [&](UsedArgs entry, const char *name) {
-        if ((usedArgs & entry) == 0)
-            fprintf(out, "    (void)%s;\n", name);
-    };
-    printUnused(UsedT, "_t");
-    printUnused(UsedC, "_c");
-    printUnused(UsedId, "_id");
-    printUnused(UsedA, "_a");
-
-    fprintf(out, "}\n");
+    fprintf(out, "    (void)_t; (void)_c; (void)_id; (void)_a;\n}\n");
 }
 
 void Generator::generateSignal(const FunctionDef *def, int index)
