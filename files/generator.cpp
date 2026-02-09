@@ -26,21 +26,48 @@ QT_BEGIN_NAMESPACE
 
 using namespace QtMiscUtils;
 
-static int nameToBuiltinType(const QByteArray &name)
+static uint nameToBuiltinType(QByteArrayView name)
 {
-    if (name.isEmpty())
-        return 0;
+    using namespace Qt::StringLiterals;
 
-    uint tp = QMetaType::UnknownType;
-    if (const QtPrivate::QMetaTypeInterface *iface = QMetaType::fromName(name).iface())
-        tp = iface->typeId.loadRelaxed();
+    if (name == "void") return QMetaType::Void;
+    if (name == "bool") return QMetaType::Bool;
+    if (name == "int") return QMetaType::Int;
+    if (name == "uint") return QMetaType::UInt;
+    if (name == "long") return QMetaType::Long;
+    if (name == "ulong") return QMetaType::ULong;
+    if (name == "qlonglong") return QMetaType::LongLong;
+    if (name == "qulonglong") return QMetaType::ULongLong;
+    if (name == "double") return QMetaType::Double;
+    if (name == "float") return QMetaType::Float;
+    if (name == "char") return QMetaType::Char;
+    if (name == "signed char") return QMetaType::SChar;
+    if (name == "uchar") return QMetaType::UChar;
+    if (name == "short") return QMetaType::Short;
+    if (name == "ushort") return QMetaType::UShort;
 
-#ifndef QT_BOOTSTRAPPED
-    if (tp >= uint(QMetaType::User))
-        tp = QMetaType::UnknownType;
-#endif
+    if (name == "QString") return QMetaType::QString;
+    if (name == "QByteArray") return QMetaType::QByteArray;
+    if (name == "QChar") return QMetaType::QChar;
+    if (name == "QDate") return QMetaType::QDate;
+    if (name == "QTime") return QMetaType::QTime;
+    if (name == "QDateTime") return QMetaType::QDateTime;
+    if (name == "QUrl") return QMetaType::QUrl;
+    if (name == "QLocale") return QMetaType::QLocale;
+    if (name == "QRect") return QMetaType::QRect;
+    if (name == "QRectF") return QMetaType::QRectF;
+    if (name == "QSize") return QMetaType::QSize;
+    if (name == "QSizeF") return QMetaType::QSizeF;
+    if (name == "QPoint") return QMetaType::QPoint;
+    if (name == "QPointF") return QMetaType::QPointF;
+    if (name == "QVariant") return QMetaType::QVariant;
 
-    return int(tp);
+    if (name.endsWith('*')) {
+        if (name == "QObject*")
+            return QMetaType::QObjectStar;
+    }
+
+    return QMetaType::UnknownType;
 }
 
 static bool isBuiltinType(const QByteArray &type)
@@ -93,27 +120,67 @@ QT_FOR_EACH_STATIC_TYPE(RETURN_METATYPENAME_STRING)
          purestSuperClass = cdef->superclassList.constFirst().classname;
 }
 
-static inline qsizetype lengthOfEscapeSequence(const QByteArray &s, qsizetype i)
+static inline bool isOctalDigit(QChar c)
 {
-    if (s.at(i) != '\\' || i >= s.size() - 1)
+    return c >= u'0' && c <= u'7';
+}
+
+static inline bool isHexDigit(QChar c)
+{
+    return (c >= u'0' && c <= u'9') ||
+           (c >= u'a' && c <= u'f') ||
+           (c >= u'A' && c <= u'F');
+}
+
+static inline qsizetype lengthOfEscapeSequence(const QString &s, qsizetype i)
+{
+    const qsizetype n = s.size();
+
+    if (i < 0 || i >= n || s.at(i) != u'\\')
         return 1;
-    const qsizetype startPos = i;
-    ++i;
-    char ch = s.at(i);
-    if (ch == 'x') {
-        ++i;
-        while (i < s.size() && isHexDigit(s.at(i)))
-            ++i;
-    } else if (isOctalDigit(ch)) {
-        while (i < startPos + 4
-               && i < s.size()
-               && isOctalDigit(s.at(i))) {
-            ++i;
+
+    if (i + 1 >= n)
+        return 1;
+
+    const QChar c = s.at(i + 1);
+
+    if (isOctalDigit(c)) {
+        qsizetype j = i + 1;
+        int digits = 0;
+
+        while (j < n && digits < 3 && isOctalDigit(s.at(j))) {
+            ++j;
+            ++digits;
         }
-    } else {
-        i = qMin(i + 1, s.size());
+
+        return j - i;
     }
-    return i - startPos;
+
+    if (c == u'x') {
+        qsizetype j = i + 2;
+        bool any = false;
+
+        while (j < n && isHexDigit(s.at(j))) {
+            ++j;
+            any = true;
+        }
+
+        return any ? (j - i) : 2;
+    }
+
+    if (c == u'u') {
+        if (i + 6 <= n)
+            return 6;
+        return n - i;
+    }
+
+    if (c == u'U') {
+        if (i + 10 <= n)
+            return 10;
+        return n - i;
+    }
+
+    return 2;
 }
 
 static void printStringWithIndentation(FILE *out, const QByteArray &s)
@@ -128,7 +195,7 @@ static void printStringWithIndentation(FILE *out, const QByteArray &s)
         const qsizetype backSlashPos = s.lastIndexOf('\\', idx + spanLen - 1);
         if (backSlashPos >= idx) {
             const qsizetype escapeLen = lengthOfEscapeSequence(s, backSlashPos);
-            spanLen = qBound(spanLen, backSlashPos + escapeLen - idx, len - idx);
+            spanLen = qMax(spanLen, backSlashPos + escapeLen - idx);
         }
         fprintf(out, "\n        \"%.*s\"", int(spanLen), s.constData() + idx);
         idx += spanLen;
