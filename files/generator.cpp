@@ -991,11 +991,18 @@ void Generator::generateStaticMetacall()
             fprintf(out, "        static constexpr std::array<Func, %d> vtable = {{\n", int(methodList.size()));
         
             for (int i = 0; i < methodList.size(); ++i) {
-                const auto &f = methodList.at(i);
-                if (i > 0) fprintf(out, ",\n");
-                fprintf(out, "            [](%s *t, void **a) { ", cdef->classname.constData());
+            const auto &f = methodList.at(i);
+            if (i > 0) fprintf(out, ",\n");
+            fprintf(out, "            [](%s *t, void **a) { ", cdef->classname.constData());
             
-                if (f.normalizedType != "void") fprintf(out, "if (auto r = ");
+            bool usesA = (f.normalizedType != "void" || f.isRawSlot || !f.arguments.isEmpty());
+            if (!usesA)
+                fprintf(out, "(void)a; ");
+            
+            if (f.isStatic)
+                fprintf(out, "(void)t; ");
+
+            if (f.normalizedType != "void") fprintf(out, "if (auto r = ");
                 fprintf(out, "t->");
                 if (f.inPrivateClass.size()) fprintf(out, "%s->", f.inPrivateClass.constData());
                 fprintf(out, "%s(", f.name.constData());
