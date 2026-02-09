@@ -19,7 +19,7 @@ env:
     -no-feature-sql -no-feature-gssapi -no-feature-graphicsframecapture -DFEATURE_regularexpression=OFF -DFEATURE_no_direct_extern_access=ON
   EXTRA_FLAGS: -no-feature-qml-network -no-feature-qml-ssl -no-feature-quickcontrols2-fusion
   QT_BASE_CHERRY_PICK: 524178 662294
-  QT_DECLARATIVE_CHERRY_PICK: 695153 699605 702018 708664 708665 709045 709046 622692 623081 663127
+  QT_DECLARATIVE_CHERRY_PICK: 695153 699605 622692 623081 663127 702018
     
 on:
   workflow_dispatch:
@@ -97,19 +97,6 @@ jobs:
           }
           [ -n "${QT_BASE_CHERRY_PICK}" ] && apply_changes qtbase ${QT_BASE_CHERRY_PICK}
           [ -n "${QT_DECLARATIVE_CHERRY_PICK}" ] && apply_changes qtdeclarative ${QT_DECLARATIVE_CHERRY_PICK}
-
-      - name: Experimental moc improvement
-        shell: bash
-        run: |
-          set -e
-
-          echo "Downloading optimized generator.h..."
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/generator.h \
-            -o qtbase/src/tools/moc/generator.h
-          
-          echo "Downloading optimized generator.cpp..."
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/generator.cpp \
-            -o qtbase/src/tools/moc/generator.cpp
           
       - name: Configure
         run: |          
@@ -217,19 +204,6 @@ jobs:
           cd configFolders
           curl -fsSL -o android_bin.7z https://raw.githubusercontent.com/reg31/qt/main/files/android_bin.7z
           7z x android_bin.7z
-
-      - name: Experimental moc improvement
-        shell: bash
-        run: |
-          set -e
-
-          echo "Downloading optimized generator.h..."
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/generator.h \
-            -o qtbase/src/tools/moc/generator.h
-          
-          echo "Downloading optimized generator.cpp..."
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/generator.cpp \
-            -o qtbase/src/tools/moc/generator.cpp
           
       - name: Configure Android Qt
         run: |
@@ -326,19 +300,6 @@ jobs:
           }
           [ -n "${QT_BASE_CHERRY_PICK}" ] && apply_changes qtbase ${QT_BASE_CHERRY_PICK}
           [ -n "${QT_DECLARATIVE_CHERRY_PICK}" ] && apply_changes qtdeclarative ${QT_DECLARATIVE_CHERRY_PICK}
-
-      - name: Experimental moc improvement
-        shell: bash
-        run: |
-          set -e
-
-          echo "Downloading optimized generator.h..."
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/generator.h \
-            -o qtbase/src/tools/moc/generator.h
-          
-          echo "Downloading optimized generator.cpp..."
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/generator.cpp \
-            -o qtbase/src/tools/moc/generator.cpp
 
       - name: Configure and build
         run: |
@@ -483,19 +444,6 @@ jobs:
           QT_ARCHIVE=qt-macos-release-dev.zip
           curl -fsSL -o $QT_ARCHIVE https://github.com/reg31/qt/releases/latest/download/$QT_ARCHIVE
           7z x $QT_ARCHIVE
-
-      - name: Experimental moc improvement
-        shell: bash
-        run: |
-          set -e
-
-          echo "Downloading optimized generator.h..."
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/generator.h \
-            -o qtbase/src/tools/moc/generator.h
-          
-          echo "Downloading optimized generator.cpp..."
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/generator.cpp \
-            -o qtbase/src/tools/moc/generator.cpp
 
       - name: Configure and build for iOS
         run: | 
