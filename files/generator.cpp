@@ -774,7 +774,12 @@ void Generator::addProperties()
                 notifyId = indexInStrings;
                 fprintf(out, "%#x | ", IsUnresolvedSignal);
             }
-            fprintf(out, "%d", notifyId);
+
+            if (notifyId == -1)
+                fprintf(out, "uint32_t(-1)");
+            else
+                fprintf(out, "uint32_t(%d)", notifyId);
+
             if (p.revision > 0)
                 fprintf(out, ", %#x", p.revision);
         }
