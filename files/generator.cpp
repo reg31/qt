@@ -1466,8 +1466,8 @@ void Generator::generatePluginMetaData()
           "    0, QT_VERSION_MAJOR, QT_VERSION_MINOR, qPluginArchRequirements(),",
           cdef->classname.constData());
     outputCborData();
-    fprintf(out, "\n};\nQT_MOC_EXPORT_PLUGIN(%s, %s)\n"
-                 "#endif
+    fprintf(out, "\n};\nQT_MOC_EXPORT_PLUGIN(%s, %s)\n",
+                 "#endif\n",
             cdef->qualified.constData(), cdef->classname.constData());
 
     fputs("\n", out);
