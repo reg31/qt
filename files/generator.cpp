@@ -15,28 +15,28 @@
 #include <QtCore/qplugin.h>
 #include <QtCore/qstringview.h>
 #include <QtCore/qtmocconstants.h>
-
-#include <math.h>
-
 #include <private/qmetaobject_p.h> 
 #include <private/qplugin_p.h> 
-
+#include <cmath>
+#include <algorithm>
+#include <array>
+#include <limits>
+#include <cstdio>
 #include <print>
 #include <format>
 #include <string_view>
 #include <utility>
 
-QT_BEGIN_NAMESPACE
-
-using namespace QtMiscUtils;
-
 template <>
 struct std::formatter<QByteArray> : std::formatter<std::string_view> {
     auto format(const QByteArray &ba, std::format_context &ctx) const {
-        return std::formatter<std::string_view>::format(
-            std::string_view(ba.constData(), ba.size()), ctx);
+        return std::formatter<std::string_view>::format(std::string_view(ba.constData(), ba.size()), ctx);
     }
 };
+
+QT_BEGIN_NAMESPACE
+
+using namespace QtMiscUtils;
 
 static int nameToBuiltinType(const QByteArray &name)
 {
