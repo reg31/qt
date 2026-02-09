@@ -656,7 +656,7 @@ void Generator::generateSignal(const FunctionDef *def, int index)
 {
     if (def->wasCloned || def->isAbstract) return;
     moc_print(out, "\n// SIGNAL {}\n{} {}::{}(", index, def->type.name, cdef->qualified, def->name);
-    QByteArray thisPtr = def->isConst ? std::format("const_cast<{} *>(this)", cdef->qualified) : "this";
+    QByteArray thisPtr = def->isConst ? QByteArray::fromStdString(std::format("const_cast<{} *>(this)", cdef->qualified)) : QByteArrayLiteral("this");
     for (int i = 0; i < def->arguments.size(); ++i) moc_print(out, "{}{} _t{}{}", i == 0 ? "" : ", ", def->arguments.at(i).type.name, i + 1, def->arguments.at(i).rightType);
     moc_print(out, "){}\n{{\n", def->isConst ? " const" : "");
     if (def->type.name != "void") moc_print(out, "    {} _t0{{}};\n", noRef(def->normalizedType));
