@@ -1,3 +1,8 @@
+// Copyright (C) 2020 The Qt Company Ltd.
+// Copyright (C) 2019 Olivier Goffart <ogoffart@woboq.com>
+// Copyright (C) 2018 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+
 #include "generator.h"
 #include "cbordevice.h"
 #include "outputrevision.h"
@@ -20,6 +25,7 @@
 #include <format>
 #include <string_view>
 #include <utility>
+#include <unordered_map>
 
 template <>
 struct std::formatter<QByteArray> : std::formatter<std::string_view> {
@@ -379,9 +385,9 @@ static constexpr auto qt_staticMetaObjectRelocatingContent{0} =
 void Generator::precomputeTypesForFunctions(const QList<FunctionDef> &list)
 {
     for (const auto &f : list) {
-        if (!isBuiltinType(f.normalizedType)) precomputeTypeInfo(f.normalizedType);
+        precomputeTypeInfo(f.normalizedType);
         for (const auto &a : f.arguments) {
-            if (!isBuiltinType(a.normalizedType)) precomputeTypeInfo(a.normalizedType);
+            precomputeTypeInfo(a.normalizedType);
         }
     }
 }
@@ -389,7 +395,7 @@ void Generator::precomputeTypesForFunctions(const QList<FunctionDef> &list)
 void Generator::precomputeTypesForProperties()
 {
     for (const PropertyDef &p : std::as_const(cdef->propertyList)) {
-        if (!isBuiltinType(p.type)) precomputeTypeInfo(p.type);
+        precomputeTypeInfo(p.type);
     }
 }
 
@@ -449,7 +455,7 @@ void Generator::addStrings(const QByteArrayList &strings)
         moc_print(out, "{}", offsets[i]);
         if (i < offsets.size() - 1) moc_print(out, ", ");
     }
-    moc_print(out, "\n        }},\n        .size = {}", offsets.size());
+    moc_print(out, "\n        }},\n        .size = {}", (int)offsets.size());
 }
 
 void Generator::addFunctions(const QList<FunctionDef> &list, const char *functype)
@@ -458,7 +464,7 @@ void Generator::addFunctions(const QList<FunctionDef> &list, const char *functyp
         if (!f.isConstructor) moc_print(out, "        // {} '{}'\n", functype, f.name);
         moc_print(out, "        QtMocHelpers::{}{}Data<", f.revision > 0 ? "Revisioned" : "", functype);
         if (f.isConstructor) moc_print(out, "Constructor(");
-        else std::print(out, "{}(", disambiguatedTypeName(f.type.name));
+        else moc_print(out, "{}(", disambiguatedTypeName(f.type.name));
         const char *comma = "";
         for (const auto &arg : f.arguments) {
             moc_print(out, "{}{}", comma, disambiguatedTypeName(arg.type.name));
@@ -552,6 +558,7 @@ void Generator::addProperties()
         if (p.user != "false") addFlag("User");
         if (p.required) addFlag("Required");
         if (!p.bind.isEmpty()) addFlag("Bindable");
+        if (*separator == '\0') addFlag("Invalid");
         int notifyId = p.notifyId;
         if (notifyId != -1 || p.revision > 0) {
             moc_print(out, ", ");
@@ -746,7 +753,7 @@ void Generator::generateSignal(const FunctionDef *def, int index)
     for (int i = 0; i < def->arguments.size(); ++i) moc_print(out, ", _t{}", i + 1);
     moc_print(out, ");\n");
     if (def->type.name != "void") moc_print(out, "    return _t0;\n");
-    moc_print(out, "}\n");
+    moc_print(out, "}}\n");
 }
 
 static CborError jsonValueToCbor(CborEncoder *parent, const QJsonValue &v);
@@ -864,4 +871,4 @@ QT_WARNING_DISABLE_MSVC(4334)
 #define CBOR_ENCODER_WRITER_CONTROL 1
 #define CBOR_ENCODER_WRITE_FUNCTION CborDevice::callback
 QT_END_NAMESPACE
-#include "cborencoder.c""
+#include "cborencoder.c"
