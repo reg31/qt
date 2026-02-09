@@ -41,8 +41,8 @@ QT_BEGIN_NAMESPACE
 using namespace QtMiscUtils;
 
 template<typename... Args>
-void moc_print(FILE *out, std::format_string<Args...> fmt, Args&&... args) {
-    std::fputs(std::format(fmt, std::forward<Args>(args)...).c_str(), out);
+void moc_print(FILE *out, std::string_view fmt, Args&&... args) {
+    std::fputs(std::vformat(fmt, std::make_format_args(args...)).c_str(), out);
 }
 
 static int nameToBuiltinType(const QByteArray &name)
@@ -376,6 +376,23 @@ static constexpr auto qt_staticMetaObjectRelocatingContent{0} =
         }
         moc_print(out, "}}\n");
     }
+}
+
+void Generator::precomputeTypeInfo(const QByteArray &typeName)
+{
+    if (typeCache.contains(typeName)) return;
+    TypeInfo info;
+    info.builtinType = nameToBuiltinType(typeName);
+    info.isBuiltin = (info.builtinType != QMetaType::UnknownType);
+    if (info.isBuiltin) {
+        if (typeName == "qreal") {
+            info.builtinType = QMetaType::UnknownType;
+            info.valueString = "QReal";
+        } else {
+            info.valueString = metaTypeEnumValueString(info.builtinType);
+        }
+    }
+    typeCache[typeName] = info;
 }
 
 void Generator::precomputeTypesForFunctions(const QList<FunctionDef> &list)
@@ -712,6 +729,10 @@ QT_WARNING_DISABLE_CLANG("-Wunused-function")
 QT_WARNING_DISABLE_CLANG("-Wundefined-internal")
 QT_WARNING_DISABLE_MSVC(4334) 
 #define CBOR_NO_HALF_FLOAT_TYPE 1
+#define CBOR_ENCODER_WRITER_CONTROL 1
+#define CBOR_ENCODER_WRITE_FUNCTION CborDevice::callback
+QT_END_NAMESPACE
+#include "cborencoder.c"
 #define CBOR_ENCODER_WRITER_CONTROL 1
 #define CBOR_ENCODER_WRITE_FUNCTION CborDevice::callback
 QT_END_NAMESPACE
