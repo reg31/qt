@@ -135,8 +135,10 @@ static void printStringWithIndentation(FILE *out, const QByteArray &s)
 
 void Generator::strreg(const QByteArray &s)
 {
-    if (!s.isEmpty() && !stringCache.contains(s))
-        stringCache[s] = strings.size(), strings.append(s);
+    if (!stringCache.contains(s)) {
+        stringCache[s] = (int)strings.size();
+        strings.append(s);
+    }
 }
 
 int Generator::stridx(const QByteArray &s)
@@ -257,51 +259,32 @@ void Generator::generateCode()
     precomputeTypesForProperties();
 
     const bool requireCompleteness = requireCompleteTypes || cdef->requireCompleteMethodTypes;
-    bool hasStaticMetaCall =
-            (cdef->hasQObject || !cdef->methodList.isEmpty()
+    bool hasStaticMetaCall = (cdef->hasQObject || !cdef->methodList.isEmpty()
              || !cdef->propertyList.isEmpty() || !cdef->constructorList.isEmpty());
     if (parser->activeQtMode)
         hasStaticMetaCall = false;
 
     const QByteArray qualifiedClassNameIdentifier = generateQualifiedClassNameIdentifier(cdef->qualified);
-
     const char *ownType = !cdef->hasQNamespace ? cdef->classname.data() : "void";
 
-    fprintf(out, "namespace {\n"
-                 "struct qt_meta_tag_%s_t {};\n"
-                 "} // unnamed namespace\n\n",
+    fprintf(out, "namespace {\nstruct qt_meta_tag_%s_t {};\n} // unnamed namespace\n\n",
             qualifiedClassNameIdentifier.constData());
 
-    fprintf(out, "template <> constexpr inline auto %s::qt_create_metaobjectdata<qt_meta_tag_%s_t>()\n"
-                 "{\n"
+    fprintf(out, "template <> constexpr inline auto %s::qt_create_metaobjectdata<qt_meta_tag_%s_t>()\n{\n"
                  "    namespace QMC = QtMocConstants;\n",
             cdef->qualified.constData(), qualifiedClassNameIdentifier.constData());
 
-    fprintf(out, "    static constexpr QtMocHelpers::StringRefStorage qt_stringData {\n");
-    for (int i = 0; i < strings.size(); ++i) {
-        if (i > 0)
-            fprintf(out, ",\n");
-        fprintf(out, "        \"");
-        const QByteArray &s = strings.at(i);
-        for (int j = 0; j < s.size(); ++j) {
-            if (s[j] == '\\' || s[j] == '"')
-                fprintf(out, "\\");
-            fprintf(out, "%c", s[j]);
-        }
-        fprintf(out, "\"");
-    }
+    fprintf(out, "    static constexpr QtMocHelpers::StringRefStorage qt_stringData {");
+    addStrings(strings);
     fprintf(out, "\n    };\n\n");
 
-    fprintf(out, "   static constexpr QtMocHelpers::UintData qt_methods {\n");
-
+    fprintf(out, "    static constexpr QtMocHelpers::UintData qt_methods {\n");
     addFunctions(cdef->signalList, "Signal");
     addFunctions(cdef->slotList, "Slot");
     addFunctions(cdef->methodList, "Method");
-    fprintf(out, "    };\n"
-                 "    static constexpr QtMocHelpers::UintData qt_properties {\n");
+    fprintf(out, "    };\n    static constexpr QtMocHelpers::UintData qt_properties {\n");
     addProperties();
-    fprintf(out, "    };\n"
-                 "    static constexpr QtMocHelpers::UintData qt_enums {\n");
+    fprintf(out, "    };\n    static constexpr QtMocHelpers::UintData qt_enums {\n");
     addEnums();
     fprintf(out, "    };\n");
 
@@ -317,7 +300,6 @@ void Generator::generateCode()
         } else {
             fputs("    static constexpr QtMocHelpers::UintData qt_constructors {};\n", out);
         }
-
         uintDataParams = ", qt_constructors";
         if (!cdef->classInfoList.isEmpty()) {
             fprintf(out, "    static constexpr QtMocHelpers::ClassInfos qt_classinfo({\n");
@@ -331,32 +313,26 @@ void Generator::generateCode()
     if (cdef->hasQGadget || cdef->hasQNamespace) {
         metaObjectFlags = "QMC::PropertyAccessInStaticMetaCall";
     }
-    {
-        QByteArray tagType = QByteArrayLiteral("void");
-        if (!requireCompleteness)
-            tagType = "qt_meta_tag_" + qualifiedClassNameIdentifier +  "_t";
-        fprintf(out, "    return QtMocHelpers::metaObjectData<%s, %s>(%s, qt_stringData,\n"
-                     "            qt_methods, qt_properties, qt_enums, qt_metaObjectHashIndex%s);\n"
-                     "}\n",
-                ownType, tagType.constData(), metaObjectFlags, uintDataParams);
-    }
+
+    QByteArray tagType = QByteArrayLiteral("void");
+    if (!requireCompleteness)
+        tagType = "qt_meta_tag_" + qualifiedClassNameIdentifier +  "_t";
+
+    fprintf(out, "    return QtMocHelpers::metaObjectData<%s, %s>(%s, qt_stringData,\n"
+                 "            qt_methods, qt_properties, qt_enums, qt_metaObjectHashIndex%s);\n}\n",
+            ownType, tagType.constData(), metaObjectFlags, uintDataParams);
 
     QByteArray metaVarNameSuffix;
     if (cdef->hasQNamespace) {
         metaVarNameSuffix = '_' + qualifiedClassNameIdentifier;
         const char *n = metaVarNameSuffix.constData();
-        fprintf(out, R"(
-static constexpr auto qt_staticMetaObjectContent%s =
-    %s::qt_create_metaobjectdata<qt_meta_tag%s_t>();
-static constexpr auto qt_staticMetaObjectStaticContent%s =
-    qt_staticMetaObjectContent%s.staticData;
-static constexpr auto qt_staticMetaObjectRelocatingContent%s =
-    qt_staticMetaObjectContent%s.relocatingData;
-
-)",
-                n, cdef->qualified.constData(), n,
-                n, n,
-                n, n);
+        fprintf(out, "\nstatic constexpr auto qt_staticMetaObjectContent%s ="
+                     "\n    %s::qt_create_metaobjectdata<qt_meta_tag%s_t>();"
+                     "\nstatic constexpr auto qt_staticMetaObjectStaticContent%s ="
+                     "\n    qt_staticMetaObjectContent%s.staticData;"
+                     "\nstatic constexpr auto qt_staticMetaObjectRelocatingContent%s ="
+                     "\n    qt_staticMetaObjectContent%s.relocatingData;\n\n",
+                n, cdef->qualified.constData(), n, n, n, n, n);
     } else {
         metaVarNameSuffix = "<qt_meta_tag_" + qualifiedClassNameIdentifier + "_t>";
     }
@@ -366,44 +342,27 @@ static constexpr auto qt_staticMetaObjectRelocatingContent%s =
     knownExtraMetaObject.unite(knownQObjectClasses);
 
     for (const PropertyDef &p : std::as_const(cdef->propertyList)) {
-        if (isBuiltinType(p.type))
-            continue;
-
-        if (p.type.contains('*') || p.type.contains('<') || p.type.contains('>'))
-            continue;
-
+        if (isBuiltinType(p.type) || p.type.contains('*') || p.type.contains('<')) continue;
         const qsizetype s = p.type.lastIndexOf("::");
-        if (s <= 0)
-            continue;
-
+        if (s <= 0) continue;
         QByteArray unqualifiedScope = p.type.left(s);
-
         QMultiHash<QByteArray, QByteArray>::ConstIterator scopeIt;
-
         QByteArray thisScope = cdef->qualified;
         do {
-            const qsizetype s = thisScope.lastIndexOf("::");
-            thisScope = thisScope.left(s);
+            const qsizetype s2 = thisScope.lastIndexOf("::");
+            thisScope = thisScope.left(s2);
             QByteArray currentScope = thisScope.isEmpty() ? unqualifiedScope : thisScope + "::" + unqualifiedScope;
             scopeIt = knownExtraMetaObject.constFind(currentScope);
         } while (!thisScope.isEmpty() && scopeIt == knownExtraMetaObject.constEnd());
 
-        if (scopeIt == knownExtraMetaObject.constEnd())
-            continue;
-
-        const QByteArray &scope = *scopeIt;
-
-        if (scope == "Qt")
-            continue;
-        if (qualifiedNameEquals(cdef->qualified, scope))
-            continue;
-
-        if (!extraList.contains(scope))
-            extraList += scope;
+        if (scopeIt != knownExtraMetaObject.constEnd()) {
+            const QByteArray &scope = *scopeIt;
+            if (scope != "Qt" && !qualifiedNameEquals(cdef->qualified, scope) && !extraList.contains(scope))
+                extraList += scope;
+        }
     }
 
-    for (auto it = cdef->enumDeclarations.keyBegin(),
-         end = cdef->enumDeclarations.keyEnd(); it != end; ++it) {
+    for (auto it = cdef->enumDeclarations.keyBegin(); it != cdef->enumDeclarations.keyEnd(); ++it) {
         const QByteArray &enumKey = *it;
         const qsizetype s = enumKey.lastIndexOf("::");
         if (s > 0) {
@@ -418,66 +377,48 @@ static constexpr auto qt_staticMetaObjectRelocatingContent%s =
                 qualifiedClassNameIdentifier.constData());
         for (const QByteArray &ba : std::as_const(extraList))
             fprintf(out, "    QMetaObject::SuperData::link<%s::staticMetaObject>(),\n", ba.constData());
-
         fprintf(out, "    nullptr\n};\n\n");
     }
 
-    fprintf(out, "Q_CONSTINIT const QMetaObject %s::staticMetaObject = { {\n",
-            cdef->qualified.constData());
-
-    if (isQObject)
-        fprintf(out, "    nullptr,\n");
-    else if (cdef->superclassList.size() && !cdef->hasQGadget && !cdef->hasQNamespace) 
+    fprintf(out, "Q_CONSTINIT const QMetaObject %s::staticMetaObject = { {\n", cdef->qualified.constData());
+    if (isQObject) fprintf(out, "    nullptr,\n");
+    else if (cdef->superclassList.size() && !cdef->hasQGadget && !cdef->hasQNamespace)
         fprintf(out, "    QMetaObject::SuperData::link<%s::staticMetaObject>(),\n", purestSuperClass.constData());
-    else if (cdef->superclassList.size()) 
+    else if (cdef->superclassList.size())
         fprintf(out, "    QtPrivate::MetaObjectForType<%s>::value,\n", purestSuperClass.constData());
-    else
-        fprintf(out, "    nullptr,\n");
+    else fprintf(out, "    nullptr,\n");
+
     fprintf(out, "    qt_staticMetaObjectStaticContent%s.stringdata,\n"
-            "    qt_staticMetaObjectStaticContent%s.data,\n",
-            metaVarNameSuffix.constData(),
-            metaVarNameSuffix.constData());
-    if (hasStaticMetaCall)
-        fprintf(out, "    qt_static_metacall,\n");
-    else
-        fprintf(out, "    nullptr,\n");
+                 "    qt_staticMetaObjectStaticContent%s.data,\n",
+            metaVarNameSuffix.constData(), metaVarNameSuffix.constData());
 
-    if (extraList.isEmpty())
-        fprintf(out, "    nullptr,\n");
-    else
-        fprintf(out, "    qt_meta_extradata_%s,\n", qualifiedClassNameIdentifier.constData());
+    if (hasStaticMetaCall) fprintf(out, "    qt_static_metacall,\n");
+    else fprintf(out, "    nullptr,\n");
 
-    fprintf(out, "    qt_staticMetaObjectRelocatingContent%s.metaTypes,\n",
+    if (extraList.isEmpty()) fprintf(out, "    nullptr,\n");
+    else fprintf(out, "    qt_meta_extradata_%s,\n", qualifiedClassNameIdentifier.constData());
+
+    fprintf(out, "    qt_staticMetaObjectRelocatingContent%s.metaTypes,\n    nullptr\n} };\n\n",
             metaVarNameSuffix.constData());
 
-    fprintf(out, "    nullptr\n} };\n\n");
-
-    if (hasStaticMetaCall)
-        generateStaticMetacall();
-
-    if (!cdef->hasQObject)
-        return;
+    if (hasStaticMetaCall) generateStaticMetacall();
+    if (!cdef->hasQObject) return;
 
     fprintf(out, "\nconst QMetaObject *%s::metaObject() const\n{\n"
                  "    return QObject::d_ptr->metaObject ? QObject::d_ptr->dynamicMetaObject() : &staticMetaObject;\n"
-                 "}\n",
-            cdef->qualified.constData());
+                 "}\n", cdef->qualified.constData());
 
-    fprintf(out, "\nvoid *%s::qt_metacast(const char *_clname)\n{\n", cdef->qualified.constData());
-    fprintf(out, "    if (!_clname) return nullptr;\n");
-    fprintf(out, "    if (!strcmp(_clname, qt_staticMetaObjectStaticContent%s.strings))\n"
-                  "        return static_cast<void*>(this);\n",
-            metaVarNameSuffix.constData());
+    fprintf(out, "\nvoid *%s::qt_metacast(const char *_clname)\n{\n"
+                 "    if (!_clname) return nullptr;\n"
+                 "    if (!strcmp(_clname, qt_staticMetaObjectStaticContent%s.strings))\n"
+                 "        return static_cast<void*>(this);\n",
+            cdef->qualified.constData(), metaVarNameSuffix.constData());
 
     if (cdef->superclassList.size() > 1) {
-        auto it = cdef->superclassList.cbegin() + 1;
-        const auto end = cdef->superclassList.cend();
-        for (; it != end; ++it) {
-            if (it->access == FunctionDef::Private)
-                continue;
-            const char *cname = it->classname.constData();
+        for (auto it = cdef->superclassList.cbegin() + 1; it != cdef->superclassList.cend(); ++it) {
+            if (it->access == FunctionDef::Private) continue;
             fprintf(out, "    if (!strcmp(_clname, \"%s\"))\n        return static_cast< %s*>(this);\n",
-                    cname, cname);
+                    it->classname.constData(), it->classname.constData());
         }
     }
 
@@ -489,49 +430,135 @@ static constexpr auto qt_staticMetaObjectRelocatingContent%s =
             fprintf(out, "this%s;\n", QByteArray(j + 1, ')').constData());
         }
     }
-    if (!purestSuperClass.isEmpty() && !isQObject) {
-        QByteArray superClass = purestSuperClass;
-        fprintf(out, "    return %s::qt_metacast(_clname);\n", superClass.constData());
-    } else {
-        fprintf(out, "    return nullptr;\n");
-    }
+
+    if (!purestSuperClass.isEmpty() && !isQObject)
+        fprintf(out, "    return %s::qt_metacast(_clname);\n", purestSuperClass.constData());
+    else fprintf(out, "    return nullptr;\n");
     fprintf(out, "}\n");
 
-    if (parser->activeQtMode)
-        return;
+    if (parser->activeQtMode) return;
 
     generateMetacall();
-
     for (int signalindex = 0; signalindex < int(cdef->signalList.size()); ++signalindex)
         generateSignal(&cdef->signalList.at(signalindex), signalindex);
-
     generatePluginMetaData();
+}
 
-    if (!cdef->nonClassSignalList.isEmpty()) {
-        fprintf(out, "namespace CheckNotifySignalValidity_%s {\n", qualifiedClassNameIdentifier.constData());
-        for (const QByteArray &nonClassSignal : std::as_const(cdef->nonClassSignalList)) {
-            const auto propertyIt = std::find_if(cdef->propertyList.constBegin(),
-                                   cdef->propertyList.constEnd(),
-                                   [&nonClassSignal](const PropertyDef &p) {
-                return nonClassSignal == p.notify;
-            });
-            Q_ASSERT(propertyIt != cdef->propertyList.constEnd());
-            fprintf(out, "template<typename T> using has_nullary_%s = decltype(std::declval<T>().%s());\n",
-                    nonClassSignal.constData(),
-                    nonClassSignal.constData());
-            const auto &propertyType = propertyIt->type;
-            fprintf(out, "template<typename T> using has_unary_%s = decltype(std::declval<T>().%s(std::declval<%s>()));\n",
-                    nonClassSignal.constData(),
-                    nonClassSignal.constData(),
-                    propertyType.constData());
-            fprintf(out, "static_assert(qxp::is_detected_v<has_nullary_%s, %s> || qxp::is_detected_v<has_unary_%s, %s>,\n"
-                         "              \"NOTIFY signal %s does not exist in class (or is private in its parent)\");\n",
-                    nonClassSignal.constData(), cdef->qualified.constData(),
-                    nonClassSignal.constData(), cdef->qualified.constData(),
-                    nonClassSignal.constData());
-        }
-        fprintf(out, "}\n");
+void Generator::generateStaticMetacall()
+{
+    fprintf(out, "void %s::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id, void **_a)\n{\n",
+            cdef->qualified.constData());
+
+    enum UsedArgs { UsedT = 1, UsedC = 2, UsedId = 4, UsedA = 8 };
+    uint usedArgs = 0;
+
+    if (cdef->hasQObject) {
+        fprintf(out, "    auto *_t = static_cast<%s *>(_o);\n", cdef->classname.constData());
+    } else {
+        fprintf(out, "    auto *_t = reinterpret_cast<%s *>(_o);\n", cdef->classname.constData());
     }
+
+    const auto generateCtorArguments = [&](int ctorindex) {
+        const FunctionDef &f = cdef->constructorList.at(ctorindex);
+        int offset = 1;
+        for (auto it = f.arguments.cbegin(); it != f.arguments.cend(); ++it) {
+            if (it != f.arguments.cbegin()) fprintf(out, ",");
+            fprintf(out, "(*reinterpret_cast<%s>(_a[%d]))",
+                    disambiguatedTypeNameForCast(it->normalizedType).constData(), offset++);
+        }
+    };
+
+    if (!cdef->constructorList.isEmpty()) {
+        fprintf(out, "    if (_c == QMetaObject::CreateInstance) {\n        switch (_id) {\n");
+        for (int i = 0; i < (int)cdef->constructorList.size(); ++i) {
+            fprintf(out, "        case %d: { %s *_r = new %s(", i, cdef->classname.constData(), cdef->classname.constData());
+            generateCtorArguments(i);
+            fprintf(out, ");\n            if (_a[0]) *reinterpret_cast<%s**>(_a[0]) = _r; } break;\n",
+                    (cdef->hasQGadget || cdef->hasQNamespace) ? "void" : "QObject");
+        }
+        fprintf(out, "        default: break;\n        }\n    }\n");
+        fprintf(out, "    if (_c == QMetaObject::ConstructInPlace) {\n        switch (_id) {\n");
+        for (int i = 0; i < (int)cdef->constructorList.size(); ++i) {
+            fprintf(out, "        case %d: { new (_a[0]) %s(", i, cdef->classname.constData());
+            generateCtorArguments(i);
+            fprintf(out, "); } break;\n");
+        }
+        fprintf(out, "        default: break;\n        }\n    }\n");
+        usedArgs |= UsedC | UsedId | UsedA;
+    }
+
+    QList<FunctionDef> methodList;
+    methodList += cdef->signalList;
+    methodList += cdef->slotList;
+    methodList += cdef->methodList;
+
+    if (!methodList.isEmpty()) {
+        usedArgs |= UsedT | UsedC | UsedId;
+        fprintf(out, "    if (_c == QMetaObject::InvokeMetaMethod) {\n        switch (_id) {\n");
+        for (int i = 0; i < methodList.size(); ++i) {
+            const FunctionDef &f = methodList.at(i);
+            fprintf(out, "        case %d: ", i);
+            if (f.normalizedType != "void")
+                fprintf(out, "{ %s _r = ", disambiguatedTypeName(noRef(f.normalizedType)).constData());
+            fprintf(out, "_t->");
+            if (f.inPrivateClass.size()) fprintf(out, "%s->", f.inPrivateClass.constData());
+            fprintf(out, "%s(", f.name.constData());
+            int offset = 1;
+            if (f.isRawSlot) {
+                fprintf(out, "QMethodRawArguments{ _a }");
+                usedArgs |= UsedA;
+            } else {
+                for (auto it = f.arguments.cbegin(); it != f.arguments.cend(); ++it) {
+                    if (it != f.arguments.cbegin()) fprintf(out, ",");
+                    fprintf(out, "(*reinterpret_cast<%s>(_a[%d]))", 
+                            disambiguatedTypeNameForCast(it->normalizedType).constData(), offset++);
+                    usedArgs |= UsedA;
+                }
+                if (f.isPrivateSignal) {
+                    if (!f.arguments.isEmpty()) fprintf(out, ", ");
+                    fprintf(out, "QPrivateSignal()");
+                }
+            }
+            fprintf(out, ");");
+            if (f.normalizedType != "void") {
+                fprintf(out, "\n            if (_a[0]) *reinterpret_cast<%s*>(_a[0]) = std::move(_r); } ",
+                        disambiguatedTypeName(noRef(f.normalizedType)).constData());
+                usedArgs |= UsedA;
+            }
+            fprintf(out, " break;\n");
+        }
+        fprintf(out, "        default: break;\n        }\n    }\n");
+    }
+
+    if (!cdef->signalList.isEmpty()) {
+        usedArgs |= UsedC | UsedA;
+        fprintf(out, "    if (_c == QMetaObject::IndexOfMethod) {\n");
+        for (int i = 0; i < int(cdef->signalList.size()); ++i) {
+            const FunctionDef &f = cdef->signalList.at(i);
+            if (f.wasCloned || !f.inPrivateClass.isEmpty() || f.isStatic) continue;
+            fprintf(out, "        if (QtMocHelpers::indexOfMethod<%s (%s::*)(", f.type.rawName.constData(), cdef->classname.constData());
+            for (auto it = f.arguments.cbegin(); it != f.arguments.cend(); ++it) {
+                if (it != f.arguments.cbegin()) fprintf(out, ", ");
+                fprintf(out, "%s", QByteArray(it->type.name + ' ' + it->rightType).constData());
+            }
+            if (f.isPrivateSignal) {
+                if (!f.arguments.isEmpty()) fprintf(out, ", ");
+                fprintf(out, "QPrivateSignal");
+            }
+            fprintf(out, ")%s>(_a, &%s::%s, %d)) return;\n", f.isConst ? " const" : "",
+                    cdef->classname.constData(), f.name.constData(), i);
+        }
+        fprintf(out, "    }\n");
+    }
+
+    auto printUnused = [&](UsedArgs entry, const char *name) {
+        if ((usedArgs & entry) == 0) fprintf(out, "    (void)%s;\n", name);
+    };
+    printUnused(UsedT, "_t");
+    printUnused(UsedC, "_c");
+    printUnused(UsedId, "_id");
+    printUnused(UsedA, "_a");
+    fprintf(out, "}\n");
 }
 
 void Generator::precomputeTypesForFunctions(const QList<FunctionDef> &list)
