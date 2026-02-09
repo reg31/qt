@@ -275,7 +275,7 @@ void Generator::generateCode()
                  "    namespace QMC = QtMocConstants;\n",
             cdef->qualified.constData(), qualifiedClassNameIdentifier.constData());
 
-    fprintf(out, "    constexpr QtMocHelpers::StringRefStorage qt_stringData {\n");
+    fprintf(out, "    static constexpr QtMocHelpers::StringRefStorage qt_stringData {\n");
     for (int i = 0; i < strings.size(); ++i) {
         if (i > 0)
             fprintf(out, ",\n");
@@ -290,35 +290,36 @@ void Generator::generateCode()
     }
     fprintf(out, "\n    };\n\n");
 
-    fprintf(out, "   constexpr QtMocHelpers::UintData qt_methods {\n");
+    fprintf(out, "    static constexpr QtMocHelpers::UintData qt_methods {\n");
 
     addFunctions(cdef->signalList, "Signal");
     addFunctions(cdef->slotList, "Slot");
     addFunctions(cdef->methodList, "Method");
     fprintf(out, "    };\n"
-                 "    constexpr QtMocHelpers::UintData qt_properties {\n");
+                 "    static constexpr QtMocHelpers::UintData qt_properties {\n");
     addProperties();
     fprintf(out, "    };\n"
-                 "    constexpr QtMocHelpers::UintData qt_enums {\n");
+                 "    static constexpr QtMocHelpers::UintData qt_enums {\n");
     addEnums();
     fprintf(out, "    };\n");
 
-    fprintf(out, "    constexpr auto qt_metaObjectHashIndex = %d;\n", stridx(hashes[cdef->qualified]));
+    fprintf(out, "    static constexpr auto qt_metaObjectHashIndex = %s;\n",
+            stridx(hashes[cdef->qualified]) == -1 ? "~0u" : QByteArray("uint32_t(" + QByteArray::number(stridx(hashes[cdef->qualified])) + ")").constData());
 
     const char *uintDataParams = "";
     if (isConstructible || !cdef->classInfoList.isEmpty()) {
         if (isConstructible) {
             fprintf(out, "    using Constructor = QtMocHelpers::NoType;\n"
-                         "    constexpr QtMocHelpers::UintData qt_constructors {\n");
+                         "    static constexpr QtMocHelpers::UintData qt_constructors {\n");
             addFunctions(cdef->constructorList, "Constructor");
             fprintf(out, "    };\n");
         } else {
-            fputs("    constexpr QtMocHelpers::UintData qt_constructors {};\n", out);
+            fputs("    static constexpr QtMocHelpers::UintData qt_constructors {};\n", out);
         }
 
         uintDataParams = ", qt_constructors";
         if (!cdef->classInfoList.isEmpty()) {
-            fprintf(out, "    constexpr QtMocHelpers::ClassInfos qt_classinfo({\n");
+            fprintf(out, "    static constexpr QtMocHelpers::ClassInfos qt_classinfo({\n");
             addClassInfos();
             fprintf(out, "    });\n");
             uintDataParams = ", qt_constructors, qt_classinfo";
@@ -883,7 +884,7 @@ void Generator::addEnums()
             if (valIdx == -1) fputs("~0u", out);
             else fprintf(out, "uint32_t(%d)", valIdx);
 
-            fprintf(out, ", %s::%s },\n", prefix.constData(), val.constData());
+            fprintf(out, ", std::to_underlying(%s::%s) },\n", prefix.constData(), val.constData());
         }
 
         fputs("        }),\n", out);
@@ -1014,7 +1015,7 @@ void Generator::generateStaticMetacall()
             fprintf(out, "            if (_a[0]) *reinterpret_cast<%s**>(_a[0]) = _r; } break;\n",
                     (cdef->hasQGadget || cdef->hasQNamespace) ? "void" : "QObject");
         }
-        fprintf(out, "        default: break;\n");
+        fprintf(out, "        default: std::unreachable();\n");
         fprintf(out, "        }\n");
         fprintf(out, "    }\n");
         fprintf(out, "    if (_c == QMetaObject::ConstructInPlace) {\n");
@@ -1025,7 +1026,7 @@ void Generator::generateStaticMetacall()
             generateCtorArguments(ctorindex);
             fprintf(out, "); } break;\n");
         }
-        fprintf(out, "        default: break;\n");
+        fprintf(out, "        default: std::unreachable();\n");
         fprintf(out, "        }\n");
         fprintf(out, "    }\n");
         usedArgs |= UsedC | UsedId | UsedA;
@@ -1043,25 +1044,26 @@ void Generator::generateStaticMetacall()
         const bool useVtable = methodList.size() <= 16;
         
         if (useVtable) {
-            fprintf(out, "        if (_id < 0 || _id >= %d) [[unlikely]] std::unreachable();\n", int(methodList.size()));
+            fprintf(out, "        [[assume(_id >= 0 && _id < %d)]];\n", int(methodList.size()));
             fprintf(out, "        using Func = void (*)(%s *, void **);\n", cdef->classname.constData());
             fprintf(out, "        static constexpr std::array<Func, %d> vtable = {{\n", int(methodList.size()));
         
             for (int i = 0; i < methodList.size(); ++i) {
-            const auto &f = methodList.at(i);
-            if (i > 0) fprintf(out, ",\n");
-            fprintf(out, "            [](%s *t, void **a) { ", cdef->classname.constData());
-            
-            bool usesA = (f.normalizedType != "void" || f.isRawSlot || !f.arguments.isEmpty());
-            if (!usesA)
-                fprintf(out, "(void)a; ");
-            
-            if (f.isStatic)
-                fprintf(out, "(void)t; ");
+                const auto &f = methodList.at(i);
+                if (i > 0) fprintf(out, ",\n");
+                fprintf(out, "            [](%s *t, void **a) { ", cdef->classname.constData());
+                
+                bool usesA = (f.normalizedType != "void" || f.isRawSlot || !f.arguments.isEmpty());
+                if (!usesA) fprintf(out, "(void)a; ");
+                if (f.isStatic) fprintf(out, "(void)t; ");
 
-            if (f.normalizedType != "void") fprintf(out, "if (auto r = ");
-                fprintf(out, "t->");
-                if (f.inPrivateClass.size()) fprintf(out, "%s->", f.inPrivateClass.constData());
+                if (f.normalizedType != "void") fprintf(out, "if (auto r = ");
+                if (f.isStatic) {
+                    fprintf(out, "%s::", cdef->classname.constData());
+                } else {
+                    fprintf(out, "t->");
+                    if (f.inPrivateClass.size()) fprintf(out, "%s->", f.inPrivateClass.constData());
+                }
                 fprintf(out, "%s(", f.name.constData());
             
                 if (f.isRawSlot) {
@@ -1099,9 +1101,12 @@ void Generator::generateStaticMetacall()
                 fprintf(out, "        case %d: ", methodindex);
                 if (f.normalizedType != "void")
                     fprintf(out, "{ %s _r = ", disambiguatedTypeName(noRef(f.normalizedType)).constData());
-                fprintf(out, "_t->");
-                if (f.inPrivateClass.size())
-                    fprintf(out, "%s->", f.inPrivateClass.constData());
+                if (f.isStatic) {
+                    fprintf(out, "%s::", cdef->classname.constData());
+                } else {
+                    fprintf(out, "_t->");
+                    if (f.inPrivateClass.size()) fprintf(out, "%s->", f.inPrivateClass.constData());
+                }
                 fprintf(out, "%s(", f.name.constData());
                 int offset = 1;
 
@@ -1119,7 +1124,7 @@ void Generator::generateStaticMetacall()
                     if (f.isPrivateSignal) {
                         if (!f.arguments.isEmpty())
                             fprintf(out, ", ");
-                        fprintf(out, "%s", "QPrivateSignal()");
+                        fprintf(out, "QPrivateSignal()");
                     }
                 }
                 fprintf(out, ");");
@@ -1186,14 +1191,13 @@ void Generator::generateStaticMetacall()
             if (f.isPrivateSignal) {
                 if (!f.arguments.isEmpty())
                     fprintf(out, ", ");
-                fprintf(out, "%s", "QPrivateSignal");
+                fprintf(out, "QPrivateSignal");
             }
             fprintf(out, ")%s>(_a, &%s::%s, %d))\n",
                     f.isConst ? " const" : "",
                     cdef->classname.constData(), f.name.constData(), methodindex);
             fprintf(out, "            return;\n");
         }
-        fprintf(out, "    }\n");
     }
 
     const QMultiMap<QByteArray, int> automaticPropertyMetaTypes = automaticPropertyMetaTypesHelper();
@@ -1239,17 +1243,13 @@ void Generator::generateStaticMetacall()
 
         if (needGet) {
             fprintf(out, "    if (_c == QMetaObject::ReadProperty) {\n");
-            if (needTempVarForGet)
-                fprintf(out, "        void *_v = _a[0];\n");
+            if (needTempVarForGet) fprintf(out, "        void *_v = _a[0];\n");
             fprintf(out, "        switch (_id) {\n");
             for (int propindex = 0; propindex < int(cdef->propertyList.size()); ++propindex) {
                 const PropertyDef &p = cdef->propertyList.at(propindex);
-                if (p.read.isEmpty() && p.member.isEmpty())
-                    continue;
+                if (p.read.isEmpty() && p.member.isEmpty()) continue;
                 QByteArray prefix = "_t->";
-                if (p.inPrivateClass.size()) {
-                    prefix += p.inPrivateClass + "->";
-                }
+                if (p.inPrivateClass.size()) prefix += p.inPrivateClass + "->";
 
                 if (p.gspec == PropertyDef::PointerSpec)
                     fprintf(out, "        case %d: _a[0] = const_cast<void*>(reinterpret_cast<const void*>(%s%s())); break;\n",
@@ -1257,11 +1257,6 @@ void Generator::generateStaticMetacall()
                 else if (p.gspec == PropertyDef::ReferenceSpec)
                     fprintf(out, "        case %d: _a[0] = const_cast<void*>(reinterpret_cast<const void*>(&%s%s())); break;\n",
                             propindex, prefix.constData(), p.read.constData());
-#if QT_VERSION <= QT_VERSION_CHECK(7, 0, 0)
-                else if (auto eflags = cdef->enumDeclarations.value(p.type); eflags & EnumIsFlag)
-                    fprintf(out, "        case %d: QtMocHelpers::assignFlags<%s>(_v, %s%s()); break;\n",
-                            propindex, disambiguatedTypeName(p.type, p.typeTag).constData(), prefix.constData(), p.read.constData());
-#endif
                 else if (p.read == "default")
                     fprintf(out, "        case %d: *reinterpret_cast<%s%s*>(_v) = %s%s().value(); break;\n",
                             propindex, cxxTypeTag(p.typeTag), disambiguatedTypeName(p.type, p.typeTag).constData(),
@@ -1286,21 +1281,15 @@ void Generator::generateStaticMetacall()
             fprintf(out, "        switch (_id) {\n");
             for (int propindex = 0; propindex < int(cdef->propertyList.size()); ++propindex) {
                 const PropertyDef &p = cdef->propertyList.at(propindex);
-                if (p.constant)
-                    continue;
-                if (p.write.isEmpty() && p.member.isEmpty())
-                    continue;
+                if (p.constant) continue;
+                if (p.write.isEmpty() && p.member.isEmpty()) continue;
                 QByteArray prefix = "_t->";
-                if (p.inPrivateClass.size()) {
-                    prefix += p.inPrivateClass + "->";
-                }
+                if (p.inPrivateClass.size()) prefix += p.inPrivateClass + "->";
+
                 if (p.write == "default") {
-                    fprintf(out, "        case %d: {\n", propindex);
-                    fprintf(out, "            %s%s().setValue(*reinterpret_cast<%s%s*>(_v));\n",
-                            prefix.constData(), p.bind.constData(), cxxTypeTag(p.typeTag),
+                    fprintf(out, "        case %d: %s%s().setValue(*reinterpret_cast<%s%s*>(_v)); break;\n",
+                            propindex, prefix.constData(), p.bind.constData(), cxxTypeTag(p.typeTag),
                             disambiguatedTypeName(p.type, p.typeTag).constData());
-                    fprintf(out, "            break;\n");
-                    fprintf(out, "        }\n");
                 } else if (!p.write.isEmpty()) {
                     fprintf(out, "        case %d: %s%s(*reinterpret_cast<%s%s*>(_v)); break;\n",
                             propindex, prefix.constData(), p.write.constData(),
@@ -1312,21 +1301,20 @@ void Generator::generateStaticMetacall()
                                 prefix.constData(), p.member.constData(), cxxTypeTag(p.typeTag),
                                 disambiguatedTypeName(p.type, p.typeTag).constData());
                     } else {
-                        fprintf(out, "\n            if (QtMocHelpers::setProperty(%s%s, *reinterpret_cast<%s%s*>(_v)))\n",
+                        fprintf(out, "\n            if (QtMocHelpers::setProperty(%s%s, *reinterpret_cast<%s%s*>(_v)))\n"
+                                     "                Q_EMIT _t->%s(", 
                                 prefix.constData(), p.member.constData(), cxxTypeTag(p.typeTag),
-                                disambiguatedTypeName(p.type, p.typeTag).constData());
-                        fprintf(out, "                Q_EMIT _t->%s(", p.notify.constData());
+                                disambiguatedTypeName(p.type, p.typeTag).constData(), p.notify.constData());
                         if (p.notifyId > -1) {
                             const FunctionDef &f = cdef->signalList.at(p.notifyId);
                             if (f.arguments.size() == 1 && f.arguments.at(0).normalizedType == p.type)
                                 fprintf(out, "%s%s", prefix.constData(), p.member.constData());
                         }
-                        fprintf(out, ");\n");
-                        fprintf(out, "            break;\n");
+                        fprintf(out, ");\n            break;\n");
                     }
                 }
             }
-            fprintf(out, "        default: break;\n");
+            fprintf(out, "        default: std::unreachable();\n");
             fprintf(out, "        }\n");
             fprintf(out, "    }\n");
         }
@@ -1336,16 +1324,12 @@ void Generator::generateStaticMetacall()
             fprintf(out, "        switch (_id) {\n");
             for (int propindex = 0; propindex < int(cdef->propertyList.size()); ++propindex) {
                 const PropertyDef &p = cdef->propertyList.at(propindex);
-                if (p.reset.isEmpty())
-                    continue;
+                if (p.reset.isEmpty()) continue;
                 QByteArray prefix = "_t->";
-                if (p.inPrivateClass.size()) {
-                    prefix += p.inPrivateClass + "->";
-                }
-                fprintf(out, "        case %d: %s%s(); break;\n",
-                        propindex, prefix.constData(), p.reset.constData());
+                if (p.inPrivateClass.size()) prefix += p.inPrivateClass + "->";
+                fprintf(out, "        case %d: %s%s(); break;\n", propindex, prefix.constData(), p.reset.constData());
             }
-            fprintf(out, "        default: break;\n");
+            fprintf(out, "        default: std::unreachable();\n");
             fprintf(out, "        }\n");
             fprintf(out, "    }\n");
         }
@@ -1355,26 +1339,20 @@ void Generator::generateStaticMetacall()
             fprintf(out, "        switch (_id) {\n");
             for (int propindex = 0; propindex < int(cdef->propertyList.size()); ++propindex) {
                 const PropertyDef &p = cdef->propertyList.at(propindex);
-                if (p.bind.isEmpty())
-                    continue;
+                if (p.bind.isEmpty()) continue;
                 QByteArray prefix = "_t->";
-                if (p.inPrivateClass.size()) {
-                    prefix += p.inPrivateClass + "->";
-                }
-                fprintf(out,
-                        "        case %d: *static_cast<QUntypedBindable *>(_a[0]) = %s%s(); "
-                        "break;\n",
+                if (p.inPrivateClass.size()) prefix += p.inPrivateClass + "->";
+                fprintf(out, "        case %d: *static_cast<QUntypedBindable *>(_a[0]) = %s%s(); break;\n",
                         propindex, prefix.constData(), p.bind.constData());
             }
-            fprintf(out, "        default: break;\n");
+            fprintf(out, "        default: std::unreachable();\n");
             fprintf(out, "        }\n");
             fprintf(out, "    }\n");
         }
     }
 
     auto printUnused = [&](UsedArgs entry, const char *name) {
-        if ((usedArgs & entry) == 0)
-            fprintf(out, "    (void)%s;\n", name);
+        if ((usedArgs & entry) == 0) fprintf(out, "    (void)%s;\n", name);
     };
     printUnused(UsedT, "_t");
     printUnused(UsedC, "_c");
