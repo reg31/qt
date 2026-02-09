@@ -314,7 +314,7 @@ void Generator::generateCode()
 
     fprintf(out, "namespace {\n"
                  "struct __attribute__((visibility(\"hidden\"))) qt_meta_tag_%s_t {};\n"
-                 "}
+                 "}\n",
             qualifiedClassNameIdentifier.constData());
 
     fprintf(out, "template <> constexpr inline auto %s::qt_create_metaobjectdata<qt_meta_tag_%s_t>()\n"
@@ -623,7 +623,7 @@ void Generator::addFunctions(const QList<FunctionDef> &list, const char *functyp
 {
     for (const FunctionDef &f : list) {
         if (!f.isConstructor)
-            fprintf(out, "
+            fprintf(out, "    // %s\n", functype);
         fprintf(out, "        QtMocHelpers::%s%sData<",
                 f.revision > 0 ? "Revisioned" : "", functype);
 
@@ -718,10 +718,8 @@ void Generator::registerPropertyStrings()
 void Generator::addProperties()
 {
     for (const PropertyDef &p : std::as_const(cdef->propertyList)) {
-        fprintf(out, "
-                     "        QtMocHelpers::PropertyData<%s%s>(%d, ",
-                p.name.constData(), cxxTypeTag(p.typeTag),
-                disambiguatedTypeName(p.type, p.typeTag).constData(),
+        fprintf(out, "    // %s\n", p.name.constData());
+        fprintf(out, "        QtMocHelpers::PropertyData<%s%s>(%d, ",
                 stridx(p.name));
         generateTypeInfo(p.type);
         fputc(',', out);
@@ -808,8 +806,8 @@ void Generator::addEnums()
 {
     for (const EnumDef &e : std::as_const(cdef->enumList)) {
         const QByteArray &typeName = e.enumName.isNull() ? e.name : e.enumName;
-        fprintf(out, "
-                     "        QtMocHelpers::EnumData<%s>(%d, %d,",
+        fprintf(out, "    // %s\n", e.name.constData());
+        fprintf(out, "        QtMocHelpers::EnumData<%s>(%d, %d,",
                 e.flags & EnumIsFlag ? "flag" : "enum", e.name.constData(),
                 disambiguatedTypeName(e.name).constData(), stridx(e.name), stridx(typeName));
 
@@ -1291,7 +1289,7 @@ void Generator::generateSignal(const FunctionDef *def, int index)
 {
     if (def->wasCloned || def->isAbstract)
         return;
-    fprintf(out, "\n
+    fprintf(out, "\n// SIGNAL %d\n%s %s::%s(",
             index, def->type.name.constData(), cdef->qualified.constData(), def->name.constData());
 
     QByteArray thisPtr = "this";
@@ -1464,7 +1462,7 @@ void Generator::generatePluginMetaData()
     fprintf(out, "#else\nQT_PLUGIN_METADATA_SECTION\n"
           "Q_CONSTINIT static constexpr unsigned char qt_pluginMetaData_%s[] = {\n"
           "    'Q', 'T', 'M', 'E', 'T', 'A', 'D', 'A', 'T', 'A', ' ', '!',\n"
-          "
+          "    // metadata version, Qt version, architecture requirements\n"
           "    0, QT_VERSION_MAJOR, QT_VERSION_MINOR, qPluginArchRequirements(),",
           cdef->classname.constData());
     outputCborData();
