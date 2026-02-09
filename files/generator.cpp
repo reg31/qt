@@ -818,11 +818,6 @@ Generator::methodsWithAutomaticTypesHelper(const QList<FunctionDef> &methodList)
     return methodsWithAutomaticTypes;
 }
 
-code
-C++
-download
-content_copy
-expand_less
 void Generator::generateStaticMetacall()
 {
     fprintf(out, "void %s::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id, void **_a)\n{\n",
