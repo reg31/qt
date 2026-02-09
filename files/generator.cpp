@@ -567,12 +567,12 @@ void Generator::addClassInfos()
         const int valueIdx = stridx(c.value);
 
         fputs("            { ", out);
-        if (nameIdx == -1) fputs("~uint32_t(0)", out);
+        if (nameIdx == -1) fputs("~0u", out);
         else fprintf(out, "uint32_t(%d)", nameIdx);
         
         fputs(", ", out);
         
-        if (valueIdx == -1) fputs("~uint32_t(0)", out);
+        if (valueIdx == -1) fputs("~0u", out);
         else fprintf(out, "uint32_t(%d)", valueIdx);
         
         fputs(" },\n", out);
@@ -631,6 +631,7 @@ void Generator::addFunctions(const QList<FunctionDef> &list, const char *functyp
     for (const FunctionDef &f : list) {
         if (!f.isConstructor)
             fprintf(out, "        // %s '%s'\n", functype, f.name.constData());
+        
         fprintf(out, "        QtMocHelpers::%s%sData<",
                 f.revision > 0 ? "Revisioned" : "", functype);
 
@@ -650,18 +651,18 @@ void Generator::addFunctions(const QList<FunctionDef> &list, const char *functyp
 
         if (f.isConstructor) {
             fputs(")>(", out);
-            if (tagIdx == -1) fputs("~uint32_t(0)", out);
+            if (tagIdx == -1) fputs("~0u", out);
             else fprintf(out, "uint32_t(%d)", tagIdx);
             fputs(", ", out);
         } else {
             fprintf(out, ")%s>(", f.isConst ? " const" : "");
             
-            if (nameIdx == -1) fputs("~uint32_t(0)", out);
+            if (nameIdx == -1) fputs("~0u", out);
             else fprintf(out, "uint32_t(%d)", nameIdx);
             
             fputs(", ", out);
             
-            if (tagIdx == -1) fputs("~uint32_t(0)", out);
+            if (tagIdx == -1) fputs("~0u", out);
             else fprintf(out, "uint32_t(%d)", tagIdx);
             
             fputs(", ", out);
@@ -700,7 +701,7 @@ void Generator::addFunctions(const QList<FunctionDef> &list, const char *functyp
                 generateTypeInfo(arg.normalizedType);
                 fputs(", ", out);
 
-                if (argNameIdx == -1) fputs("~uint16_t(0)", out);
+                if (argNameIdx == -1) fputs("0xFFFFu", out);
                 else fprintf(out, "uint16_t(%d)", argNameIdx);
 
                 fputs(" },", out);
@@ -721,15 +722,17 @@ void Generator::generateTypeInfo(const QByteArray &typeName, bool allowEmptyName
             if (info.valueString) {
                 fprintf(out, "QMetaType::%s", info.valueString);
             } else {
-                Q_ASSERT(info.builtinType != QMetaType::UnknownType);
                 fprintf(out, "%4d", info.builtinType);
             }
             return;
         }
     }
     
-    Q_ASSERT(!typeName.isEmpty() || allowEmptyName);
-    fprintf(out, "0x%.8x | uint16_t(%d)", IsUnresolvedType, stridx(typeName));
+    int idx = stridx(typeName);
+    if (idx == -1)
+        fprintf(out, "0x%.8x | 0xFFFFu", IsUnresolvedType);
+    else
+        fprintf(out, "0x%.8x | uint16_t(%d)", IsUnresolvedType, idx);
 }
 
 void Generator::registerPropertyStrings()
@@ -803,18 +806,14 @@ void Generator::addProperties()
 
         int notifyId = p.notifyId;
         if (notifyId != -1 || p.revision > 0) {
-            fprintf(out, ", ");
+            fputs(", ", out);
             if (p.notifyId < -1) {
-                const int indexInStrings = int(strings.indexOf(p.notify));
-                notifyId = indexInStrings;
-                fprintf(out, "%#x | ", IsUnresolvedSignal);
-            }
-
-            if (notifyId == -1)
-                fprintf(out, "~uint32_t(0)");
-            else
+                fprintf(out, "%#x | uint32_t(%d)", IsUnresolvedSignal, int(strings.indexOf(p.notify)));
+            } else if (notifyId == -1) {
+                fputs("~0u", out);
+            } else {
                 fprintf(out, "uint32_t(%d)", notifyId);
-
+            }
             if (p.revision > 0)
                 fprintf(out, ", %#x", p.revision);
         }
@@ -847,12 +846,12 @@ void Generator::addEnums()
         fprintf(out, "        QtMocHelpers::EnumData<%s>(", 
                 disambiguatedTypeName(e.name).constData());
 
-        if (nameIdx == -1) fputs("~uint32_t(0)", out);
+        if (nameIdx == -1) fputs("~0u", out);
         else fprintf(out, "uint32_t(%d)", nameIdx);
         
         fputs(", ", out);
 
-        if (typeNameIdx == -1) fputs("~uint32_t(0)", out);
+        if (typeNameIdx == -1) fputs("~0u", out);
         else fprintf(out, "uint32_t(%d)", typeNameIdx);
 
         fputs(",", out);
@@ -881,7 +880,7 @@ void Generator::addEnums()
             int valIdx = stridx(val);
             
             fputs("            { ", out);
-            if (valIdx == -1) fputs("~uint32_t(0)", out);
+            if (valIdx == -1) fputs("~0u", out);
             else fprintf(out, "uint32_t(%d)", valIdx);
 
             fprintf(out, ", %s::%s },\n", prefix.constData(), val.constData());
