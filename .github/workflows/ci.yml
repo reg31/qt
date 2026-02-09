@@ -121,6 +121,7 @@ jobs:
           
           ..\configure.bat -schannel -prefix "%OUTPUT_DIR%" ${{ env.SHARED_FLAGS }} -reduce-relocations ^
             -- ${{ env.WITH_STRIP_BUILD_FLAGS }} -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--gc-sections"
+            
       - name: List features
         run: configure.bat -list-features
 
