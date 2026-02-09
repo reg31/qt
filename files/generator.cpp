@@ -712,7 +712,7 @@ void Generator::addProperties()
 {
     for (const PropertyDef &p : std::as_const(cdef->propertyList)) {
         fprintf(out, "        // property '%s'\n"
-                     "        QQtMocHelpers::PropertyData<%s%s>(uint32_t(%d), ",
+                     "        QtMocHelpers::PropertyData<%s%s>(uint32_t(%d), ",
                 p.name.constData(), cxxTypeTag(p.typeTag),
                 disambiguatedTypeName(p.type, p.typeTag).constData(),
                 stridx(p.name));
