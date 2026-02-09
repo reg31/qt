@@ -610,7 +610,7 @@ void Generator::addStrings(const QByteArrayList &strings)
         fprintf(out, "%u", offsets[i]);
         if (i < offsets.size() - 1) fprintf(out, ", ");
     }
-    fprintf(out, "\n        },\n        .size = %d", offsets.size());
+    fprintf(out, "\n        },\n        .size = %d", (int)offsets.size());
 }
 
 void Generator::addFunctions(const QList<FunctionDef> &list, const char *functype)
