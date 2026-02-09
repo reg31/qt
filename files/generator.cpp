@@ -19,8 +19,8 @@
 #include <math.h>
 #include <stdio.h>
 
-#include <private/qmetaobject_p.h> //for the flags.
-#include <private/qplugin_p.h> //for the flags.
+#include <private/qmetaobject_p.h>
+#include <private/qplugin_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -33,7 +33,7 @@ static int nameToBuiltinType(const QByteArray &name)
 
     uint tp = QMetaType::UnknownType;
     if (const QtPrivate::QMetaTypeInterface *iface = QMetaType::fromName(name).iface())
-        tp = iface->typeId.loadRelaxed(); // always registered
+        tp = iface->typeId.loadRelaxed();
 
 #ifndef QT_BOOTSTRAPPED
     if (tp >= uint(QMetaType::User))
@@ -43,9 +43,6 @@ static int nameToBuiltinType(const QByteArray &name)
     return int(tp);
 }
 
-/*
-  Returns \c true if the type is a built-in type.
-*/
 static bool isBuiltinType(const QByteArray &type)
 {
     int id = nameToBuiltinType(type);
@@ -113,14 +110,12 @@ static inline qsizetype lengthOfEscapeSequence(const QByteArray &s, qsizetype i)
                && isOctalDigit(s.at(i))) {
             ++i;
         }
-    } else { // single character escape sequence
+    } else {
         i = qMin(i + 1, s.size());
     }
     return i - startPos;
 }
 
-// Prints \a s to \a out, breaking it into lines of at most ColumnWidth. The
-// opening and closing quotes are NOT included (it's up to the caller).
 static void printStringWithIndentation(FILE *out, const QByteArray &s)
 {
     static constexpr int ColumnWidth = 68;
@@ -129,7 +124,7 @@ static void printStringWithIndentation(FILE *out, const QByteArray &s)
 
     do {
         qsizetype spanLen = qMin(ColumnWidth - 2, len - idx);
-        // don't cut escape sequences at the end of a line
+
         const qsizetype backSlashPos = s.lastIndexOf('\\', idx + spanLen - 1);
         if (backSlashPos >= idx) {
             const qsizetype escapeLen = lengthOfEscapeSequence(s, backSlashPos);
@@ -160,9 +155,7 @@ bool Generator::registerableMetaType(const QByteArray &propertyType)
 
     if (propertyType.endsWith('*')) {
         QByteArray objectPointerType = propertyType;
-        // The objects container stores class names, such as 'QState', 'QLabel' etc,
-        // not 'QState*', 'QLabel*'. The propertyType does contain the '*', so we need
-        // to chop it to find the class type in the known QObjects list.
+
         objectPointerType.chop(1);
         if (knownQObjectClasses.contains(objectPointerType))
             return true;
@@ -189,9 +182,9 @@ bool Generator::registerableMetaType(const QByteArray &propertyType)
         const QByteArray ba = oneArgTemplateType + "<";
         if (propertyType.startsWith(ba) && propertyType.endsWith(">")) {
             const qsizetype argumentSize = propertyType.size() - ba.size()
-                                     // The closing '>'
+
                                      - 1
-                                     // templates inside templates have an extra whitespace char to strip.
+
                                      - (propertyType.at(propertyType.size() - 2) == ' ' ? 1 : 0 );
             const QByteArray templateArg = propertyType.sliced(ba.size(), argumentSize);
             return isBuiltinType(templateArg) || registerableMetaType(templateArg);
@@ -200,8 +193,6 @@ bool Generator::registerableMetaType(const QByteArray &propertyType)
     return false;
 }
 
-/* returns \c true if name and qualifiedName refers to the same name.
- * If qualified name is "A::B::C", it returns \c true for "C", "B::C" or "A::B::C" */
 static bool qualifiedNameEquals(const QByteArray &qualifiedName, const QByteArray &name)
 {
     if (qualifiedName == name)
@@ -212,7 +203,7 @@ static bool qualifiedNameEquals(const QByteArray &qualifiedName, const QByteArra
     return qualifiedNameEquals(qualifiedName.mid(index+2), name);
 }
 
-static inline uint32_t qHash(const QByteArray &key)
+static inline uint32_t simpleHash(const QByteArray &key)
 {
     uint32_t h = 0;
     for (unsigned char c : key)
@@ -223,7 +214,7 @@ static inline uint32_t qHash(const QByteArray &key)
 static QByteArray generateQualifiedClassNameIdentifier(const QByteArray &identifier)
 {
     char buf[16];
-    snprintf(buf, sizeof(buf), "%08x", qHash(identifier));
+    snprintf(buf, sizeof(buf), "%08x", simpleHash(identifier));
     return QByteArray("ZT") + buf;
 }
 
@@ -232,9 +223,6 @@ void Generator::generateCode()
     bool isQObject = (cdef->classname == "QObject");
     bool isConstructible = !cdef->constructorList.isEmpty();
 
-//
-// Register all strings used in data section
-//
     strreg(cdef->qualified);
     strreg(hashes[cdef->qualified]);
     registerClassInfoStrings();
@@ -255,22 +243,13 @@ void Generator::generateCode()
 
     const QByteArray qualifiedClassNameIdentifier = generateQualifiedClassNameIdentifier(cdef->qualified);
 
-    // type name for the Q_OJBECT/GADGET itself, void for namespaces
     const char *ownType = !cdef->hasQNamespace ? cdef->classname.data() : "void";
 
     fprintf(out, "namespace {\n"
                  "struct __attribute__((visibility(\"hidden\"))) qt_meta_tag_%s_t {};\n"
-                 "} // unnamed namespace\n\n",
+                 "}
             qualifiedClassNameIdentifier.constData());
 
-//
-// build the strings, data, and metatype arrays
-//
-
-    // We define a method inside the context of the class or namespace we're
-    // creating the meta object for, so we get access to everything it has
-    // access to and with the same contexts (for example, member enums and
-    // types).
     fprintf(out, "template <> constexpr inline auto %s::qt_create_metaobjectdata<qt_meta_tag_%s_t>()\n"
                  "{\n"
                  "    namespace QMC = QtMocConstants;\n",
@@ -282,7 +261,6 @@ void Generator::generateCode()
 
     fprintf(out, "    QtMocHelpers::UintData qt_methods {\n");
 
-    // Build signals array first, otherwise the signal indices would be wrong
     addFunctions(cdef->signalList, "Signal");
     addFunctions(cdef->slotList, "Slot");
     addFunctions(cdef->methodList, "Method");
@@ -318,9 +296,7 @@ void Generator::generateCode()
 
     const char *metaObjectFlags = "QMC::MetaObjectFlag{}";
     if (cdef->hasQGadget || cdef->hasQNamespace) {
-        // Ideally, all the classes could have that flag. But this broke
-        // classes generated by qdbusxml2cpp which generate code that require
-        // that we call qt_metacall for properties.
+
         metaObjectFlags = "QMC::PropertyAccessInStaticMetaCall";
     }
     {
@@ -335,8 +311,7 @@ void Generator::generateCode()
 
     QByteArray metaVarNameSuffix;
     if (cdef->hasQNamespace) {
-        // Q_NAMESPACE does not define the variables, so we have to. Declare as
-        // plain, file-scope static variables (not templates).
+
         metaVarNameSuffix = '_' + qualifiedClassNameIdentifier;
         const char *n = metaVarNameSuffix.constData();
         fprintf(out, R"(
@@ -352,13 +327,10 @@ static constexpr auto qt_staticMetaObjectRelocatingContent%s =
                 n, n,
                 n, n);
     } else {
-        // Q_OBJECT and Q_GADGET do declare them, so we just use the templates.
+
         metaVarNameSuffix = "<qt_meta_tag_" + qualifiedClassNameIdentifier + "_t>";
     }
 
-//
-// Build extra array
-//
     QList<QByteArray> extraList;
     QMultiHash<QByteArray, QByteArray> knownExtraMetaObject(knownGadgets);
     knownExtraMetaObject.unite(knownQObjectClasses);
@@ -376,7 +348,6 @@ static constexpr auto qt_staticMetaObjectRelocatingContent%s =
 
         QByteArray unqualifiedScope = p.type.left(s);
 
-        // The scope may be a namespace for example, so it's only safe to include scopes that are known QObjects (QTBUG-2151)
         QMultiHash<QByteArray, QByteArray>::ConstIterator scopeIt;
 
         QByteArray thisScope = cdef->qualified;
@@ -401,9 +372,6 @@ static constexpr auto qt_staticMetaObjectRelocatingContent%s =
             extraList += scope;
     }
 
-    // QTBUG-20639 - Accept non-local enums for QML signal/slot parameters.
-    // Look for any scoped enum declarations, and add those to the list
-    // of extra/related metaobjects for this object.
     for (auto it = cdef->enumDeclarations.keyBegin(),
          end = cdef->enumDeclarations.keyEnd(); it != end; ++it) {
         const QByteArray &enumKey = *it;
@@ -415,10 +383,6 @@ static constexpr auto qt_staticMetaObjectRelocatingContent%s =
         }
     }
 
-//
-// Generate meta object link to parent meta objects
-//
-
     if (!extraList.isEmpty()) {
         fprintf(out, "Q_CONSTINIT static const QMetaObject::SuperData qt_meta_extradata_%s[] = {\n",
                 qualifiedClassNameIdentifier.constData());
@@ -428,17 +392,14 @@ static constexpr auto qt_staticMetaObjectRelocatingContent%s =
         fprintf(out, "    nullptr\n};\n\n");
     }
 
-//
-// Finally create and initialize the static meta object
-//
     fprintf(out, "Q_CONSTINIT const QMetaObject %s::staticMetaObject = { {\n",
             cdef->qualified.constData());
 
     if (isQObject)
         fprintf(out, "    nullptr,\n");
-    else if (cdef->superclassList.size() && !cdef->hasQGadget && !cdef->hasQNamespace) // for qobject, we know the super class must have a static metaobject
+    else if (cdef->superclassList.size() && !cdef->hasQGadget && !cdef->hasQNamespace)
         fprintf(out, "    QMetaObject::SuperData::link<%s::staticMetaObject>(),\n", purestSuperClass.constData());
-    else if (cdef->superclassList.size()) // for gadgets we need to query at compile time for it
+    else if (cdef->superclassList.size())
         fprintf(out, "    QtPrivate::MetaObjectForType<%s>::value,\n", purestSuperClass.constData());
     else
         fprintf(out, "    nullptr,\n");
@@ -461,9 +422,6 @@ static constexpr auto qt_staticMetaObjectRelocatingContent%s =
 
     fprintf(out, "    nullptr\n} };\n\n");
 
-//
-// Generate internal qt_static_metacall() function
-//
     if (hasStaticMetaCall)
         generateStaticMetacall();
 
@@ -475,16 +433,12 @@ static constexpr auto qt_staticMetaObjectRelocatingContent%s =
                  "}\n",
             cdef->qualified.constData());
 
-//
-// Generate smart cast function
-//
     fprintf(out, "\nvoid *%s::qt_metacast(const char *_clname)\n{\n", cdef->qualified.constData());
     fprintf(out, "    if (!_clname) return nullptr;\n");
     fprintf(out, "    if (!strcmp(_clname, qt_staticMetaObjectStaticContent<qt_meta_tag_%s_t>.strings))\n"
                   "        return static_cast<void*>(this);\n",
             qualifiedClassNameIdentifier.constData());
 
-    // for all superclasses but the first one
     if (cdef->superclassList.size() > 1) {
         auto it = cdef->superclassList.cbegin() + 1;
         const auto end = cdef->superclassList.cend();
@@ -516,25 +470,13 @@ static constexpr auto qt_staticMetaObjectRelocatingContent%s =
     if (parser->activeQtMode)
         return;
 
-//
-// Generate internal qt_metacall()  function
-//
     generateMetacall();
 
-//
-// Generate internal signal functions
-//
     for (int signalindex = 0; signalindex < int(cdef->signalList.size()); ++signalindex)
         generateSignal(&cdef->signalList.at(signalindex), signalindex);
 
-//
-// Generate plugin meta data
-//
     generatePluginMetaData();
 
-//
-// Generate function to make sure the non-class signals exist in the parent classes
-//
     if (!cdef->nonClassSignalList.isEmpty()) {
         fprintf(out, "namespace CheckNotifySignalValidity_%s {\n", qualifiedClassNameIdentifier.constData());
         for (const QByteArray &nonClassSignal : std::as_const(cdef->nonClassSignalList)) {
@@ -543,7 +485,7 @@ static constexpr auto qt_staticMetaObjectRelocatingContent%s =
                                    [&nonClassSignal](const PropertyDef &p) {
                 return nonClassSignal == p.notify;
             });
-            // must find something, otherwise checkProperties wouldn't have inserted an entry into nonClassSignalList
+
             Q_ASSERT(propertyIt != cdef->propertyList.constEnd());
             fprintf(out, "template<typename T> using has_nullary_%s = decltype(std::declval<T>().%s());\n",
                     nonClassSignal.constData(),
@@ -562,7 +504,6 @@ static constexpr auto qt_staticMetaObjectRelocatingContent%s =
         fprintf(out, "}\n");
     }
 }
-
 
 void Generator::registerClassInfoStrings()
 {
@@ -615,14 +556,14 @@ void Generator::addFunctions(const QList<FunctionDef> &list, const char *functyp
 {
     for (const FunctionDef &f : list) {
         if (!f.isConstructor)
-            fprintf(out, "        // %s '%s'\n", functype, f.name.constData());
+            fprintf(out, "
         fprintf(out, "        QtMocHelpers::%s%sData<",
                 f.revision > 0 ? "Revisioned" : "", functype);
 
         if (f.isConstructor)
             fprintf(out, "Constructor(");
         else
-            fprintf(out, "%s(", disambiguatedTypeName(f.type.name).constData());   // return type
+            fprintf(out, "%s(", disambiguatedTypeName(f.type.name).constData());
 
         const char *comma = "";
         for (const auto &argument : f.arguments) {
@@ -635,8 +576,6 @@ void Generator::addFunctions(const QList<FunctionDef> &list, const char *functyp
         else
             fprintf(out, ")%s>(%d, %d, ", f.isConst ? " const" : "", stridx(f.name), stridx(f.tag));
 
-        // flags
-        // access right is always present
         if (f.access == FunctionDef::Private)
             fprintf(out, "QMC::AccessPrivate");
         else if (f.access == FunctionDef::Public)
@@ -650,11 +589,9 @@ void Generator::addFunctions(const QList<FunctionDef> &list, const char *functyp
         if (f.isScriptable)
             fprintf(out, " | QMC::MethodScriptable");
 
-        // QtMocConstants::MethodRevisioned is implied by the call we're making
         if (f.revision > 0)
             fprintf(out, ", %#x", f.revision);
 
-        // return type (if not a constructor)
         if (!f.isConstructor) {
             fprintf(out, ", ");
             generateTypeInfo(f.normalizedType);
@@ -663,7 +600,7 @@ void Generator::addFunctions(const QList<FunctionDef> &list, const char *functyp
         if (f.arguments.isEmpty()) {
             fprintf(out, "),\n");
         } else {
-            // array of parameter types (or type names) and names
+
             fprintf(out, ", {{");
             for (qsizetype i = 0; i < f.arguments.size(); ++i) {
                 if ((i % 4) == 0)
@@ -678,7 +615,6 @@ void Generator::addFunctions(const QList<FunctionDef> &list, const char *functyp
         }
     }
 }
-
 
 void Generator::generateTypeInfo(const QByteArray &typeName, bool allowEmptyName)
 {
@@ -715,7 +651,7 @@ void Generator::registerPropertyStrings()
 void Generator::addProperties()
 {
     for (const PropertyDef &p : std::as_const(cdef->propertyList)) {
-        fprintf(out, "        // property '%s'\n"
+        fprintf(out, "
                      "        QtMocHelpers::PropertyData<%s%s>(%d, ",
                 p.name.constData(), cxxTypeTag(p.typeTag),
                 disambiguatedTypeName(p.type, p.typeTag).constData(),
@@ -776,7 +712,7 @@ void Generator::addProperties()
         if (notifyId != -1 || p.revision > 0) {
             fprintf(out, ", ");
             if (p.notifyId < -1) {
-                // signal is in parent class
+
                 const int indexInStrings = int(strings.indexOf(p.notify));
                 notifyId = indexInStrings;
                 fprintf(out, "%#x | ", IsUnresolvedSignal);
@@ -805,7 +741,7 @@ void Generator::addEnums()
 {
     for (const EnumDef &e : std::as_const(cdef->enumList)) {
         const QByteArray &typeName = e.enumName.isNull() ? e.name : e.enumName;
-        fprintf(out, "        // %s '%s'\n"
+        fprintf(out, "
                      "        QtMocHelpers::EnumData<%s>(%d, %d,",
                 e.flags & EnumIsFlag ? "flag" : "enum", e.name.constData(),
                 disambiguatedTypeName(e.name).constData(), stridx(e.name), stridx(typeName));
@@ -829,7 +765,6 @@ void Generator::addEnums()
             continue;
         }
 
-        // add the enumerations
         fprintf(out, ").add({\n");
         QByteArray prefix = (e.enumName.isNull() ? e.name : e.enumName);
         for (const QByteArray &val : e.values) {
@@ -853,15 +788,11 @@ void Generator::generateMetacall()
         fprintf(out, "    _id = %s::qt_metacall(_c, _id, _a);\n", superClass.constData());
     }
 
-
     QList<FunctionDef> methodList;
     methodList += cdef->signalList;
     methodList += cdef->slotList;
     methodList += cdef->methodList;
 
-    // If there are no methods or properties, we will return _id anyway, so
-    // don't emit this comparison -- it is unnecessary, and it makes coverity
-    // unhappy.
     if (methodList.size() || cdef->propertyList.size()) {
         fprintf(out, "    if (_id < 0)\n        return _id;\n");
     }
@@ -894,8 +825,6 @@ void Generator::generateMetacall()
     fprintf(out,"    return _id;\n}\n");
 }
 
-
-// ### Qt 7 (6.x?): remove
 QMultiMap<QByteArray, int> Generator::automaticPropertyMetaTypesHelper()
 {
     QMultiMap<QByteArray, int> automaticPropertyMetaTypes;
@@ -947,7 +876,7 @@ void Generator::generateStaticMetacall()
 
     const auto generateCtorArguments = [&](int ctorindex) {
         const FunctionDef &f = cdef->constructorList.at(ctorindex);
-        Q_ASSERT(!f.isPrivateSignal); // That would be a strange ctor indeed
+        Q_ASSERT(!f.isPrivateSignal);
         int offset = 1;
 
         const auto begin = f.arguments.cbegin();
@@ -1142,7 +1071,7 @@ void Generator::generateStaticMetacall()
         if (needGet || needSet || hasBindableProperties || needReset)
             usedArgs |= UsedT | UsedC | UsedId;
         if (needGet || needSet || hasBindableProperties)
-            usedArgs |= UsedA;  // resetting doesn't need arguments
+            usedArgs |= UsedA;
 
         if (needGet) {
             fprintf(out, "    if (_c == QMetaObject::ReadProperty) {\n");
@@ -1295,7 +1224,7 @@ void Generator::generateSignal(const FunctionDef *def, int index)
 {
     if (def->wasCloned || def->isAbstract)
         return;
-    fprintf(out, "\n// SIGNAL %d\n%s %s::%s(",
+    fprintf(out, "\n
             index, def->type.name.constData(), cdef->qualified.constData(), def->name.constData());
 
     QByteArray thisPtr = "this";
@@ -1441,7 +1370,6 @@ void Generator::generatePluginMetaData()
             cbor_encode_text_string(&map, cdef->pluginData.uri.constData(), cdef->pluginData.uri.size());
         }
 
-        // Add -M args from the command line:
         for (auto it = cdef->pluginData.metaArgs.cbegin(), end = cdef->pluginData.metaArgs.cend(); it != end; ++it) {
             const QJsonArray &a = it.value();
             QByteArray key = it.key().toUtf8();
@@ -1450,35 +1378,31 @@ void Generator::generatePluginMetaData()
             jsonArrayToCbor(&map, a);
         }
 
-        // Close the CBOR map manually
         dev.nextItem();
         cbor_encoder_close_container(&enc, &map);
     };
 
-    // 'Use' all namespaces.
     qsizetype pos = cdef->qualified.indexOf("::");
     for ( ; pos != -1 ; pos = cdef->qualified.indexOf("::", pos + 2) )
         fprintf(out, "using namespace %s;\n", cdef->qualified.left(pos).constData());
 
     fputs("\n#ifdef QT_MOC_EXPORT_PLUGIN_V2", out);
 
-    // Qt 6.3+ output
     fprintf(out, "\nstatic constexpr unsigned char qt_pluginMetaDataV2_%s[] = {",
           cdef->classname.constData());
     outputCborData();
     fprintf(out, "\n};\nQT_MOC_EXPORT_PLUGIN_V2(%s, %s, qt_pluginMetaDataV2_%s)\n",
             cdef->qualified.constData(), cdef->classname.constData(), cdef->classname.constData());
 
-    // compatibility with Qt 6.0-6.2
     fprintf(out, "#else\nQT_PLUGIN_METADATA_SECTION\n"
           "Q_CONSTINIT static constexpr unsigned char qt_pluginMetaData_%s[] = {\n"
           "    'Q', 'T', 'M', 'E', 'T', 'A', 'D', 'A', 'T', 'A', ' ', '!',\n"
-          "    // metadata version, Qt version, architectural requirements\n"
+          "
           "    0, QT_VERSION_MAJOR, QT_VERSION_MINOR, qPluginArchRequirements(),",
           cdef->classname.constData());
     outputCborData();
     fprintf(out, "\n};\nQT_MOC_EXPORT_PLUGIN(%s, %s)\n"
-                 "#endif  // QT_MOC_EXPORT_PLUGIN_V2\n",
+                 "#endif
             cdef->qualified.constData(), cdef->classname.constData());
 
     fputs("\n", out);
@@ -1491,8 +1415,6 @@ QByteArray Generator::disambiguatedTypeName(const QByteArray &name)
     return name;
 }
 
-// in contexts where we already print the type tag, we don't want to do the
-// disambiguation
 QByteArray Generator::disambiguatedTypeName(const QByteArray &name, TypeTags tag)
 {
     if (tag == TypeTag::None)
@@ -1508,7 +1430,7 @@ QByteArray Generator::disambiguatedTypeNameForCast(const QByteArray &name)
 QT_WARNING_DISABLE_GCC("-Wunused-function")
 QT_WARNING_DISABLE_CLANG("-Wunused-function")
 QT_WARNING_DISABLE_CLANG("-Wundefined-internal")
-QT_WARNING_DISABLE_MSVC(4334) // '<<': result of 32-bit shift implicitly converted to 64 bits (was 64-bit shift intended?)
+QT_WARNING_DISABLE_MSVC(4334)
 
 #define CBOR_NO_HALF_FLOAT_TYPE         1
 #define CBOR_ENCODER_WRITER_CONTROL     1
