@@ -269,14 +269,7 @@ jobs:
           fetch-depth: 0
           submodules: false
 
-      - name: Setup sccache (intel)
-        if: matrix.arch == 'x86_64'
-        uses: mozilla-actions/sccache-action@v0.0.9
-        with:
-          version: "v0.12.0"
-
-      - name: Setup sccache (arm64)
-        if: matrix.arch == 'arm64'
+      - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.9
 
       - name: Initialize Qt submodules
