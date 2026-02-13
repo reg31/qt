@@ -2081,39 +2081,38 @@ void QQuickDeliveryAgentPrivate::deliverPointerEvent(QPointerEvent *event)
 // FIXME: should this be iterative instead of recursive?
 QVector<QQuickItem *> QQuickDeliveryAgentPrivate::eventTargets(QQuickItem *item, const QEvent *event, QPointF scenePos, qxp::function_ref<std::optional<bool> (QQuickItem *, const QEvent *)> predicate) const
 {
-    auto *itemPriv = QQuickItemPrivate::get(item);
-    const QPointF localPos = item->mapFromScene(scenePos);
+    QVector<QQuickItem *> result;
+    result.reserve(32);
 
-    if ((itemPriv->flags & QQuickItem::ItemClipsChildrenToShape) && !item->clipRect().contains(localPos))
-        [[unlikely]] return {};
+    auto traverse = [&](auto self, QQuickItem *curr) -> void {
+        auto *p = QQuickItemPrivate::get(curr);
+        const QPointF lp = curr->mapFromScene(scenePos);
 
-    bool relevant = item->contains(localPos);
-    if (auto res = predicate(item, event); res.has_value())
-        relevant = *res;
+        if ((p->flags & QQuickItem::ItemClipsChildrenToShape) && !curr->clipRect().contains(lp)) [[unlikely]] return;
 
-    const auto children = itemPriv->paintOrderChildItems();
-    QVector<QQuickItem *> targets;
-    targets.reserve(relevant + children.size());
+        bool relevant = curr->contains(lp);
+        if (auto op = predicate(curr, event); op.has_value()) [[unlikely]] relevant = *op;
 
-    auto itSplit = std::ranges::lower_bound(children, 0.0, std::ranges::less{}, [](auto *c) { return c->z(); });
+        const auto children = p->paintOrderChildItems();
+        auto itSplit = std::ranges::lower_bound(children, 0.0, std::ranges::less{}, [](auto *c) { return c->z(); });
 
-    for (auto *child : std::ranges::subrange(itSplit, children.end()) | std::views::reverse) {
-        auto *childPriv = QQuickItemPrivate::get(child);
-        if (!child->isVisible() || childPriv->culled || !child->isEnabled() || (childPriv->extra.isAllocated() && childPriv->extra->subsceneDeliveryAgent))
-            continue;
-        targets.move_append(eventTargets(child, event, scenePos, predicate));
-    }
+        for (auto *child : std::ranges::subrange(itSplit, children.end()) | std::views::reverse) {
+            auto *cp = QQuickItemPrivate::get(child);
+            if (child->isVisible() && !cp->culled && child->isEnabled() && !(cp->extra.isAllocated() && cp->extra->subsceneDeliveryAgent))
+                self(self, child);
+        }
 
-    if (relevant) targets.push_back(item);
+        if (relevant) result.push_back(curr);
 
-    for (auto *child : std::ranges::subrange(children.begin(), itSplit) | std::views::reverse) {
-        auto *childPriv = QQuickItemPrivate::get(child);
-        if (!child->isVisible() || childPriv->culled || !child->isEnabled() || (childPriv->extra.isAllocated() && childPriv->extra->subsceneDeliveryAgent))
-            continue;
-        targets.move_append(eventTargets(child, event, scenePos, predicate));
-    }
+        for (auto *child : std::ranges::subrange(children.begin(), itSplit) | std::views::reverse) {
+            auto *cp = QQuickItemPrivate::get(child);
+            if (child->isVisible() && !cp->culled && child->isEnabled() && !(cp->extra.isAllocated() && cp->extra->subsceneDeliveryAgent))
+                self(self, child);
+        }
+    };
 
-    return targets;
+    traverse(traverse, item);
+    return result;
 }
 
 /*! \internal
