@@ -1216,6 +1216,7 @@ bool QQuickDeliveryAgentPrivate::deliverHoverEventToItem(
 {
     QQuickItemPrivate *itemPrivate = QQuickItemPrivate::get(item);
     const QPointF localPos = item->mapFromScene(scenePos);
+    const QPointF globalPos = item->mapToGlobal(localPos);
     const bool isHovering = item->contains(localPos);
     const auto hoverItemIterator = hoverItems.find(item);
     const bool wasHovering = hoverItemIterator != hoverItems.end() && hoverItemIterator.value() != 0;
@@ -1232,8 +1233,10 @@ bool QQuickDeliveryAgentPrivate::deliverHoverEventToItem(
         else
             hoverItems[item] = currentHoverId;
 
-        accepted = sendHoverEvent(wasHovering ? QEvent::HoverMove : QEvent::HoverEnter, 
-                                  item, scenePos, lastScenePos, modifiers, timestamp);
+        if (wasHovering)
+            accepted = sendHoverEvent(QEvent::HoverMove, item, scenePos, lastScenePos, modifiers, timestamp);
+        else
+            accepted = sendHoverEvent(QEvent::HoverEnter, item, scenePos, lastScenePos, modifiers, timestamp);
     } else if (wasHovering) {
         hoverItemIterator.value() = 0;
         sendHoverEvent(QEvent::HoverLeave, item, scenePos, lastScenePos, modifiers, timestamp);
@@ -1242,18 +1245,16 @@ bool QQuickDeliveryAgentPrivate::deliverHoverEventToItem(
     if (!itemPrivate->hasPointerHandlers())
         return accepted;
 
-    const QPointF globalPos = item->mapToGlobal(localPos);
-
     if (hoverChange == HoverChange::Clear) {
         QHoverEvent hoverEvent(QEvent::HoverLeave, scenePos, globalPos, lastScenePos, modifiers);
         hoverEvent.setTimestamp(timestamp);
 
         for (QQuickPointerHandler *h : itemPrivate->extra->pointerHandlers) {
-            if (auto *hh = qmlobject_cast<QQuickHoverHandler *>(h)) {
-                if (hh->isHovered()) {
-                    hoverEvent.setAccepted(true);
-                    QCoreApplication::sendEvent(hh, &hoverEvent);
-                }
+            if (QQuickHoverHandler *hh = qmlobject_cast<QQuickHoverHandler *>(h)) {
+                if (!hh->isHovered())
+                    continue;
+                hoverEvent.setAccepted(true);
+                QCoreApplication::sendEvent(hh, &hoverEvent);
             }
         }
     } else {
@@ -1261,21 +1262,17 @@ bool QQuickDeliveryAgentPrivate::deliverHoverEventToItem(
         hoverEvent.setTimestamp(timestamp);
 
         for (QQuickPointerHandler *h : itemPrivate->extra->pointerHandlers) {
-            if (auto *hh = qmlobject_cast<QQuickHoverHandler *>(h)) {
-                if (hh->enabled()) {
-                    hoverEvent.setAccepted(true);
-                    hh->handlePointerEvent(&hoverEvent);
-                    if (hh->isHovered()) {
-                        hoveredLeafItemFound = true;
-                        if (hoverItemIterator != hoverItems.end())
-                            hoverItemIterator.value() = currentHoverId;
-                        else
-                            hoverItems[item] = currentHoverId;
-                        if (hh->isBlocking()) {
-                            qCDebug(lcHoverTrace) << "skipping rest of hover delivery due to blocking" << hh;
-                            return true;
-                        }
-                    }
+            if (QQuickHoverHandler *hh = qmlobject_cast<QQuickHoverHandler *>(h)) {
+                if (!hh->enabled())
+                    continue;
+                hoverEvent.setAccepted(true);
+                hh->handlePointerEvent(&hoverEvent);
+                if (hh->isHovered()) {
+                    hoveredLeafItemFound = true;
+                    if (hoverItemIterator != hoverItems.end())
+                        hoverItemIterator.value() = currentHoverId;
+                    else
+                        hoverItems[item] = currentHoverId;
                 }
             }
         }
@@ -2037,51 +2034,38 @@ void QQuickDeliveryAgentPrivate::deliverPointerEvent(QPointerEvent *event)
     \endlist
 */
 // FIXME: should this be iterative instead of recursive?
-QVector<QQuickItem *> QQuickDeliveryAgentPrivate::eventTargets(
-    QQuickItem *item, const QEvent *event, QPointF scenePos,
-    qxp::function_ref<std::optional<bool> (QQuickItem *, const QEvent *)> predicate) const
+QVector<QQuickItem *> QQuickDeliveryAgentPrivate::eventTargets(QQuickItem *item, const QEvent *event, QPointF scenePos,
+                                                               qxp::function_ref<std::optional<bool> (QQuickItem *, const QEvent *)> predicate) const
 {
-    const auto itemPrivate = QQuickItemPrivate::get(item);
+    QVector<QQuickItem *> targets;
+    auto itemPrivate = QQuickItemPrivate::get(item);
     const auto itemPos = item->mapFromScene(scenePos);
-    
+    bool relevant = item->contains(itemPos);
     if (itemPrivate->flags & QQuickItem::ItemClipsChildrenToShape) {
         if (!item->clipRect().contains(itemPos))
-            return {};
+            return targets;
     }
-    
-    bool relevant = item->contains(itemPos);
-    if (const auto override = predicate(item, event); override.has_value())
-        relevant = override.value();
-    
     QList<QQuickItem *> children = itemPrivate->paintOrderChildItems();
-    
+    const std::optional<bool> override = predicate(item, event);
+    if (override.has_value())
+        relevant = override.value();
     if (relevant) {
-        const auto it = std::ranges::lower_bound(children, 0, std::less{}, [](const auto *child) { return child->z(); });
+        auto it = std::lower_bound(children.begin(), children.end(), 0,
+           [](auto lhs, auto rhs) -> bool { return lhs->z() < rhs; });
         children.insert(it, item);
     }
-    
-    QVector<QQuickItem *> targets;
-    targets.reserve(children.size());
-    
-    std::ranges::for_each(children | std::views::reverse, [&](QQuickItem *child) {
-        const auto childPrivate = QQuickItemPrivate::get(child);
-        
+    for (int ii = children.size() - 1; ii >= 0; --ii) {
+        QQuickItem *child = children.at(ii);
+        auto childPrivate = QQuickItemPrivate::get(child);
         if (!child->isVisible() || !child->isEnabled() || childPrivate->culled)
-            return;
-            
-        if (child != item && childPrivate->extra.isAllocated() && 
-            childPrivate->extra->subsceneDeliveryAgent)
-            return;
-
-        if (child == item) {
-            targets << child;
-        } else {
+            continue;
+        if (child != item) {
             auto childTargets = eventTargets(child, event, scenePos, predicate);
-            if (!childTargets.isEmpty())
-                targets.append(std::move(childTargets));
+            targets.append(childTargets);
+        } else {
+            targets.append(child);
         }
-    });
-
+    }
     return targets;
 }
 
