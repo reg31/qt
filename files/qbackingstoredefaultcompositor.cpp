@@ -455,153 +455,90 @@ void QBackingStoreDefaultCompositor::ensureResources(QRhiResourceUpdateBatch *re
 QPlatformBackingStore::FlushResult QBackingStoreDefaultCompositor::flush(QPlatformBackingStore *backingStore, QRhi *rhi, QRhiSwapChain *swapchain, QWindow *window, qreal sourceDevicePixelRatio, const QRegion &region, const QPoint &offset, QPlatformTextureList *textures, bool translucentBackground, qreal sourceTransformFactor)
 {
     if (!rhi || !swapchain) [[unlikely]] return QPlatformBackingStore::FlushFailed;
+    if (!m_rhi) m_rhi = rhi; else if (m_rhi != rhi) [[unlikely]] return QPlatformBackingStore::FlushFailed;
 
+    auto *wp = qt_window_private(window);
+    if (!wp->receivedExpose) return QPlatformBackingStore::FlushSuccess;
+    wp->lastComposeTime.start();
+
+    if (swapchain->currentPixelSize() != swapchain->surfacePixelSize()) swapchain->createOrResize();
+
+    auto fOp = rhi->beginFrame(swapchain);
+    if (fOp == QRhi::FrameOpSwapChainOutOfDate) { if (!swapchain->createOrResize()) return QPlatformBackingStore::FlushFailed; fOp = rhi->beginFrame(swapchain); }
+    if (fOp != QRhi::FrameOpSuccess) [[unlikely]] return fOp == QRhi::FrameOpDeviceLost ? QPlatformBackingStore::FlushFailedDueToLostDevice : QPlatformBackingStore::FlushFailed;
+
+    auto *uBatch = rhi->nextResourceUpdateBatch();
+    QPlatformBackingStore::TextureFlags tFlags;
     const qreal sFactor = sourceTransformFactor ? sourceTransformFactor : sourceDevicePixelRatio;
 
-    if (!m_rhi) m_rhi = rhi;
-    else if (m_rhi != rhi) [[unlikely]] return QPlatformBackingStore::FlushFailed;
-
-    auto *winPriv = qt_window_private(window);
-    if (!winPriv->receivedExpose) return QPlatformBackingStore::FlushSuccess;
-
-    winPriv->lastComposeTime.start();
-
-    if (swapchain->currentPixelSize() != swapchain->surfacePixelSize())
-        swapchain->createOrResize();
-
-    auto frameOp = rhi->beginFrame(swapchain);
-    if (frameOp == QRhi::FrameOpSwapChainOutOfDate) {
-        if (!swapchain->createOrResize()) return QPlatformBackingStore::FlushFailed;
-        frameOp = rhi->beginFrame(swapchain);
-    }
-    if (frameOp != QRhi::FrameOpSuccess) [[unlikely]]
-        return frameOp == QRhi::FrameOpDeviceLost ? QPlatformBackingStore::FlushFailedDueToLostDevice : QPlatformBackingStore::FlushFailed;
-
-    auto *resUpdates = rhi->nextResourceUpdateBatch();
-    QPlatformBackingStore::TextureFlags tFlags;
-
-    bool graphicsBufferSynced = false;
     if (auto *gb = backingStore->graphicsBuffer(); gb && gb->lock(QPlatformGraphicsBuffer::SWReadAccess)) {
-        const QImage img(gb->data(), gb->size().width(), gb->size().height(), gb->bytesPerLine(), QImage::toImageFormat(gb->format()));
-        toTexture(img, rhi, resUpdates, scaledRegion(region, sFactor, offset), &tFlags);
+        toTexture(QImage(gb->data(), gb->size().width(), gb->size().height(), gb->bytesPerLine(), QImage::toImageFormat(gb->format())), rhi, uBatch, scaledRegion(region, sFactor, offset), &tFlags);
         if (gb->origin() == QPlatformGraphicsBuffer::OriginBottomLeft) tFlags |= QPlatformBackingStore::TextureFlip;
         gb->unlock();
-        graphicsBufferSynced = true;
-    }
-    if (!graphicsBufferSynced) toTexture(backingStore, rhi, resUpdates, scaledRegion(region, sFactor, offset), &tFlags);
+    } else toTexture(backingStore, rhi, uBatch, scaledRegion(region, sFactor, offset), &tFlags);
 
-    ensureResources(resUpdates, swapchain->renderPassDescriptor());
+    ensureResources(uBatch, swapchain->renderPassDescriptor());
 
-    struct alignas(16) UboData {
-        float target[16]{1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
-        float source[12]{};
-        float opacity = 1.0f;
-        int swizzle = 0;
+    const bool invY = !rhi->isYUpInNDC(), invS = !rhi->isYUpInFramebuffer();
+    const float dpr = (float)window->devicePixelRatio();
+    const QSize sz = window->size();
+    const float iW = 1.0f / (sz.width() * dpr), iH = 1.0f / (sz.height() * dpr);
+    const bool linear = (sz.width() * sourceDevicePixelRatio) > (sz.width() * dpr);
+
+    struct alignas(16) GPUData { float mat4[16]; float mat3[12]; float opacity; int swizzle; };
+
+    auto packUbo = [&](QRhiBuffer *buf, const QRectF &tRect, const QRectF &sRect, const QSize &texSz, bool flipS, int swz) {
+        GPUData d{.mat4 = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1}, .opacity = 1.0f, .swizzle = swz};
+        float tw = (float)tRect.width(), th = (float)tRect.height();
+        d.mat4[0] = tw * iW;
+        d.mat4[5] = (invY ? -1.0f : 1.0f) * (th * iH);
+        d.mat4[12] = d.mat4[0] - 1.0f + (((float)tRect.x() * iW) * 2.0f);
+        d.mat4[13] = invY ? (th * iH - 1.0f + (((float)tRect.y() * iH) * 2.0f)) : (1.0f - th * iH - (((float)tRect.y() * iH) * 2.0f));
+        float isW = 1.0f / texSz.width(), isH = 1.0f / texSz.height();
+        d.mat3[0] = (float)sRect.width() * isW; d.mat3[5] = (float)sRect.height() * isH;
+        d.mat3[8] = (float)sRect.x() * isW; d.mat3[9] = (float)sRect.y() * isH;
+        if (!flipS) { d.mat3[5] = -d.mat3[5]; d.mat3[9] = 1.0f - d.mat3[9]; }
+        uBatch->updateDynamicBuffer(buf, 0, sizeof(GPUData), &d);
     };
 
-    const bool invY = !rhi->isYUpInNDC();
-    const bool invSrc = !rhi->isYUpInFramebuffer();
-    const qreal dpr = window->devicePixelRatio();
-    const QSize wSize = window->size();
-    const QRect devWinRect = scaledRect(QRect(QPoint(), wSize), dpr);
-    const bool useLinear = scaledRect(QRect(QPoint(), wSize), sourceDevicePixelRatio).width() > devWinRect.size().width();
-
-    int swizzleVal = 0;
-    if (tFlags & QPlatformBackingStore::TextureSwizzle) {
-        if constexpr (std::endian::native == std::endian::little) swizzleVal = 1;
-        else swizzleVal = 2;
-    }
-
+    int swz = (tFlags & QPlatformBackingStore::TextureSwizzle) ? (std::endian::native == std::endian::little ? 1 : 2) : 0;
     if (m_texture) {
-        UboData u;
-        if (invY) u.target[5] = -1.0f;
-        
-        const QSize texSize = m_texture->pixelSize();
-        const QRect srcRect = toBottomLeftRect(scaledRect(QRect(QPoint(), wSize), sourceDevicePixelRatio).translated(scaledOffset(offset, sFactor)), texSize.height());
-        
-        u.source[0] = srcRect.width() / (float)texSize.width();
-        u.source[4] = srcRect.height() / (float)texSize.height();
-        u.source[8] = srcRect.x() / (float)texSize.width();
-        u.source[9] = srcRect.y() / (float)texSize.height();
-        
-        if (!(tFlags & QPlatformBackingStore::TextureFlip)) {
-            u.source[4] = -u.source[4];
-            u.source[9] = 1.0f - u.source[9];
-        }
-        
-        u.swizzle = swizzleVal;
-        resUpdates->updateDynamicBuffer(m_widgetQuadData.ubuf, 0, sizeof(UboData), &u);
-        if (useLinear) updatePerQuadData(&m_widgetQuadData, m_texture.get(), nullptr, NeedsLinearFiltering);
+        const QSize ts = m_texture->pixelSize();
+        packUbo(m_widgetQuadData.ubuf, {0, 0, sz.width() * dpr, sz.height() * dpr}, toBottomLeftRect(scaledRect({QPoint(), sz}, sourceDevicePixelRatio).translated(scaledOffset(offset, sFactor)), ts.height()), ts, tFlags & QPlatformBackingStore::TextureFlip, swz);
+        if (linear) updatePerQuadData(&m_widgetQuadData, m_texture.get(), nullptr, NeedsLinearFiltering);
     }
 
-    const int tCount = textures->count();
-    m_textureQuadData.resize(tCount);
-    for (int i = 0; i < tCount; ++i) {
-        const QRect cRect = textures->clipRect(i);
-        if (cRect.isEmpty()) { m_textureQuadData[i].reset(); continue; }
-
-        QRect rInW = textures->geometry(i);
-        rInW.translate(-offset);
-        const QRect clipped = rInW & cRect.translated(rInW.topLeft());
-        const QRect scClipped = scaledRect(clipped, dpr);
-        
-        UboData u;
-        float xs = scClipped.width() / (float)devWinRect.width();
-        float ys = scClipped.height() / (float)devWinRect.height();
-        auto rel = scClipped.topLeft() - devWinRect.topLeft();
-        
-        u.target[0] = xs;
-        u.target[5] = (invY ? -1.0f : 1.0f) * ys;
-        u.target[12] = xs - 1.0f + ((rel.x() / (float)devWinRect.width()) * 2.0f);
-        u.target[13] = invY ? (ys - 1.0f + ((rel.y() / (float)devWinRect.height()) * 2.0f)) 
-                            : (-ys + 1.0f - ((rel.y() / (float)devWinRect.height()) * 2.0f));
-
-        const QSize rSize = scaledRect(rInW, dpr).size();
-        const QRect srcR = scaledRect(toBottomLeftRect(cRect, rInW.height()), dpr);
-        u.source[0] = srcR.width() / (float)rSize.width();
-        u.source[4] = srcR.height() / (float)rSize.height();
-        u.source[8] = srcR.x() / (float)rSize.width();
-        u.source[9] = srcR.y() / (float)rSize.height();
-
-        if (textures->flags(i).testFlag(QPlatformTextureList::MirrorVertically) == invSrc) {
-            u.source[4] = -u.source[4];
-            u.source[9] = 1.0f - u.source[9];
-        }
-
+    const int nT = textures->count();
+    m_textureQuadData.resize(nT);
+    for (int i = 0; i < nT; ++i) {
+        const QRect cr = textures->clipRect(i);
+        if (cr.isEmpty()) { m_textureQuadData[i].reset(); continue; }
+        QRect gm = textures->geometry(i); gm.translate(-offset);
         if (auto *t = textures->texture(i)) {
             if (!m_textureQuadData[i].isValid()) m_textureQuadData[i] = createPerQuadData(t, textures->textureExtra(i));
             else updatePerQuadData(&m_textureQuadData[i], t, textures->textureExtra(i));
-            resUpdates->updateDynamicBuffer(m_textureQuadData[i].ubuf, 0, sizeof(UboData), &u);
-            if (useLinear) updatePerQuadData(&m_textureQuadData[i], t, textures->textureExtra(i), NeedsLinearFiltering);
+            packUbo(m_textureQuadData[i].ubuf, scaledRect(gm & cr.translated(gm.topLeft()), dpr), scaledRect(toBottomLeftRect(cr, gm.height()), dpr), scaledRect(gm, dpr).size(), (textures->flags(i).testFlag(QPlatformTextureList::MirrorVertically) != invS), 0);
+            if (linear) updatePerQuadData(&m_textureQuadData[i], t, textures->textureExtra(i), NeedsLinearFiltering);
         } else m_textureQuadData[i].reset();
     }
 
     auto *cb = swapchain->currentFrameCommandBuffer();
-    cb->resourceUpdate(resUpdates);
-
+    cb->resourceUpdate(uBatch);
     auto draw = [&](QRhiRenderTarget *rt) {
         cb->beginPass(rt, translucentBackground ? Qt::transparent : Qt::black, { 1.0f, 0 });
         cb->setViewport({ 0, 0, (float)rt->pixelSize().width(), (float)rt->pixelSize().height() });
-        QRhiCommandBuffer::VertexInput vb(m_vbuf.get(), 0);
-        cb->setVertexInput(0, 1, &vb);
-
-        for (int i = 0; i < tCount; ++i) {
-            if (!textures->flags(i).testFlag(QPlatformTextureList::StacksOnTop) && m_textureQuadData[i].isValid()) {
-                cb->setGraphicsPipeline(m_psNoBlend.get());
-                cb->setShaderResources((rt == swapchain->currentFrameRenderTarget(QRhiSwapChain::RightBuffer) && m_textureQuadData[i].srbExtra) ? m_textureQuadData[i].srbExtra : m_textureQuadData[i].srb);
-                cb->draw(6);
-            }
+        QRhiCommandBuffer::VertexInput vbi(m_vbuf.get(), 0); cb->setVertexInput(0, 1, &vbi);
+        for (int i = 0; i < nT; ++i) if (!textures->flags(i).testFlag(QPlatformTextureList::StacksOnTop) && m_textureQuadData[i].isValid()) {
+            cb->setGraphicsPipeline(m_psNoBlend.get());
+            cb->setShaderResources((rt == swapchain->currentFrameRenderTarget(QRhiSwapChain::RightBuffer) && m_textureQuadData[i].srbExtra) ? m_textureQuadData[i].srbExtra : m_textureQuadData[i].srb);
+            cb->draw(6);
         }
-
         cb->setGraphicsPipeline((tFlags & QPlatformBackingStore::TexturePremultiplied) ? m_psPremulBlend.get() : m_psBlend.get());
         if (m_texture) { cb->setShaderResources(m_widgetQuadData.srb); cb->draw(6); }
-
-        for (int i = 0; i < tCount; ++i) {
-            if (textures->flags(i).testFlag(QPlatformTextureList::StacksOnTop) && m_textureQuadData[i].isValid()) {
-                cb->setGraphicsPipeline(textures->flags(i).testFlag(QPlatformTextureList::NeedsPremultipliedAlphaBlending) ? m_psPremulBlend.get() : m_psBlend.get());
-                cb->setShaderResources((rt == swapchain->currentFrameRenderTarget(QRhiSwapChain::RightBuffer) && m_textureQuadData[i].srbExtra) ? m_textureQuadData[i].srbExtra : m_textureQuadData[i].srb);
-                cb->draw(6);
-            }
+        for (int i = 0; i < nT; ++i) if (textures->flags(i).testFlag(QPlatformTextureList::StacksOnTop) && m_textureQuadData[i].isValid()) {
+            cb->setGraphicsPipeline(textures->flags(i).testFlag(QPlatformTextureList::NeedsPremultipliedAlphaBlending) ? m_psPremulBlend.get() : m_psBlend.get());
+            cb->setShaderResources((rt == swapchain->currentFrameRenderTarget(QRhiSwapChain::RightBuffer) && m_textureQuadData[i].srbExtra) ? m_textureQuadData[i].srbExtra : m_textureQuadData[i].srb);
+            cb->draw(6);
         }
         cb->endPass();
     };
