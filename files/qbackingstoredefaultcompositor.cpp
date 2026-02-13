@@ -49,40 +49,41 @@ QRhiTexture *QBackingStoreDefaultCompositor::toTexture(const QImage &sourceImage
     Q_ASSERT(resourceUpdates);
     Q_ASSERT(flags);
 
-    if (!m_rhi) {
+    if (!m_rhi) [[unlikely]] {
         m_rhi = rhi;
-    } else if (m_rhi != rhi) {
+    } else if (m_rhi != rhi) [[unlikely]] {
         qWarning("QBackingStoreDefaultCompositor: the QRhi has changed unexpectedly, this should not happen");
         return nullptr;
     }
 
-    QImage image = sourceImage;
+    if (sourceImage.size().isEmpty()) [[unlikely]]
+        return nullptr;
 
-    bool needsConversion = false;
+    const bool resized = !m_texture || m_texture->pixelSize() != sourceImage.size();
+    if (dirtyRegion.isEmpty() && !resized) [[likely]]
+        return m_texture.get();
+
     *flags = {};
-
-    switch (image.format()) {
+    bool needsConversion = false;
+    
+    switch (sourceImage.format()) {
     case QImage::Format_ARGB32_Premultiplied:
-        *flags |= QPlatformBackingStore::TexturePremultiplied;
-        Q_FALLTHROUGH();
+        *flags = QPlatformBackingStore::TexturePremultiplied | QPlatformBackingStore::TextureSwizzle;
+        break;
     case QImage::Format_RGB32:
     case QImage::Format_ARGB32:
-        *flags |= QPlatformBackingStore::TextureSwizzle;
+        *flags = QPlatformBackingStore::TextureSwizzle;
         break;
     case QImage::Format_RGBA8888_Premultiplied:
-        *flags |= QPlatformBackingStore::TexturePremultiplied;
-        Q_FALLTHROUGH();
+        *flags = QPlatformBackingStore::TexturePremultiplied;
+        break;
     case QImage::Format_RGBX8888:
     case QImage::Format_RGBA8888:
         break;
     case QImage::Format_BGR30:
     case QImage::Format_A2BGR30_Premultiplied:
-        // no fast path atm
-        needsConversion = true;
-        break;
     case QImage::Format_RGB30:
     case QImage::Format_A2RGB30_Premultiplied:
-        // no fast path atm
         needsConversion = true;
         break;
     default:
@@ -90,34 +91,24 @@ QRhiTexture *QBackingStoreDefaultCompositor::toTexture(const QImage &sourceImage
         break;
     }
 
-    if (image.size().isEmpty())
-        return nullptr;
+    QImage image = needsConversion ? sourceImage.convertToFormat(QImage::Format_RGBA8888) : sourceImage;
+    if (!needsConversion)
+        image.detach();
 
-    const bool resized = !m_texture || m_texture->pixelSize() != image.size();
-    if (dirtyRegion.isEmpty() && !resized)
-        return m_texture.get();
-
-    if (needsConversion)
-        image = image.convertToFormat(QImage::Format_RGBA8888);
-    else
-        image.detach(); // if it was just wrapping data, that's no good, we need ownership, so detach
-
-    if (resized) {
+    if (resized) [[unlikely]] {
         if (!m_texture)
             m_texture.reset(rhi->newTexture(QRhiTexture::RGBA8, image.size()));
         else
             m_texture->setPixelSize(image.size());
         m_texture->create();
         resourceUpdates->uploadTexture(m_texture.get(), image);
-    } else {
-        QRect imageRect = image.rect();
-        QRect rect = dirtyRegion.boundingRect() & imageRect;
+    } else [[likely]] {
+        const QRect rect = dirtyRegion.boundingRect() & image.rect();
         QRhiTextureSubresourceUploadDescription subresDesc(image);
         subresDesc.setSourceTopLeft(rect.topLeft());
         subresDesc.setSourceSize(rect.size());
         subresDesc.setDestinationTopLeft(rect.topLeft());
-        QRhiTextureUploadDescription uploadDesc(QRhiTextureUploadEntry(0, 0, subresDesc));
-        resourceUpdates->uploadTexture(m_texture.get(), uploadDesc);
+        resourceUpdates->uploadTexture(m_texture.get(), QRhiTextureUploadDescription(QRhiTextureUploadEntry(0, 0, subresDesc)));
     }
 
     return m_texture.get();
@@ -546,26 +537,23 @@ QPlatformBackingStore::FlushResult QBackingStoreDefaultCompositor::flush(
     const QSize windowSize = window->size();
     const QRect windowRect(QPoint(), windowSize);
     
-    const RenderContext ctx{
-        .dpr = dpr,
-        .deviceWindowRect = scaledRect(windowRect, dpr),
-        .sourceWindowRect = scaledRect(windowRect, sourceDevicePixelRatio),
-        .invertTargetY = !rhi->isYUpInNDC(),
-        .invertSource = !rhi->isYUpInFramebuffer()
-    };
+    const QRect deviceWindowRect = scaledRect(windowRect, dpr);
+    const QRect sourceWindowRect = scaledRect(windowRect, sourceDevicePixelRatio);
+    const bool invertTargetY = !rhi->isYUpInNDC();
+    const bool invertSource = !rhi->isYUpInFramebuffer();
 
-    const bool needsLinearSampler = ctx.sourceWindowRect.width() > ctx.deviceWindowRect.width() &&
-                                    ctx.sourceWindowRect.height() > ctx.deviceWindowRect.height();
+    const bool needsLinearSampler = sourceWindowRect.width() > deviceWindowRect.width() &&
+                                    sourceWindowRect.height() > deviceWindowRect.height();
 
     if (m_texture) [[likely]] {
         const QPoint sourceWindowOffset = scaledOffset(offset, sourceTransformFactor);
         const QRect srcRect = toBottomLeftRect(
-            ctx.sourceWindowRect.translated(sourceWindowOffset), 
+            sourceWindowRect.translated(sourceWindowOffset), 
             m_texture->pixelSize().height()
         );
         const QMatrix3x3 source = sourceTransform(srcRect, m_texture->pixelSize(), origin);
         QMatrix4x4 target;
-        if (ctx.invertTargetY)
+        if (invertTargetY)
             target.data()[5] = -1.0f;
         updateUniforms(&m_widgetQuadData, resourceUpdates, target, source, uniformOptions);
         if (needsLinearSampler)
@@ -643,13 +631,13 @@ QPlatformBackingStore::FlushResult QBackingStoreDefaultCompositor::flush(
 
     for (int i = 0; i < textureWidgetCount; ++i) {
         const bool invertSourceForWidget = widgetInfos[i].flags.testFlag(QPlatformTextureList::MirrorVertically)
-            ? !ctx.invertSource : ctx.invertSource;
+            ? !invertSource : invertSource;
         
         QMatrix4x4 target;
         QMatrix3x3 source;
         
-        if (!prepareDrawForRenderToTextureWidget(textures, i, window, ctx.deviceWindowRect,
-                                                 offset, ctx.invertTargetY, invertSourceForWidget,
+        if (!prepareDrawForRenderToTextureWidget(textures, i, window, deviceWindowRect,
+                                                 offset, invertTargetY, invertSourceForWidget,
                                                  &target, &source)) {
             m_textureQuadData[i].reset();
             continue;
