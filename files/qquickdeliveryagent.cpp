@@ -2082,21 +2082,23 @@ void QQuickDeliveryAgentPrivate::deliverPointerEvent(QPointerEvent *event)
 QVector<QQuickItem *> QQuickDeliveryAgentPrivate::eventTargets(QQuickItem *item, const QEvent *event, QPointF scenePos, qxp::function_ref<std::optional<bool> (QQuickItem *, const QEvent *)> predicate) const
 {
     QVector<QQuickItem *> result;
-    result.reserve(32);
+    result.reserve(64);
 
-    auto traverse = [&](auto self, QQuickItem *curr) -> void {
-        auto *p = QQuickItemPrivate::get(curr);
+    auto walker = [&](auto self, QQuickItem *curr) -> void {
+        auto *priv = QQuickItemPrivate::get(curr);
         const QPointF lp = curr->mapFromScene(scenePos);
 
-        if ((p->flags & QQuickItem::ItemClipsChildrenToShape) && !curr->clipRect().contains(lp)) [[unlikely]] return;
+        if ((priv->flags & QQuickItem::ItemClipsChildrenToShape) && !curr->clipRect().contains(lp)) [[unlikely]]
+            return;
 
         bool relevant = curr->contains(lp);
-        if (auto op = predicate(curr, event); op.has_value()) [[unlikely]] relevant = *op;
+        if (auto op = predicate(curr, event); op.has_value()) [[unlikely]]
+            relevant = *op;
 
-        const auto children = p->paintOrderChildItems();
-        auto itSplit = std::ranges::lower_bound(children, 0.0, std::ranges::less{}, [](auto *c) { return c->z(); });
+        const auto children = priv->paintOrderChildItems();
+        auto split = std::ranges::lower_bound(children, 0.0, std::ranges::less{}, [](auto *c) { return c->z(); });
 
-        for (auto *child : std::ranges::subrange(itSplit, children.end()) | std::views::reverse) {
+        for (auto *child : std::ranges::subrange(split, children.end()) | std::views::reverse) {
             auto *cp = QQuickItemPrivate::get(child);
             if (child->isVisible() && !cp->culled && child->isEnabled() && !(cp->extra.isAllocated() && cp->extra->subsceneDeliveryAgent))
                 self(self, child);
@@ -2104,14 +2106,14 @@ QVector<QQuickItem *> QQuickDeliveryAgentPrivate::eventTargets(QQuickItem *item,
 
         if (relevant) result.push_back(curr);
 
-        for (auto *child : std::ranges::subrange(children.begin(), itSplit) | std::views::reverse) {
+        for (auto *child : std::ranges::subrange(children.begin(), split) | std::views::reverse) {
             auto *cp = QQuickItemPrivate::get(child);
             if (child->isVisible() && !cp->culled && child->isEnabled() && !(cp->extra.isAllocated() && cp->extra->subsceneDeliveryAgent))
                 self(self, child);
         }
     };
 
-    traverse(traverse, item);
+    walker(walker, item);
     return result;
 }
 
