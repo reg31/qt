@@ -678,20 +678,16 @@ bool QQuickDeliveryAgentPrivate::clearHover(ulong timestamp)
     const QPointF lastPos = window->mapFromGlobal(QGuiApplicationPrivate::lastCursorPosition);
     const auto modifiers = QGuiApplication::keyboardModifiers();
 
-    // while we don't modify hoveritems directly in the loop, the delivery of the event
-    // is expected to reset the stored ID for each cleared item, and items might also
-    // be removed from the map in response to event delivery.
-    // So we don't want to iterate over a const version of hoverItems here (it would be
-    // misleading), but still use const_iterators to avoid  premature detach and constant
-    // ref-count-checks.
+    QList<QQuickItem *> itemsToProcess;
+    itemsToProcess.reserve(hoverItems.size());
+    
     for (auto it = hoverItems.cbegin(); it != hoverItems.cend(); ++it) {
-        if (const auto &item = it.key()) {
-            deliverHoverEventToItem(item, lastPos, lastPos, modifiers, timestamp, HoverChange::Clear);
-            Q_ASSERT(([this, item]{
-                const auto &it2 = std::as_const(hoverItems).find(item);
-                return it2 == hoverItems.cend() || it2.value() == 0;
-            }()));
-        }
+        if (it.key())
+            itemsToProcess.append(it.key());
+    }
+    
+    for (QQuickItem *item : itemsToProcess) {
+        deliverHoverEventToItem(item, lastPos, lastPos, modifiers, timestamp, HoverChange::Clear);
     }
 
     return true;
@@ -1189,56 +1185,37 @@ bool QQuickDeliveryAgentPrivate::deliverHoverEventRecursive(
         QQuickItem *item, const QPointF &scenePos, const QPointF &lastScenePos,
         Qt::KeyboardModifiers modifiers, ulong timestamp)
 {
-
     const QQuickItemPrivate *itemPrivate = QQuickItemPrivate::get(item);
     const QList<QQuickItem *> children = itemPrivate->paintOrderChildItems();
 
-    for (int ii = children.size() - 1; ii >= 0; --ii) {
-        QQuickItem *child = children.at(ii);
+    for (auto it = children.rbegin(); it != children.rend(); ++it) {
+        QQuickItem *child = *it;
         const QQuickItemPrivate *childPrivate = QQuickItemPrivate::get(child);
 
-        if (!child->isVisible() || childPrivate->culled)
+        if (!child->isVisible() || childPrivate->culled || !childPrivate->subtreeHoverEnabled)
             continue;
-        if (!childPrivate->subtreeHoverEnabled)
-            continue;
+            
         if (childPrivate->flags & QQuickItem::ItemClipsChildrenToShape) {
-            const QPointF localPos = child->mapFromScene(scenePos);
-            if (!child->contains(localPos))
+            if (!child->contains(child->mapFromScene(scenePos)))
                 continue;
         }
 
-        // Recurse into the child
-        const bool accepted = deliverHoverEventRecursive(child, scenePos, lastScenePos, modifiers, timestamp);
-        if (accepted) {
-            // Stop propagation / recursion
+        if (deliverHoverEventRecursive(child, scenePos, lastScenePos, modifiers, timestamp))
             return true;
-        }
-        if (hoveredLeafItemFound) {
-            // Don't propagate to siblings, only to ancestors
+            
+        if (hoveredLeafItemFound)
             break;
-        }
     }
 
-    // All decendants have been visited.
-    // Now deliver the event to the item
     return deliverHoverEventToItem(item, scenePos, lastScenePos, modifiers, timestamp, HoverChange::Set);
 }
 
-/*! \internal
-    Delivers a hover event at \a scenePos to \a item and its HoverHandlers if any.
-    Returns \c true if the event remains accepted, \c false if rejected.
-
-    If \a clearHover is \c true, it will be sent as a QEvent::HoverLeave event,
-    and the item and its handlers are expected to transition into their non-hovered
-    states even if the position still indicates that the mouse is inside.
-*/
 bool QQuickDeliveryAgentPrivate::deliverHoverEventToItem(
         QQuickItem *item, const QPointF &scenePos, const QPointF &lastScenePos,
         Qt::KeyboardModifiers modifiers, ulong timestamp, HoverChange hoverChange)
 {
     QQuickItemPrivate *itemPrivate = QQuickItemPrivate::get(item);
     const QPointF localPos = item->mapFromScene(scenePos);
-    const QPointF globalPos = item->mapToGlobal(localPos);
     const bool isHovering = item->contains(localPos);
     const auto hoverItemIterator = hoverItems.find(item);
     const bool wasHovering = hoverItemIterator != hoverItems.end() && hoverItemIterator.value() != 0;
@@ -1248,26 +1225,16 @@ bool QQuickDeliveryAgentPrivate::deliverHoverEventToItem(
 
     bool accepted = false;
 
-    // Start by sending out enter/move/leave events to the item.
-    // Note that hoverEnabled only controls if we should send out hover events to the
-    // item itself. HoverHandlers are not included, and are dealt with separately below.
     if (itemPrivate->hoverEnabled && isHovering && hoverChange == HoverChange::Set) {
-        // Add the item to the list of hovered items (if it doesn't exist there
-        // from before), and update hoverId to mark that it's (still) hovered.
-        // Also set hoveredLeafItemFound, so that only propagate in a straight
-        // line towards the root from now on.
         hoveredLeafItemFound = true;
         if (hoverItemIterator != hoverItems.end())
             hoverItemIterator.value() = currentHoverId;
         else
             hoverItems[item] = currentHoverId;
 
-        if (wasHovering)
-            accepted = sendHoverEvent(QEvent::HoverMove, item, scenePos, lastScenePos, modifiers, timestamp);
-        else
-            accepted = sendHoverEvent(QEvent::HoverEnter, item, scenePos, lastScenePos, modifiers, timestamp);
+        accepted = sendHoverEvent(wasHovering ? QEvent::HoverMove : QEvent::HoverEnter, 
+                                  item, scenePos, lastScenePos, modifiers, timestamp);
     } else if (wasHovering) {
-        // A leave should never stop propagation
         hoverItemIterator.value() = 0;
         sendHoverEvent(QEvent::HoverLeave, item, scenePos, lastScenePos, modifiers, timestamp);
     }
@@ -1275,24 +1242,18 @@ bool QQuickDeliveryAgentPrivate::deliverHoverEventToItem(
     if (!itemPrivate->hasPointerHandlers())
         return accepted;
 
-    // Next, send out hover events to the hover handlers.
-    // If the item didn't accept the hover event, 'accepted' is now false.
-    // Otherwise it's true, and then it should stay the way regardless of
-    // whether or not the hoverhandlers themselves are hovered.
-    // Note that since a HoverHandler can have a margin, a HoverHandler
-    // can be hovered even if the item itself is not.
+    const QPointF globalPos = item->mapToGlobal(localPos);
 
     if (hoverChange == HoverChange::Clear) {
-        // Note: a leave should never stop propagation
         QHoverEvent hoverEvent(QEvent::HoverLeave, scenePos, globalPos, lastScenePos, modifiers);
         hoverEvent.setTimestamp(timestamp);
 
         for (QQuickPointerHandler *h : itemPrivate->extra->pointerHandlers) {
-            if (QQuickHoverHandler *hh = qmlobject_cast<QQuickHoverHandler *>(h)) {
-                if (!hh->isHovered())
-                    continue;
-                hoverEvent.setAccepted(true);
-                QCoreApplication::sendEvent(hh, &hoverEvent);
+            if (auto *hh = qmlobject_cast<QQuickHoverHandler *>(h)) {
+                if (hh->isHovered()) {
+                    hoverEvent.setAccepted(true);
+                    QCoreApplication::sendEvent(hh, &hoverEvent);
+                }
             }
         }
     } else {
@@ -1300,23 +1261,20 @@ bool QQuickDeliveryAgentPrivate::deliverHoverEventToItem(
         hoverEvent.setTimestamp(timestamp);
 
         for (QQuickPointerHandler *h : itemPrivate->extra->pointerHandlers) {
-            if (QQuickHoverHandler *hh = qmlobject_cast<QQuickHoverHandler *>(h)) {
-                if (!hh->enabled())
-                    continue;
-                hoverEvent.setAccepted(true);
-                hh->handlePointerEvent(&hoverEvent);
-                if (hh->isHovered()) {
-                    // Mark the whole item as updated, even if only the handler is
-                    // actually in a hovered state (because of HoverHandler.margins)
-                    hoveredLeafItemFound = true;
-                    if (hoverItemIterator != hoverItems.end())
-                        hoverItemIterator.value() = currentHoverId;
-                    else
-                        hoverItems[item] = currentHoverId;
-                    if (hh->isBlocking()) {
-                        qCDebug(lcHoverTrace) << "skipping rest of hover delivery due to blocking" << hh;
-                        accepted = true;
-                        break;
+            if (auto *hh = qmlobject_cast<QQuickHoverHandler *>(h)) {
+                if (hh->enabled()) {
+                    hoverEvent.setAccepted(true);
+                    hh->handlePointerEvent(&hoverEvent);
+                    if (hh->isHovered()) {
+                        hoveredLeafItemFound = true;
+                        if (hoverItemIterator != hoverItems.end())
+                            hoverItemIterator.value() = currentHoverId;
+                        else
+                            hoverItems[item] = currentHoverId;
+                        if (hh->isBlocking()) {
+                            qCDebug(lcHoverTrace) << "skipping rest of hover delivery due to blocking" << hh;
+                            return true;
+                        }
                     }
                 }
             }
@@ -1409,29 +1367,30 @@ void QQuickDeliveryAgentPrivate::handleWindowDeactivate(QQuickWindow *win)
 {
     Q_Q(QQuickDeliveryAgent);
     qCDebug(lcFocus) << "deactivated" << win->title();
+    
     const auto inputDevices = QInputDevice::devices();
     for (auto device : inputDevices) {
-        if (auto pointingDevice = qobject_cast<const QPointingDevice *>(device)) {
-            auto devPriv = QPointingDevicePrivate::get(const_cast<QPointingDevice *>(pointingDevice));
-            for (auto epd : devPriv->activePoints.values()) {
-                if (!epd.exclusiveGrabber.isNull()) {
-                    bool relevant = false;
-                    if (QQuickItem *item = qmlobject_cast<QQuickItem *>(epd.exclusiveGrabber.data()))
-                        relevant = (item->window() == win);
-                    else if (QQuickPointerHandler *handler = qmlobject_cast<QQuickPointerHandler *>(epd.exclusiveGrabber.data())) {
-                        if (handler->parentItem())
-                            relevant = (handler->parentItem()->window() == win && epd.exclusiveGrabberContext.data() == q);
-                        else
-                            // a handler with no Item parent probably has a 3D Model parent.
-                            // TODO actually check the window somehow
-                            relevant = true;
-                    }
-                    if (relevant)
-                        devPriv->setExclusiveGrabber(nullptr, epd.eventPoint, nullptr);
-                }
-                // For now, we don't clearPassiveGrabbers(), just in case passive grabs
-                // can be useful to keep monitoring the mouse even after window deactivation.
+        auto pointingDevice = qobject_cast<const QPointingDevice *>(device);
+        if (!pointingDevice)
+            continue;
+            
+        auto devPriv = QPointingDevicePrivate::get(const_cast<QPointingDevice *>(pointingDevice));
+        for (auto epd : devPriv->activePoints.values()) {
+            if (epd.exclusiveGrabber.isNull())
+                continue;
+                
+            bool relevant = false;
+            if (auto *item = qmlobject_cast<QQuickItem *>(epd.exclusiveGrabber.data())) {
+                relevant = (item->window() == win);
+            } else if (auto *handler = qmlobject_cast<QQuickPointerHandler *>(epd.exclusiveGrabber.data())) {
+                if (handler->parentItem())
+                    relevant = (handler->parentItem()->window() == win && epd.exclusiveGrabberContext.data() == q);
+                else
+                    relevant = true;
             }
+            
+            if (relevant)
+                devPriv->setExclusiveGrabber(nullptr, epd.eventPoint, nullptr);
         }
     }
 }
@@ -1445,11 +1404,9 @@ void QQuickDeliveryAgentPrivate::handleWindowHidden(QQuickWindow *win)
 
 bool QQuickDeliveryAgentPrivate::allUpdatedPointsAccepted(const QPointerEvent *ev)
 {
-    for (auto &point : ev->points()) {
-        if (point.state() != QEventPoint::State::Pressed && !point.isAccepted())
-            return false;
-    }
-    return true;
+    return std::ranges::all_of(ev->points(), [](const QEventPoint &point) {
+        return point.state() == QEventPoint::State::Pressed || point.isAccepted();
+    });
 }
 
 /*! \internal
@@ -1460,17 +1417,22 @@ bool QQuickDeliveryAgentPrivate::allUpdatedPointsAccepted(const QPointerEvent *e
 */
 void QQuickDeliveryAgentPrivate::localizePointerEvent(QPointerEvent *ev, const QQuickItem *dest)
 {
-    for (int i = 0; i < ev->pointCount(); ++i) {
+    const QPointF destScenePos = dest->mapToScene(QPointF());
+    const int count = ev->pointCount();
+    
+    for (int i = 0; i < count; ++i) {
         auto &point = ev->point(i);
         QMutableEventPoint::setPosition(point, dest->mapFromScene(point.scenePosition()));
         qCDebug(lcPtrLoc) << ev->type() << "@" << point.scenePosition() << "to"
-                          << dest << "@" << dest->mapToScene(QPointF()) << "->" << point;
+                          << dest << "@" << destScenePos << "->" << point;
     }
 }
 
 QList<QObject *> QQuickDeliveryAgentPrivate::exclusiveGrabbers(QPointerEvent *ev)
 {
     QList<QObject *> result;
+    result.reserve(ev->pointCount());
+    
     for (const QEventPoint &point : ev->points()) {
         if (QObject *grabber = ev->exclusiveGrabber(point)) {
             if (!result.contains(grabber))
@@ -1482,20 +1444,16 @@ QList<QObject *> QQuickDeliveryAgentPrivate::exclusiveGrabbers(QPointerEvent *ev
 
 bool QQuickDeliveryAgentPrivate::anyPointGrabbed(const QPointerEvent *ev)
 {
-    for (const QEventPoint &point : ev->points()) {
-        if (ev->exclusiveGrabber(point) || !ev->passiveGrabbers(point).isEmpty())
-            return true;
-    }
-    return false;
+    return std::ranges::any_of(ev->points(), [ev](const QEventPoint &point) {
+        return ev->exclusiveGrabber(point) || !ev->passiveGrabbers(point).isEmpty();
+    });
 }
 
 bool QQuickDeliveryAgentPrivate::allPointsGrabbed(const QPointerEvent *ev)
 {
-    for (const auto &point : ev->points()) {
-        if (!ev->exclusiveGrabber(point) && ev->passiveGrabbers(point).isEmpty())
-            return false;
-    }
-    return true;
+    return std::ranges::all_of(ev->points(), [ev](const QEventPoint &point) {
+        return ev->exclusiveGrabber(point) || !ev->passiveGrabbers(point).isEmpty();
+    });
 }
 
 bool QQuickDeliveryAgentPrivate::isMouseEvent(const QPointerEvent *ev)
