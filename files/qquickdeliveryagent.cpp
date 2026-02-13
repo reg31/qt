@@ -678,16 +678,14 @@ bool QQuickDeliveryAgentPrivate::clearHover(ulong timestamp)
     const QPointF lastPos = window->mapFromGlobal(QGuiApplicationPrivate::lastCursorPosition);
     const auto modifiers = QGuiApplication::keyboardModifiers();
 
-    QList<QQuickItem *> itemsToProcess;
-    itemsToProcess.reserve(hoverItems.size());
-    
     for (auto it = hoverItems.cbegin(); it != hoverItems.cend(); ++it) {
-        if (it.key())
-            itemsToProcess.append(it.key());
-    }
-    
-    for (QQuickItem *item : itemsToProcess) {
-        deliverHoverEventToItem(item, lastPos, lastPos, modifiers, timestamp, HoverChange::Clear);
+        if (const auto &item = it.key()) {
+            deliverHoverEventToItem(item, lastPos, lastPos, modifiers, timestamp, HoverChange::Clear);
+            Q_ASSERT(([this, item]{
+                const auto &it2 = std::as_const(hoverItems).find(item);
+                return it2 == hoverItems.cend() || it2.value() == 0;
+            }()));
+        }
     }
 
     return true;
@@ -1181,30 +1179,36 @@ bool QQuickDeliveryAgentPrivate::deliverHoverEvent(
     However, if the first candidate HoverHandler is disabled, delivery continues
     to the next one, which may be a sibling (QTBUG-106548).
 */
+
 bool QQuickDeliveryAgentPrivate::deliverHoverEventRecursive(
         QQuickItem *item, const QPointF &scenePos, const QPointF &lastScenePos,
         Qt::KeyboardModifiers modifiers, ulong timestamp)
 {
+
     const QQuickItemPrivate *itemPrivate = QQuickItemPrivate::get(item);
     const QList<QQuickItem *> children = itemPrivate->paintOrderChildItems();
 
-    for (auto it = children.rbegin(); it != children.rend(); ++it) {
-        QQuickItem *child = *it;
+    for (int ii = children.size() - 1; ii >= 0; --ii) {
+        QQuickItem *child = children.at(ii);
         const QQuickItemPrivate *childPrivate = QQuickItemPrivate::get(child);
 
-        if (!child->isVisible() || childPrivate->culled || !childPrivate->subtreeHoverEnabled)
+        if (!child->isVisible() || childPrivate->culled)
             continue;
-            
+        if (!childPrivate->subtreeHoverEnabled)
+            continue;
         if (childPrivate->flags & QQuickItem::ItemClipsChildrenToShape) {
-            if (!child->contains(child->mapFromScene(scenePos)))
+            const QPointF localPos = child->mapFromScene(scenePos);
+            if (!child->contains(localPos))
                 continue;
         }
 
-        if (deliverHoverEventRecursive(child, scenePos, lastScenePos, modifiers, timestamp))
+        const bool accepted = deliverHoverEventRecursive(child, scenePos, lastScenePos, modifiers, timestamp);
+        if (accepted) {
             return true;
-            
-        if (hoveredLeafItemFound)
+        }
+        if (hoveredLeafItemFound) {
             break;
+        }
     }
 
     return deliverHoverEventToItem(item, scenePos, lastScenePos, modifiers, timestamp, HoverChange::Set);
@@ -2034,8 +2038,7 @@ void QQuickDeliveryAgentPrivate::deliverPointerEvent(QPointerEvent *event)
     \endlist
 */
 // FIXME: should this be iterative instead of recursive?
-QVector<QQuickItem *> QQuickDeliveryAgentPrivate::eventTargets(QQuickItem *item, const QEvent *event, QPointF scenePos,
-                                                               qxp::function_ref<std::optional<bool> (QQuickItem *, const QEvent *)> predicate) const
+QVector<QQuickItem *> QQuickDeliveryAgentPrivate::eventTargets(QQuickItem *item, const QEvent *event, QPointF scenePos, qxp::function_ref<std::optional<bool> (QQuickItem *, const QEvent *)> predicate) const
 {
     QVector<QQuickItem *> targets;
     auto itemPrivate = QQuickItemPrivate::get(item);
