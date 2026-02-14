@@ -109,6 +109,14 @@ jobs:
           echo "Downloading optimized qbackingstoredefaultcompositor.cpp ..."
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qbackingstoredefaultcompositor.cpp \
             -o qtbase/src/gui/painting/qbackingstoredefaultcompositor.cpp
+
+          echo "Downloading optimized qsgmaterialshader.cpp ..."
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgmaterialshader.cpp \
+            -o qtdeclarative/src/quick/scenegraph/coreapi/qsgmaterialshader.cpp
+          
+          echo "Downloading optimized qsgrhishadereffectnode.cpp ..."
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgrhishadereffectnode.cpp \
+            -o qtbase/src/quick/scenegraph/qsgrhishadereffectnode.cpp
           
       - name: Configure
         run: |          
@@ -228,6 +236,14 @@ jobs:
           echo "Downloading optimized qbackingstoredefaultcompositor.cpp ..."
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qbackingstoredefaultcompositor.cpp \
             -o qtbase/src/gui/painting/qbackingstoredefaultcompositor.cpp
+
+          echo "Downloading optimized qsgmaterialshader.cpp ..."
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgmaterialshader.cpp \
+            -o qtdeclarative/src/quick/scenegraph/coreapi/qsgmaterialshader.cpp
+          
+          echo "Downloading optimized qsgrhishadereffectnode.cpp ..."
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgrhishadereffectnode.cpp \
+            -o qtbase/src/quick/scenegraph/qsgrhishadereffectnode.cpp
           
       - name: Configure Android Qt
         run: |
@@ -329,6 +345,14 @@ jobs:
           echo "Downloading optimized qbackingstoredefaultcompositor.cpp ..."
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qbackingstoredefaultcompositor.cpp \
             -o qtbase/src/gui/painting/qbackingstoredefaultcompositor.cpp
+
+          echo "Downloading optimized qsgmaterialshader.cpp ..."
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgmaterialshader.cpp \
+            -o qtdeclarative/src/quick/scenegraph/coreapi/qsgmaterialshader.cpp
+          
+          echo "Downloading optimized qsgrhishadereffectnode.cpp ..."
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgrhishadereffectnode.cpp \
+            -o qtbase/src/quick/scenegraph/qsgrhishadereffectnode.cpp
 
       - name: Configure and build
         run: |
@@ -477,6 +501,14 @@ jobs:
           echo "Downloading optimized qbackingstoredefaultcompositor.cpp ..."
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qbackingstoredefaultcompositor.cpp \
             -o qtbase/src/gui/painting/qbackingstoredefaultcompositor.cpp
+
+          echo "Downloading optimized qsgmaterialshader.cpp ..."
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgmaterialshader.cpp \
+            -o qtdeclarative/src/quick/scenegraph/coreapi/qsgmaterialshader.cpp
+          
+          echo "Downloading optimized qsgrhishadereffectnode.cpp ..."
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgrhishadereffectnode.cpp \
+            -o qtbase/src/quick/scenegraph/qsgrhishadereffectnode.cpp
       
       - name: Download prebuilt Qt Host
         run: |
