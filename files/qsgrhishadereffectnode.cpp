@@ -945,8 +945,7 @@ void QSGRhiGuiThreadShaderEffectManager::prepareShaderCode(ShaderInfo::Type type
     static QFileSelector selector;
 
     const QString fn = selector.select(QQmlFile::urlToLocalFileOrQrc(src));
-    const QFileInfo info(fn);
-    const QDateTime currentMtime = info.lastModified();
+    const QDateTime currentMtime = QFileInfo(fn).lastModified();
 
     {
         std::shared_lock lock(reflectMutex);
@@ -967,7 +966,14 @@ void QSGRhiGuiThreadShaderEffectManager::prepareShaderCode(ShaderInfo::Type type
     std::unique_lock lock(reflectMutex);
     auto& entry = reflectCache[fn];
     if (!entry.initialized || entry.mtime != currentMtime) [[likely]] {
-        entry.shader = loadShaderFromFile(fn);
+        QFile f(fn);
+        if (!f.open(QIODevice::ReadOnly)) [[unlikely]] {
+            m_status = Error;
+            emit shaderCodePrepared(false, typeHint, src, result);
+            emit logAndStatusChanged();
+            return;
+        }
+        entry.shader = QShader::fromSerialized(f.readAll());
         if (!entry.shader.isValid()) [[unlikely]] {
             m_status = Error;
             emit shaderCodePrepared(false, typeHint, src, result);
