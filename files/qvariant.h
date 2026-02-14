@@ -456,6 +456,17 @@ template<typename T> inline T qvariant_cast(const QVariant &v) {
     T t{}; QMetaType::convert(v.metaType(), v.constData(), target, &t); return t;
 }
 
+namespace QtPrivate {
+class Q_CORE_EXPORT QVariantTypeCoercer
+{
+public:
+    const void *convert(const QVariant &value, const QMetaType &type);
+    const void *coerce(const QVariant &value, const QMetaType &type);
+private:
+    QVariant converted;
+};
+}
+
 #ifndef QT_NO_DATASTREAM
 Q_CORE_EXPORT QDataStream &operator>>(QDataStream &s, QVariant &p);
 Q_CORE_EXPORT QDataStream &operator<<(QDataStream &s, const QVariant &p);
