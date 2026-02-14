@@ -380,6 +380,23 @@ void *QVariant::prepareForEmplace(QMetaType type)
     QVariant next(std::in_place, type); std::swap(d, next.d); return const_cast<void *>(d.storage());
 }
 
+QVariant::QVariant(std::in_place_t, QMetaType type) : d(type.iface())
+{
+    if (const auto *iface = type.iface()) {
+        if (Private::canUseInternalSpace(iface)) {
+            d.is_shared = false;
+        } else {
+            d.data.shared = PrivateShared::create(iface->size, iface->alignment);
+            d.is_shared = true;
+        }
+    }
+}
+
+void QVariant::create(QMetaType type, const void *copy)
+{
+    *this = fromMetaType(type, copy);
+}
+
 bool QVariant::view(int type, void *ptr)
 { return QMetaType::view(d.type(), data(), QMetaType(type), ptr); }
 
