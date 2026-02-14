@@ -331,6 +331,13 @@ public:
     const void *constData() const { return d.storage(); }
     inline const void *data() const { return constData(); }
 
+    template <typename T, typename... Args, if_constructible<T, Args...> = true>
+    T &emplace(Args&&... args)
+    {
+        void *ptr = prepareForEmplace(QMetaType::fromType<std::remove_cvref_t<T>>());
+        return *new (ptr) std::remove_cvref_t<T>(std::forward<Args>(args)...);
+    }
+
     template<typename T>
     void setValue(T &&avalue)
     {
@@ -352,6 +359,17 @@ public:
     template<typename T> inline T value() && { return qvariant_cast<T>(std::move(*this)); }
 
     template<typename T>
+    inline T view()
+    {
+        T t{};
+        QMetaType::view(metaType(), data(), QMetaType::fromType<T>(), &t);
+        return t;
+    }
+
+    template<typename T>
+    bool canView() const { return canView(QMetaType::fromType<T>()); }
+
+    template<typename T>
     static inline QVariant fromValue(T &&value) noexcept(std::is_nothrow_copy_constructible_v<std::remove_cvref_t<T>> && Private::CanUseInternalSpace<std::remove_cvref_t<T>>) requires (std::is_copy_constructible_v<std::remove_cvref_t<T>> && std::is_destructible_v<std::remove_cvref_t<T>>)
     {
         using VT = std::remove_cvref_t<T>;
@@ -367,6 +385,13 @@ public:
         }
     }
 
+    template<typename... Types>
+    static inline QVariant fromStdVariant(const std::variant<Types...> &value)
+    {
+        if (value.valueless_by_exception()) return QVariant();
+        return std::visit([](auto &&arg) { return QVariant::fromValue(arg); }, value);
+    }
+
     static QVariant fromMetaType(QMetaType type, const void *copy = nullptr);
     static QPartialOrdering compare(const QVariant &lhs, const QVariant &rhs);
 
@@ -375,11 +400,17 @@ public:
     void save(QDataStream &ds) const;
 #endif
 
+#ifndef QT_NO_DEBUG_STREAM
+    QDebug qdebugHelper(QDebug debug) const;
+    friend QDebug operator<<(QDebug debug, const QVariant &variant) { return variant.qdebugHelper(debug); }
+#endif
+
 private:
     friend bool comparesEqual(const QVariant &a, const QVariant &b) { return a.equals(b); }
     Q_DECLARE_EQUALITY_COMPARABLE_NON_NOEXCEPT(QVariant)
     static QVariant moveConstruct(QMetaType type, void *data);
     static QVariant copyConstruct(QMetaType type, const void *data);
+    void *prepareForEmplace(QMetaType type);
 
     template <typename T> friend T *get_if(QVariant *v) noexcept { if (!v || v->metaType() != QMetaType::fromType<T>()) return nullptr; return static_cast<T*>(v->data()); }
     template <typename T> friend const T *get_if(const QVariant *v) noexcept { if (!v || v->isNull() || v->metaType() != QMetaType::fromType<T>()) return nullptr; return static_cast<const T*>(v->constData()); }
@@ -396,6 +427,7 @@ protected:
     Private d;
     void create(QMetaType type, const void *copy);
     bool equals(const QVariant &other) const;
+    bool view(int type, void *ptr);
 private:
     QVariant(std::in_place_t, QMetaType type);
     QVariant(void *) = delete;
