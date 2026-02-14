@@ -102,37 +102,16 @@ jobs:
         shell: bash
         run: |
           set -e
-          echo "Downloading optimized qquickdeliveryagent.cpp ..."
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qquickdeliveryagent.cpp \
-            -o qtdeclarative/src/quick/util/qquickdeliveryagent.cpp
-          
-          echo "Downloading optimized qbackingstoredefaultcompositor.cpp ..."
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qbackingstoredefaultcompositor.cpp \
-            -o qtbase/src/gui/painting/qbackingstoredefaultcompositor.cpp
-
-          echo "Downloading optimized qsgmaterialshader.cpp ..."
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgmaterialshader.cpp \
-            -o qtdeclarative/src/quick/scenegraph/coreapi/qsgmaterialshader.cpp
-          
-          echo "Downloading optimized qsgrhishadereffectnode.cpp ..."
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgrhishadereffectnode.cpp \
-            -o qtdeclarative/src/quick/scenegraph/qsgrhishadereffectnode.cpp
-
-          echo "Downloading optimized qvariant.h ..."
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qvariant.h \
-            -o qtbase/src/corelib/kernel/qvariant.h
-
-          echo "Downloading optimized qvariant.cpp ..."
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qvariant.cpp \
-            -o qtbase/src/corelib/kernel/qvariant.cpp
-
-          echo "Downloading optimized qvariant.h ..."
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qvariant.h \
-            -o qtbase/src/corelib/kernel/qvariant.h
-
-          echo "Downloading optimized qvariant.cpp ..."
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qvariant.cpp \
-            -o qtbase/src/corelib/kernel/qvariant.cpp
+          echo "Downloading experimental changes  ..."
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qquickdeliveryagent.cpp -o qtdeclarative/src/quick/util/qquickdeliveryagent.cpp
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qbackingstoredefaultcompositor.cpp -o qtbase/src/gui/painting/qbackingstoredefaultcompositor.cpp
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgmaterialshader.cpp -o qtdeclarative/src/quick/scenegraph/coreapi/qsgmaterialshader.cpp
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgrhishadereffectnode.cpp -o qtdeclarative/src/quick/scenegraph/qsgrhishadereffectnode.cpp
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qvariant.h -o qtbase/src/corelib/kernel/qvariant.h
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qvariant.cpp -o qtbase/src/corelib/kernel/qvariant.cpp
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qqmlglobal_p.h -o qtbase/src/qml/qml/qqmlglobal_p.h
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qqmlglobal.cpp -o qtbase/src/qml/qml/qqmlglobal.cpp
+          echo "Download completed  ..."
           
       - name: Configure
         run: |          
@@ -245,29 +224,16 @@ jobs:
         shell: bash
         run: |
           set -e
-          echo "Downloading optimized qquickdeliveryagent.cpp ..."
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qquickdeliveryagent.cpp \
-            -o qtdeclarative/src/quick/util/qquickdeliveryagent.cpp
-          
-          echo "Downloading optimized qbackingstoredefaultcompositor.cpp ..."
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qbackingstoredefaultcompositor.cpp \
-            -o qtbase/src/gui/painting/qbackingstoredefaultcompositor.cpp
-
-          echo "Downloading optimized qsgmaterialshader.cpp ..."
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgmaterialshader.cpp \
-            -o qtdeclarative/src/quick/scenegraph/coreapi/qsgmaterialshader.cpp
-          
-          echo "Downloading optimized qsgrhishadereffectnode.cpp ..."
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgrhishadereffectnode.cpp \
-            -o qtdeclarative/src/quick/scenegraph/qsgrhishadereffectnode.cpp
-
-          echo "Downloading optimized qvariant.h ..."
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qvariant.h \
-            -o qtbase/src/corelib/kernel/qvariant.h
-
-          echo "Downloading optimized qvariant.cpp ..."
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qvariant.cpp \
-            -o qtbase/src/corelib/kernel/qvariant.cpp
+          echo "Downloading experimental changes  ..."
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qquickdeliveryagent.cpp -o qtdeclarative/src/quick/util/qquickdeliveryagent.cpp
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qbackingstoredefaultcompositor.cpp -o qtbase/src/gui/painting/qbackingstoredefaultcompositor.cpp
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgmaterialshader.cpp -o qtdeclarative/src/quick/scenegraph/coreapi/qsgmaterialshader.cpp
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgrhishadereffectnode.cpp -o qtdeclarative/src/quick/scenegraph/qsgrhishadereffectnode.cpp
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qvariant.h -o qtbase/src/corelib/kernel/qvariant.h
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qvariant.cpp -o qtbase/src/corelib/kernel/qvariant.cpp
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qqmlglobal_p.h -o qtbase/src/qml/qml/qqmlglobal_p.h
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qqmlglobal.cpp -o qtbase/src/qml/qml/qqmlglobal.cpp
+          echo "Download completed  ..."
           
       - name: Configure Android Qt
         run: |
@@ -362,29 +328,16 @@ jobs:
         shell: bash
         run: |
           set -e
-          echo "Downloading optimized qquickdeliveryagent.cpp ..."
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qquickdeliveryagent.cpp \
-            -o qtdeclarative/src/quick/util/qquickdeliveryagent.cpp
-          
-          echo "Downloading optimized qbackingstoredefaultcompositor.cpp ..."
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qbackingstoredefaultcompositor.cpp \
-            -o qtbase/src/gui/painting/qbackingstoredefaultcompositor.cpp
-
-          echo "Downloading optimized qsgmaterialshader.cpp ..."
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgmaterialshader.cpp \
-            -o qtdeclarative/src/quick/scenegraph/coreapi/qsgmaterialshader.cpp
-          
-          echo "Downloading optimized qsgrhishadereffectnode.cpp ..."
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgrhishadereffectnode.cpp \
-            -o qtdeclarative/src/quick/scenegraph/qsgrhishadereffectnode.cpp
-
-          echo "Downloading optimized qvariant.h ..."
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qvariant.h \
-            -o qtbase/src/corelib/kernel/qvariant.h
-
-          echo "Downloading optimized qvariant.cpp ..."
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qvariant.cpp \
-            -o qtbase/src/corelib/kernel/qvariant.cpp
+          echo "Downloading experimental changes  ..."
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qquickdeliveryagent.cpp -o qtdeclarative/src/quick/util/qquickdeliveryagent.cpp
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qbackingstoredefaultcompositor.cpp -o qtbase/src/gui/painting/qbackingstoredefaultcompositor.cpp
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgmaterialshader.cpp -o qtdeclarative/src/quick/scenegraph/coreapi/qsgmaterialshader.cpp
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgrhishadereffectnode.cpp -o qtdeclarative/src/quick/scenegraph/qsgrhishadereffectnode.cpp
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qvariant.h -o qtbase/src/corelib/kernel/qvariant.h
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qvariant.cpp -o qtbase/src/corelib/kernel/qvariant.cpp
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qqmlglobal_p.h -o qtbase/src/qml/qml/qqmlglobal_p.h
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qqmlglobal.cpp -o qtbase/src/qml/qml/qqmlglobal.cpp
+          echo "Download completed  ..."
 
       - name: Configure and build
         run: |
@@ -526,29 +479,16 @@ jobs:
         shell: bash
         run: |
           set -e
-          echo "Downloading optimized qquickdeliveryagent.cpp ..."
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qquickdeliveryagent.cpp \
-            -o qtdeclarative/src/quick/util/qquickdeliveryagent.cpp
-          
-          echo "Downloading optimized qbackingstoredefaultcompositor.cpp ..."
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qbackingstoredefaultcompositor.cpp \
-            -o qtbase/src/gui/painting/qbackingstoredefaultcompositor.cpp
-
-          echo "Downloading optimized qsgmaterialshader.cpp ..."
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgmaterialshader.cpp \
-            -o qtdeclarative/src/quick/scenegraph/coreapi/qsgmaterialshader.cpp
-          
-          echo "Downloading optimized qsgrhishadereffectnode.cpp ..."
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgrhishadereffectnode.cpp \
-            -o qtdeclarative/src/quick/scenegraph/qsgrhishadereffectnode.cpp
-
-          echo "Downloading optimized qvariant.h ..."
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qvariant.h \
-            -o qtbase/src/corelib/kernel/qvariant.h
-
-          echo "Downloading optimized qvariant.cpp ..."
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qvariant.cpp \
-            -o qtbase/src/corelib/kernel/qvariant.cpp
+          echo "Downloading experimental changes  ..."
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qquickdeliveryagent.cpp -o qtdeclarative/src/quick/util/qquickdeliveryagent.cpp
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qbackingstoredefaultcompositor.cpp -o qtbase/src/gui/painting/qbackingstoredefaultcompositor.cpp
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgmaterialshader.cpp -o qtdeclarative/src/quick/scenegraph/coreapi/qsgmaterialshader.cpp
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgrhishadereffectnode.cpp -o qtdeclarative/src/quick/scenegraph/qsgrhishadereffectnode.cpp
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qvariant.h -o qtbase/src/corelib/kernel/qvariant.h
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qvariant.cpp -o qtbase/src/corelib/kernel/qvariant.cpp
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qqmlglobal_p.h -o qtbase/src/qml/qml/qqmlglobal_p.h
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qqmlglobal.cpp -o qtbase/src/qml/qml/qqmlglobal.cpp
+          echo "Download completed  ..."
       
       - name: Download prebuilt Qt Host
         run: |
