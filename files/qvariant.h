@@ -325,11 +325,10 @@ public:
     QChar toChar() const;
     QDate toDate() const;
     QTime toTime() const;
+    QVariantList toList() const;
+    QVariantMap toMap() const;
+    QVariantHash toHash() const;
     QDateTime toDateTime() const;
-    QList<QVariant> toList() const;
-    QMap<QString, QVariant> toMap() const;
-    QHash<QString, QVariant> toHash() const;
-
     QPoint toPoint() const;
     QPointF toPointF() const;
     QRect toRect() const;
@@ -422,7 +421,7 @@ private:
     template <typename T>
     friend T *get_if(QVariant *v) noexcept
     {
-        if (!v || v->d.type() != QMetaType::fromType<T>())
+        if (!v || v->metaType() != QMetaType::fromType<T>())
             return nullptr;
         return static_cast<T*>(v->data());
     }
@@ -430,9 +429,9 @@ private:
     template <typename T>
     friend const T *get_if(const QVariant *v) noexcept
     {
-        if (!v || v->d.is_null || v->d.type() != QMetaType::fromType<T>())
+        if (!v || v->isNull() || v->metaType() != QMetaType::fromType<T>())
             return nullptr;
-        return static_cast<const T*>(v->data());
+        return static_cast<const T*>(v->constData());
     }
 
 #define Q_MK_GET(cvref) \
@@ -440,7 +439,7 @@ private:
     friend T cvref get(QVariant cvref v) \
     { \
         using VT = std::remove_cvref_t<T>; \
-        Q_ASSERT(v.d.type() == QMetaType::fromType<VT>()); \
+        Q_ASSERT(v.metaType() == QMetaType::fromType<VT>()); \
         return static_cast<T cvref>(*get_if<VT>(&v)); \
     }
     Q_MK_GET(&)
@@ -491,9 +490,9 @@ inline void swap(QVariant &value1, QVariant &value2) noexcept
 
 template<typename T> inline T qvariant_cast(const QVariant &v)
 {
-    QMetaType targetType = QMetaType::fromType<T>();
-    if (v.d.type() == targetType)
-        return v.d.get<T>();
+    const QMetaType targetType = QMetaType::fromType<T>();
+    if (v.metaType() == targetType)
+        return *static_cast<const T *>(v.constData());
     T t{};
     QMetaType::convert(v.metaType(), v.constData(), targetType, &t);
     return t;
