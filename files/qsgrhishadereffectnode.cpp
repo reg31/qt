@@ -16,6 +16,8 @@
 #include <QFileSelector>
 #include <QMutexLocker>
 
+#include <QFileInfo>
+#include <QDateTime>
 #include <flat_map>
 #include <shared_mutex>
 
@@ -933,6 +935,7 @@ void QSGRhiGuiThreadShaderEffectManager::prepareShaderCode(ShaderInfo::Type type
         QShader shader;
         ShaderInfo::Type type;
         QList<ShaderInfo::Variable> variables;
+        QDateTime mtime;
         bool valid = false;
         bool initialized = false;
     };
@@ -942,24 +945,28 @@ void QSGRhiGuiThreadShaderEffectManager::prepareShaderCode(ShaderInfo::Type type
     static QFileSelector selector;
 
     const QString fn = selector.select(QQmlFile::urlToLocalFileOrQrc(src));
+    const QFileInfo info(fn);
+    const QDateTime currentMtime = info.lastModified();
 
     {
         std::shared_lock lock(reflectMutex);
         if (auto it = reflectCache.find(fn); it != reflectCache.end() && it->second.initialized) [[likely]] {
-            result->name = fn;
-            result->rhiShader = it->second.shader;
-            result->type = it->second.type;
-            result->variables = it->second.variables;
-            m_status = it->second.valid ? Compiled : Error;
-            emit shaderCodePrepared(it->second.valid, typeHint, src, result);
-            emit logAndStatusChanged();
-            return;
+            if (it->second.mtime == currentMtime) [[likely]] {
+                result->name = fn;
+                result->rhiShader = it->second.shader;
+                result->type = it->second.type;
+                result->variables = it->second.variables;
+                m_status = it->second.valid ? Compiled : Error;
+                emit shaderCodePrepared(it->second.valid, typeHint, src, result);
+                emit logAndStatusChanged();
+                return;
+            }
         }
     }
 
     std::unique_lock lock(reflectMutex);
     auto& entry = reflectCache[fn];
-    if (!entry.initialized) [[likely]] {
+    if (!entry.initialized || entry.mtime != currentMtime) [[likely]] {
         entry.shader = loadShaderFromFile(fn);
         if (!entry.shader.isValid()) [[unlikely]] {
             m_status = Error;
@@ -972,6 +979,7 @@ void QSGRhiGuiThreadShaderEffectManager::prepareShaderCode(ShaderInfo::Type type
         entry.valid = reflect(result);
         entry.type = result->type;
         entry.variables = result->variables;
+        entry.mtime = currentMtime;
         entry.initialized = true;
     } else {
         result->name = fn;
