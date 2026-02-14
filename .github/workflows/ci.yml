@@ -110,7 +110,6 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qvariant.h -o qtbase/src/corelib/kernel/qvariant.h
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qvariant.cpp -o qtbase/src/corelib/kernel/qvariant.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qqmlglobal_p.h -o qtdeclarative/src/qml/qml/qqmlglobal_p.h
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qqmlglobal.cpp -o qtdeclarative/src/qml/qml/qqmlglobal.cpp
           echo "Download completed  ..."
           
       - name: Configure
@@ -232,7 +231,6 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qvariant.h -o qtbase/src/corelib/kernel/qvariant.h
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qvariant.cpp -o qtbase/src/corelib/kernel/qvariant.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qqmlglobal_p.h -o qtdeclarative/src/qml/qml/qqmlglobal_p.h
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qqmlglobal.cpp -o qtdeclarative/src/qml/qml/qqmlglobal.cpp
           echo "Download completed  ..."
           
       - name: Configure Android Qt
@@ -336,7 +334,6 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qvariant.h -o qtbase/src/corelib/kernel/qvariant.h
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qvariant.cpp -o qtbase/src/corelib/kernel/qvariant.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qqmlglobal_p.h -o qtdeclarative/src/qml/qml/qqmlglobal_p.h
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qqmlglobal.cpp -o qtdeclarative/src/qml/qml/qqmlglobal.cpp
           echo "Download completed  ..."
 
       - name: Configure and build
@@ -487,7 +484,6 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qvariant.h -o qtbase/src/corelib/kernel/qvariant.h
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qvariant.cpp -o qtbase/src/corelib/kernel/qvariant.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qqmlglobal_p.h -o qtdeclarative/src/qml/qml/qqmlglobal_p.h
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qqmlglobal.cpp -o qtdeclarative/src/qml/qml/qqmlglobal.cpp
           echo "Download completed  ..."
       
       - name: Download prebuilt Qt Host
