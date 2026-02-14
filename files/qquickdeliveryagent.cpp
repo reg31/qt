@@ -2084,9 +2084,8 @@ QList<QQuickItem *> QQuickDeliveryAgentPrivate::eventTargets(QQuickItem *item, c
     QList<QQuickItem *> result;
     result.reserve(64);
 
-    auto walker = [&](auto self, QQuickItem *curr, QPointF lp, QPointF sp) -> void {
+    auto walker = [&](auto self, QQuickItem *curr, QPointF lp) -> void {
         auto *priv = QQuickItemPrivate::get(curr);
-        
         if ((priv->flags & QQuickItem::ItemClipsChildrenToShape) && !curr->clipRect().contains(lp)) [[unlikely]]
             return;
 
@@ -2100,7 +2099,7 @@ QList<QQuickItem *> QQuickDeliveryAgentPrivate::eventTargets(QQuickItem *item, c
         for (auto *child : std::ranges::subrange(split, children.end()) | std::views::reverse) {
             auto *cp = QQuickItemPrivate::get(child);
             if (child->isVisible() && !cp->culled && child->isEnabled() && !(cp->extra.isAllocated() && cp->extra->subsceneDeliveryAgent))
-                self(self, child, child->mapFromScene(sp), sp);
+                self(self, child, child->mapFromScene(scenePos));
         }
 
         if (relevant) result.push_back(curr);
@@ -2108,12 +2107,13 @@ QList<QQuickItem *> QQuickDeliveryAgentPrivate::eventTargets(QQuickItem *item, c
         for (auto *child : std::ranges::subrange(children.begin(), split) | std::views::reverse) {
             auto *cp = QQuickItemPrivate::get(child);
             if (child->isVisible() && !cp->culled && child->isEnabled() && !(cp->extra.isAllocated() && cp->extra->subsceneDeliveryAgent))
-                self(self, child, child->mapFromScene(sp), sp);
+                self(self, child, child->mapFromScene(scenePos));
         }
     };
 
-    walker(walker, item, localPos, scenePos);
+    walker(walker, item, localPos);
     return result;
+}  return result;
 }
 
 /*! \internal
