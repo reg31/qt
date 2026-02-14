@@ -6,8 +6,11 @@
 #include "qsgmaterialshader_p.h"
 #include <QtCore/QFile>
 
+#include <QFileInfo>
+#include <QDateTime>
 #include <flat_map>
 #include <shared_mutex>
+
 
 QT_BEGIN_NAMESPACE
 
@@ -168,33 +171,43 @@ QT_BEGIN_NAMESPACE
 
 QShader QSGMaterialShaderPrivate::loadShader(const QString &filename)
 {
-    static std::flat_map<QString, QShader> diskCache;
+    struct CacheEntry {
+        QShader shader;
+        QDateTime mtime;
+    };
+    static std::flat_map<QString, CacheEntry> diskCache;
     static std::shared_mutex cacheMutex;
+
+    const QFileInfo info(filename);
+    const QDateTime currentMtime = info.lastModified();
 
     {
         std::shared_lock lock(cacheMutex);
-        if (auto it = diskCache.find(filename); it != diskCache.end()) [[likely]]
-            return it->second;
+        if (auto it = diskCache.find(filename); it != diskCache.end()) [[likely]] {
+            if (it->second.mtime == currentMtime) [[likely]]
+                return it->second.shader;
+        }
     }
 
     std::unique_lock lock(cacheMutex);
     auto it = diskCache.find(filename);
-    if (it != diskCache.end()) [[likely]]
-        return it->second;
+    if (it != diskCache.end() && it->second.mtime == currentMtime) [[likely]]
+        return it->second.shader;
 
-    QFile f(filename);
-    if (f.open(QIODevice::ReadOnly)) [[likely]] {
-        return diskCache[filename] = QShader::fromSerialized(f.readAll());
+    if (QFile f(filename); f.open(QIODevice::ReadOnly)) [[likely]] {
+        auto &entry = diskCache[filename];
+        entry.shader = QShader::fromSerialized(f.readAll());
+        entry.mtime = currentMtime;
+        return entry.shader;
     }
     return {};
 }
 
 void QSGMaterialShaderPrivate::prepare(QShader::Variant vertexShaderVariant)
 {
-    if (lastPreparedVariant == vertexShaderVariant && shaderFileNames.empty()) [[likely]]
+    if (vertexShader && vertexShader->shaderVariant == vertexShaderVariant && shaderFileNames.empty()) [[likely]]
         return;
 
-    lastPreparedVariant = vertexShaderVariant;
     ubufBinding = -1;
     ubufSize = 0;
     ubufStages = {};
