@@ -1,6 +1,17 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
+#include "qsgmaterial.h"
+#include "qsgrenderer_p.h"
+#include "qsgmaterialshader_p.h"
+#include <QtCore/QFile>
+
+
+#include <flat_map>
+#include <mutex>
+#include <shared_mutex>
+
+
 QT_BEGIN_NAMESPACE
 
 /*!
@@ -351,77 +362,5 @@ QByteArray *QSGMaterialShader::RenderState::uniformData() { return static_cast<c
 QRhiResourceUpdateBatch *QSGMaterialShader::RenderState::resourceUpdateBatch() { return static_cast<const QSGRenderer *>(m_data)->currentResourceUpdateBatch(); }
 QRhi *QSGMaterialShader::RenderState::rhi() { return static_cast<const QSGRenderer *>(m_data)->currentRhi(); }
 
-void QSGRhiGuiThreadShaderEffectManager::prepareShaderCode(ShaderInfo::Type typeHint, const QUrl &src, ShaderInfo *result)
-{
-    if (!(src.scheme().compare(u"qrc", Qt::CaseInsensitive) == 0 || src.isLocalFile())) [[unlikely]] {
-        emit shaderCodePrepared(false, typeHint, src, result);
-        return;
-    }
-
-    struct CacheEntry {
-        QShader shader;
-        ShaderInfo::Type type;
-        QList<ShaderInfo::Variable> variables;
-        QDateTime mtime;
-        bool valid = false;
-        bool initialized = false;
-    };
-
-    static std::flat_map<QString, CacheEntry> reflectCache;
-    static std::shared_mutex reflectMutex;
-    static QFileSelector selector;
-
-    const QString fn = selector.select(QQmlFile::urlToLocalFileOrQrc(src));
-    const QDateTime currentMtime = QFileInfo(fn).lastModified();
-
-    {
-        std::shared_lock lock(reflectMutex);
-        if (auto it = reflectCache.find(fn); it != reflectCache.end() && it->second.initialized) [[likely]] {
-            if (it->second.mtime == currentMtime) [[likely]] {
-                result->name = fn;
-                result->rhiShader = it->second.shader;
-                result->type = it->second.type;
-                result->variables = it->second.variables;
-                m_status = it->second.valid ? Compiled : Error;
-                emit shaderCodePrepared(it->second.valid, typeHint, src, result);
-                emit logAndStatusChanged();
-                return;
-            }
-        }
-    }
-
-    std::unique_lock lock(reflectMutex);
-    auto& entry = reflectCache[fn];
-    if (!entry.initialized || entry.mtime != currentMtime) [[likely]] {
-        QFile f(fn);
-        if (!f.open(QIODevice::ReadOnly)) [[unlikely]] {
-            m_status = Error;
-            emit shaderCodePrepared(false, typeHint, src, result);
-            return;
-        }
-        entry.shader = QShader::fromSerialized(f.readAll());
-        if (!entry.shader.isValid()) [[unlikely]] {
-            m_status = Error;
-            emit shaderCodePrepared(false, typeHint, src, result);
-            return;
-        }
-        result->name = fn;
-        result->rhiShader = entry.shader;
-        entry.valid = reflect(result);
-        entry.type = result->type;
-        entry.variables = result->variables;
-        entry.mtime = currentMtime;
-        entry.initialized = true;
-    } else {
-        result->name = fn;
-        result->rhiShader = entry.shader;
-        result->type = entry.type;
-        result->variables = entry.variables;
-    }
-
-    m_status = entry.valid ? Compiled : Error;
-    emit shaderCodePrepared(entry.valid, typeHint, src, result);
-    emit logAndStatusChanged();
-}
 
 QT_END_NAMESPACE
