@@ -203,10 +203,13 @@ public:
     static QVariant createValueType(const QJSValue &, QMetaType);
     static QVariant createValueType(const QString &, QMetaType);
     
+    static QVariant createValueType(const QVariant &value, QMetaType type, QV4::ExecutionEngine *engine)
+    { return createValueTypeImpl(value, type, engine); }
+
     template<typename T>
     static QVariant createValueType(const T &value, QMetaType type, QV4::ExecutionEngine *engine)
-        requires (std::is_same_v<T, QV4::Value> || std::is_same_v<T, QVariant>)
-    { return createValueTypeImpl(value, type, engine); }
+        requires std::is_convertible_v<T, QV4::Value>
+    { return createValueTypeImpl(QV4::Value(value), type, engine); }
 
 private:
     static QVariant createValueTypeImpl(const QV4::Value &, QMetaType, QV4::ExecutionEngine *);
