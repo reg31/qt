@@ -68,7 +68,7 @@ static qlonglong qMetaTypeNumberBySize(const QVariant::Private *d)
 static qlonglong qMetaTypeNumber(const QVariant::Private *d)
 {
     using enum QMetaType::Type;
-    switch (static_cast<QMetaType::Type>(d->typeInterface()->typeId.loadRelaxed())) {
+    switch (static_cast<QMetaType::Type>(d->typeInterface()->typeId)) {
     case Int: case LongLong: case Char: case SChar: case Short: case Long:
         return qMetaTypeNumberBySize(d);
     case Float: return qRound64(d->get<float>());
@@ -93,7 +93,7 @@ static qulonglong qMetaTypeUNumber(const QVariant::Private *d)
 static std::optional<qlonglong> qConvertToNumber(const QVariant::Private *d, bool allowStringToBool = false)
 {
     bool ok;
-    const auto id = static_cast<QMetaType::Type>(d->typeInterface()->typeId.loadRelaxed());
+    const auto id = static_cast<QMetaType::Type>(d->typeInterface()->typeId);
     switch (id) {
     case QMetaType::QString: {
         const auto &s = d->get<QString>();
@@ -130,7 +130,7 @@ static std::optional<qlonglong> qConvertToNumber(const QVariant::Private *d, boo
 static std::optional<double> qConvertToRealNumber(const QVariant::Private *d)
 {
     bool ok;
-    const auto id = static_cast<QMetaType::Type>(d->typeInterface()->typeId.loadRelaxed());
+    const auto id = static_cast<QMetaType::Type>(d->typeInterface()->typeId);
     switch (id) {
     case QMetaType::QString:
         if (double val = d->get<QString>().toDouble(&ok); ok) return val;
@@ -170,8 +170,8 @@ static bool qIsFloatingPoint(uint tp)
 static bool canBeNumericallyCompared(const QtPrivate::QMetaTypeInterface *i1, const QtPrivate::QMetaTypeInterface *i2)
 {
     if (!i1 || !i2) return false;
-    bool n1 = qIsNumericType(i1->typeId.loadRelaxed());
-    bool n2 = qIsNumericType(i2->typeId.loadRelaxed());
+    bool n1 = qIsNumericType(i1->typeId);
+    bool n2 = qIsNumericType(i2->typeId);
     if (n1 && n2) return true;
     bool e1 = i1->flags & QMetaType::IsEnumeration;
     bool e2 = i2->flags & QMetaType::IsEnumeration;
@@ -181,11 +181,11 @@ static bool canBeNumericallyCompared(const QtPrivate::QMetaTypeInterface *i1, co
 
 static int numericTypePromotion(const QtPrivate::QMetaTypeInterface *i1, const QtPrivate::QMetaTypeInterface *i2)
 {
-    if (qIsFloatingPoint(i1->typeId.loadRelaxed()) || qIsFloatingPoint(i2->typeId.loadRelaxed())) return QMetaType::QReal;
+    if (qIsFloatingPoint(i1->typeId) || qIsFloatingPoint(i2->typeId)) return QMetaType::QReal;
     auto isU = [](uint tp) { return tp == QMetaType::ULongLong || tp == QMetaType::ULong || tp == QMetaType::UInt || tp == QMetaType::Char32; };
-    if ((isU(i1->typeId.loadRelaxed()) && i1->size > 4) || (isU(i2->typeId.loadRelaxed()) && i2->size > 4)) return QMetaType::ULongLong;
+    if ((isU(i1->typeId) && i1->size > 4) || (isU(i2->typeId) && i2->size > 4)) return QMetaType::ULongLong;
     if (i1->size > 4 || i2->size > 4) return QMetaType::LongLong;
-    if (isU(i1->typeId.loadRelaxed()) || isU(i2->typeId.loadRelaxed())) return QMetaType::UInt;
+    if (isU(i1->typeId) || isU(i2->typeId)) return QMetaType::UInt;
     return QMetaType::Int;
 }
 
@@ -389,7 +389,7 @@ QDebug QVariant::qdebugHelper(QDebug dbg) const
     dbg.nospace() << "QVariant(";
     if (d.type().id() != QMetaType::UnknownType) {
         dbg << d.type().name() << ", ";
-        if (!d.type().debugStream(dbg, storage()) && canConvert<QString>()) dbg << toString();
+        if (!d.type().debugStream(dbg, d.storage()) && canConvert<QString>()) dbg << toString();
     } else dbg << "Invalid";
     dbg << ')';
     return dbg;
@@ -408,4 +408,94 @@ inline T qNumVariantToHelper(const QVariant::Private &d, bool *ok)
 }
 
 int QVariant::toInt(bool *ok) const { return qNumVariantToHelper<int>(d, ok); }
-uint QVariant::toUInt(bool *ok) const { retur
+uint QVariant::toUInt(bool *ok) const { return qNumVariantToHelper<uint>(d, ok); }
+qlonglong QVariant::toLongLong(bool *ok) const { return qNumVariantToHelper<qlonglong>(d, ok); }
+qulonglong QVariant::toULongLong(bool *ok) const { return qNumVariantToHelper<qulonglong>(d, ok); }
+double QVariant::toDouble(bool *ok) const { return qNumVariantToHelper<double>(d, ok); }
+float QVariant::toFloat(bool *ok) const { return qNumVariantToHelper<float>(d, ok); }
+qreal QVariant::toReal(bool *ok) const { return qNumVariantToHelper<qreal>(d, ok); }
+
+bool QVariant::toBool() const
+{
+    const auto bt = QMetaType::fromType<bool>();
+    if (d.type() == bt) return d.get<bool>();
+    bool res = false;
+    QMetaType::convert(d.type(), constData(), bt, &res);
+    return res;
+}
+
+QString QVariant::toString() const { return qvariant_cast<QString>(*this); }
+QStringList QVariant::toStringList() const { return qvariant_cast<QStringList>(*this); }
+QByteArray QVariant::toByteArray() const { return qvariant_cast<QByteArray>(*this); }
+QBitArray QVariant::toBitArray() const { return qvariant_cast<QBitArray>(*this); }
+QDate QVariant::toDate() const { return qvariant_cast<QDate>(*this); }
+QTime QVariant::toTime() const { return qvariant_cast<QTime>(*this); }
+QDateTime QVariant::toDateTime() const { return qvariant_cast<QDateTime>(*this); }
+QUrl QVariant::toUrl() const { return qvariant_cast<QUrl>(*this); }
+QLocale QVariant::toLocale() const { return qvariant_cast<QLocale>(*this); }
+QRect QVariant::toRect() const { return qvariant_cast<QRect>(*this); }
+QRectF QVariant::toRectF() const { return qvariant_cast<QRectF>(*this); }
+QSize QVariant::toSize() const { return qvariant_cast<QSize>(*this); }
+QSizeF QVariant::toSizeF() const { return qvariant_cast<QSizeF>(*this); }
+QLine QVariant::toLine() const { return qvariant_cast<QLine>(*this); }
+QLineF QVariant::toLineF() const { return qvariant_cast<QLineF>(*this); }
+QPoint QVariant::toPoint() const { return qvariant_cast<QPoint>(*this); }
+QPointF QVariant::toPointF() const { return qvariant_cast<QPointF>(*this); }
+QUuid QVariant::toUuid() const { return qvariant_cast<QUuid>(*this); }
+QChar QVariant::toChar() const { return qvariant_cast<QChar>(*this); }
+QJsonValue QVariant::toJsonValue() const { return qvariant_cast<QJsonValue>(*this); }
+QJsonObject QVariant::toJsonObject() const { return qvariant_cast<QJsonObject>(*this); }
+QJsonArray QVariant::toJsonArray() const { return qvariant_cast<QJsonArray>(*this); }
+QJsonDocument QVariant::toJsonDocument() const { return qvariant_cast<QJsonDocument>(*this); }
+QList<QVariant> QVariant::toList() const { return qvariant_cast<QList<QVariant>>(*this); }
+QMap<QString, QVariant> QVariant::toMap() const { return qvariant_cast<QMap<QString, QVariant>>(*this); }
+QHash<QString, QVariant> QVariant::toHash() const { return qvariant_cast<QHash<QString, QVariant>>(*this); }
+
+#if QT_CONFIG(regularexpression)
+QRegularExpression QVariant::toRegularExpression() const { return qvariant_cast<QRegularExpression>(*this); }
+#endif
+
+#if QT_CONFIG(easingcurve)
+QEasingCurve QVariant::toEasingCurve() const { return qvariant_cast<QEasingCurve>(*this); }
+#endif
+
+#if QT_CONFIG(itemmodel)
+QModelIndex QVariant::toModelIndex() const { return qvariant_cast<QModelIndex>(*this); }
+QPersistentModelIndex QVariant::toPersistentModelIndex() const { return qvariant_cast<QPersistentModelIndex>(*this); }
+#endif
+
+#ifndef QT_NO_DATASTREAM
+void QVariant::load(QDataStream &s)
+{
+    clear();
+    quint32 id; s >> id;
+    qint8 n = 0; if (s.version() >= QDataStream::Qt_4_2) s >> n;
+    if (id == QMetaType::User) {
+        QByteArray name; s >> name;
+        id = QMetaType::fromName(name).id();
+        if (id == QMetaType::UnknownType) { s.setStatus(QDataStream::ReadCorruptData); return; }
+    }
+    create(QMetaType(id), nullptr);
+    d.is_null = n;
+    if (isValid()) {
+        if (!d.type().load(s, const_cast<void *>(constData()))) s.setStatus(QDataStream::ReadCorruptData);
+    }
+}
+
+void QVariant::save(QDataStream &s) const
+{
+    quint32 id = d.type().id();
+    const char *tn = (id >= QMetaType::User) ? d.type().name() : nullptr;
+    s << (tn ? quint32(QMetaType::User) : id);
+    if (s.version() >= QDataStream::Qt_4_2) s << qint8(d.is_null);
+    if (tn) s << tn;
+    if (isValid()) {
+        if (!d.type().save(s, constData())) Q_ASSERT(false);
+    }
+}
+
+QDataStream &operator>>(QDataStream &s, QVariant &p) { p.load(s); return s; }
+QDataStream &operator<<(QDataStream &s, const QVariant &p) { p.save(s); return s; }
+#endif
+
+QT_END_NAMESPACE
