@@ -68,13 +68,13 @@ static qlonglong qMetaTypeNumberBySize(const QVariant::Private *d)
 static qlonglong qMetaTypeNumber(const QVariant::Private *d)
 {
     using enum QMetaType::Type;
-    switch (static_cast<QMetaType::Type>(d->typeInterface()->typeId)) {
+    switch (static_cast<QMetaType::Type>(d->typeInterface()->typeId.loadRelaxed())) {
     case Int: case LongLong: case Char: case SChar: case Short: case Long:
         return qMetaTypeNumberBySize(d);
     case Float: return qRound64(d->get<float>());
     case Double: return qRound64(d->get<double>());
-    case QJsonValue: return d->get<QJsonValue>().toDouble();
-    case QCborValue: return d->get<QCborValue>().toInteger();
+    case QJsonValue: return qRound64(static_cast<const QJsonValue *>(d->storage())->toDouble());
+    case QCborValue: return static_cast<const QCborValue *>(d->storage())->toInteger();
     default: Q_UNREACHABLE_RETURN(0);
     }
 }
@@ -93,7 +93,7 @@ static qulonglong qMetaTypeUNumber(const QVariant::Private *d)
 static std::optional<qlonglong> qConvertToNumber(const QVariant::Private *d, bool allowStringToBool = false)
 {
     bool ok;
-    const auto id = static_cast<QMetaType::Type>(d->typeInterface()->typeId);
+    const auto id = static_cast<QMetaType::Type>(d->typeInterface()->typeId.loadRelaxed());
     switch (id) {
     case QMetaType::QString: {
         const auto &s = d->get<QString>();
@@ -130,7 +130,7 @@ static std::optional<qlonglong> qConvertToNumber(const QVariant::Private *d, boo
 static std::optional<double> qConvertToRealNumber(const QVariant::Private *d)
 {
     bool ok;
-    const auto id = static_cast<QMetaType::Type>(d->typeInterface()->typeId);
+    const auto id = static_cast<QMetaType::Type>(d->typeInterface()->typeId.loadRelaxed());
     switch (id) {
     case QMetaType::QString:
         if (double val = d->get<QString>().toDouble(&ok); ok) return val;
@@ -170,8 +170,8 @@ static bool qIsFloatingPoint(uint tp)
 static bool canBeNumericallyCompared(const QtPrivate::QMetaTypeInterface *i1, const QtPrivate::QMetaTypeInterface *i2)
 {
     if (!i1 || !i2) return false;
-    bool n1 = qIsNumericType(i1->typeId);
-    bool n2 = qIsNumericType(i2->typeId);
+    bool n1 = qIsNumericType(i1->typeId.loadRelaxed());
+    bool n2 = qIsNumericType(i2->typeId.loadRelaxed());
     if (n1 && n2) return true;
     bool e1 = i1->flags & QMetaType::IsEnumeration;
     bool e2 = i2->flags & QMetaType::IsEnumeration;
@@ -181,11 +181,11 @@ static bool canBeNumericallyCompared(const QtPrivate::QMetaTypeInterface *i1, co
 
 static int numericTypePromotion(const QtPrivate::QMetaTypeInterface *i1, const QtPrivate::QMetaTypeInterface *i2)
 {
-    if (qIsFloatingPoint(i1->typeId) || qIsFloatingPoint(i2->typeId)) return QMetaType::QReal;
+    if (qIsFloatingPoint(i1->typeId.loadRelaxed()) || qIsFloatingPoint(i2->typeId.loadRelaxed())) return QMetaType::QReal;
     auto isU = [](uint tp) { return tp == QMetaType::ULongLong || tp == QMetaType::ULong || tp == QMetaType::UInt || tp == QMetaType::Char32; };
-    if ((isU(i1->typeId) && i1->size > 4) || (isU(i2->typeId) && i2->size > 4)) return QMetaType::ULongLong;
+    if ((isU(i1->typeId.loadRelaxed()) && i1->size > 4) || (isU(i2->typeId.loadRelaxed()) && i2->size > 4)) return QMetaType::ULongLong;
     if (i1->size > 4 || i2->size > 4) return QMetaType::LongLong;
-    if (isU(i1->typeId) || isU(i2->typeId)) return QMetaType::UInt;
+    if (isU(i1->typeId.loadRelaxed()) || isU(i2->typeId.loadRelaxed())) return QMetaType::UInt;
     return QMetaType::Int;
 }
 
@@ -206,7 +206,8 @@ static QPartialOrdering numericCompare(const QVariant::Private *d1, const QVaria
     if (pt != QMetaType::QReal) return integralCompare(pt, d1, d2);
     auto r1 = qConvertToRealNumber(d1);
     auto r2 = qConvertToRealNumber(d2);
-    return (r1 && r2) ? Qt::compareThreeWay(*r1, *r2) : QPartialOrdering::Unordered;
+    if (!r1 || !r2) return QPartialOrdering::Unordered;
+    return Qt::compareThreeWay(*r1, *r2);
 }
 
 static bool qvCanConvertMetaObject(QMetaType f, QMetaType t)
