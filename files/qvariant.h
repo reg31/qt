@@ -372,6 +372,7 @@ public:
 
     template<typename T> inline T view() { T t{}; QMetaType::view(metaType(), data(), QMetaType::fromType<T>(), &t); return t; }
     template<typename T> bool canView() const { return canView(QMetaType::fromType<T>()); }
+    template<typename T> bool canConvert() const { return canConvert(QMetaType::fromType<T>()); }
 
     template<typename T>
     static inline QVariant fromValue(T &&value) noexcept(std::is_nothrow_copy_constructible_v<std::remove_cvref_t<T>> && Private::CanUseInternalSpace<std::remove_cvref_t<T>>) requires (std::is_copy_constructible_v<std::remove_cvref_t<T>> && std::is_destructible_v<std::remove_cvref_t<T>>)
