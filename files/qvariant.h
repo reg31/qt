@@ -237,22 +237,6 @@ public:
     QVariant(ulong ul) noexcept : QVariant(qulonglong(ul)) {}
     QVariant(short s) noexcept : QVariant(int(s)) {}
     QVariant(ushort us) noexcept : QVariant(uint(us)) {}
-    
-    template<typename T>
-    requires (std::is_arithmetic_v<T> && 
-              !std::is_same_v<T, int> && !std::is_same_v<T, uint> &&
-              !std::is_same_v<T, long> && !std::is_same_v<T, ulong> &&
-              !std::is_same_v<T, short> && !std::is_same_v<T, ushort> &&
-              !std::is_same_v<T, qlonglong> && !std::is_same_v<T, qulonglong> &&
-              !std::is_same_v<T, bool> && !std::is_same_v<T, double> && !std::is_same_v<T, float>)
-    QVariant(T val) noexcept
-        : QVariant(std::conditional_t<std::is_integral_v<T>,
-                      std::conditional_t<(sizeof(T) <= sizeof(int)),
-                          std::conditional_t<std::is_signed_v<T>, int, uint>,
-                          std::conditional_t<std::is_signed_v<T>, qlonglong, qulonglong>>,
-                      double>(val))
-    {}
-    
     QVariant(QChar qchar) noexcept;
     QVariant(const QString &string) noexcept;
     QVariant(const QByteArray &bytearray) noexcept;
@@ -271,7 +255,8 @@ public:
               !std::is_same_v<std::remove_cvref_t<T>, QString> &&
               !std::is_same_v<std::remove_cvref_t<T>, QByteArray> &&
               !std::is_same_v<std::remove_cvref_t<T>, QChar> &&
-              !std::is_arithmetic_v<std::remove_cvref_t<T>>)
+              !std::integral<std::remove_cvref_t<T>> &&
+              !std::floating_point<std::remove_cvref_t<T>>)
     QVariant(T &&val) : d()
     {
         auto tmp = fromValue(std::forward<T>(val));
