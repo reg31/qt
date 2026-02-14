@@ -374,17 +374,26 @@ public:
     template<typename T> bool canView() const { return canView(QMetaType::fromType<T>()); }
     template<typename T> bool canConvert() const { return canConvert(QMetaType::fromType<T>()); }
 
-    template<typename T>
-    static inline QVariant fromValue(T &&value) noexcept(std::is_nothrow_copy_constructible_v<std::remove_cvref_t<T>> && Private::CanUseInternalSpace<std::remove_cvref_t<T>>) requires (std::is_copy_constructible_v<std::remove_cvref_t<T>> && std::is_destructible_v<std::remove_cvref_t<T>>)
+    template<typename T = void, typename U>
+    static inline QVariant fromValue(U &&value) 
+        noexcept(std::is_nothrow_copy_constructible_v<std::remove_cvref_t<U>> && 
+                 Private::CanUseInternalSpace<std::remove_cvref_t<U>>) 
+        requires (std::is_copy_constructible_v<std::remove_cvref_t<U>> && 
+                  std::is_destructible_v<std::remove_cvref_t<U>>)
     {
-        using VT = std::remove_cvref_t<T>;
-        if constexpr (std::is_null_pointer_v<VT>) return QVariant::fromMetaType(QMetaType::fromType<std::nullptr_t>());
-        else if constexpr (std::is_same_v<VT, QVariant>) return std::forward<T>(value);
-        else if constexpr (std::is_same_v<VT, std::monostate>) return QVariant();
+        using VT = std::conditional_t<std::is_same_v<T, void>, std::remove_cvref_t<U>, T>;
+        if constexpr (std::is_null_pointer_v<VT>) 
+            return QVariant::fromMetaType(QMetaType::fromType<std::nullptr_t>());
+        else if constexpr (std::is_same_v<VT, QVariant>) 
+            return std::forward<U>(value);
+        else if constexpr (std::is_same_v<VT, std::monostate>) 
+            return QVariant();
         else {
             QMetaType mt = QMetaType::fromType<VT>();
             mt.registerType();
-            if constexpr (std::is_rvalue_reference_v<T&&> && std::is_move_constructible_v<VT> && !std::is_const_v<std::remove_reference_t<T>>)
+            if constexpr (std::is_rvalue_reference_v<U&&> && 
+                          std::is_move_constructible_v<VT> &&
+                          !std::is_const_v<std::remove_reference_t<U>>)
                 return moveConstruct(mt, std::addressof(value));
             return copyConstruct(mt, std::addressof(value));
         }
