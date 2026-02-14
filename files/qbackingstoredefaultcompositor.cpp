@@ -1,1056 +1,565 @@
-// Copyright (C) 2019 The Qt Company Ltd.
+// Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include "qsgrhishadereffectnode_p.h"
-#include "qsgdefaultrendercontext_p.h"
-#include "qsgrhisupport_p.h"
-#include <qsgmaterialshader.h>
-#include <qsgtextureprovider.h>
-#include <private/qsgplaintexture_p.h>
-#include <rhi/qshaderdescription.h>
-#include <QQmlFile>
-
-#include <QtGui/qquaternion.h>
-
-#include <QFile>
-#include <QFileSelector>
-#include <QMutexLocker>
-
-#include <QFileInfo>
-#include <QDateTime>
-#include <flat_map>
-#include <shared_mutex>
+#include "qbackingstoredefaultcompositor_p.h"
+#include <QtGui/private/qwindow_p.h>
+#include <qpa/qplatformgraphicsbuffer.h>
+#include <QtCore/qfile.h>
 
 QT_BEGIN_NAMESPACE
 
-void QSGRhiShaderLinker::reset(const QShader &vs, const QShader &fs)
+using namespace Qt::StringLiterals;
+
+QBackingStoreDefaultCompositor::~QBackingStoreDefaultCompositor()
 {
-    Q_ASSERT(vs.isValid() && fs.isValid());
-    m_vs = vs;
-    m_fs = fs;
-
-    m_error = false;
-
-    //m_constantBufferSize = 0;
-    m_constants.clear();
-    m_samplers.clear();
-    m_samplerNameMap.clear();
-    m_subRectBindings.clear();
-
-    m_constants.reserve(8);
-    m_samplers.reserve(4);
-    m_samplerNameMap.reserve(4);
+    reset();
 }
 
-void QSGRhiShaderLinker::feedConstants(const QSGShaderEffectNode::ShaderData &shader, const QSet<int> *dirtyIndices)
+void QBackingStoreDefaultCompositor::reset()
 {
-    Q_ASSERT(shader.shaderInfo.variables.size() == shader.varData.size());
-    static bool shaderEffectDebug = qEnvironmentVariableIntValue("QSG_RHI_SHADEREFFECT_DEBUG");
-    if (!dirtyIndices) {
-        for (int i = 0; i < shader.shaderInfo.variables.size(); ++i) {
-            const QSGGuiThreadShaderEffectManager::ShaderInfo::Variable &var(shader.shaderInfo.variables.at(i));
-            if (var.type == QSGGuiThreadShaderEffectManager::ShaderInfo::Constant) {
-                const QSGShaderEffectNode::VariableData &vd(shader.varData.at(i));
-                Constant c;
-                c.size = var.size;
-                c.specialType = vd.specialType;
-                if (c.specialType != QSGShaderEffectNode::VariableData::SubRect) {
-                    c.value = vd.value;
-                    if (shaderEffectDebug) {
-                        if (c.specialType == QSGShaderEffectNode::VariableData::None) {
-                            qDebug() << "cbuf prepare" << shader.shaderInfo.name << var.name
-                                     << "offset" << var.offset << "value" << c.value;
-                        } else {
-                            qDebug() << "cbuf prepare" << shader.shaderInfo.name << var.name
-                                     << "offset" << var.offset << "special" << c.specialType;
-                        }
-                    }
-                } else {
-                    Q_ASSERT(var.name.startsWith(QByteArrayLiteral("qt_SubRect_")));
-                    c.value = var.name.mid(11);
-                }
-                m_constants[var.offset] = c;
-            }
-        }
-    } else {
-        for (int idx : *dirtyIndices) {
-            const int offset = shader.shaderInfo.variables.at(idx).offset;
-            const QVariant value = shader.varData.at(idx).value;
-            m_constants[offset].value = value;
-            if (shaderEffectDebug) {
-                qDebug() << "cbuf update" << shader.shaderInfo.name
-                         << "offset" << offset << "value" << value;
-            }
-        }
+    m_rhi = nullptr;
+    m_psNoBlend.reset();
+    m_psBlend.reset();
+    m_psPremulBlend.reset();
+    m_samplerNearest.reset();
+    m_samplerLinear.reset();
+    m_vbuf.reset();
+    m_texture.reset();
+    m_widgetQuadData.reset();
+    for (PerQuadData &d : m_textureQuadData)
+        d.reset();
+}
+
+QRhiTexture *QBackingStoreDefaultCompositor::toTexture(const QPlatformBackingStore *backingStore,
+                                                       QRhi *rhi,
+                                                       QRhiResourceUpdateBatch *resourceUpdates,
+                                                       const QRegion &dirtyRegion,
+                                                       QPlatformBackingStore::TextureFlags *flags) const
+{
+    return toTexture(backingStore->toImage(), rhi, resourceUpdates, dirtyRegion, flags);
+}
+
+QRhiTexture *QBackingStoreDefaultCompositor::toTexture(const QImage &sourceImage,
+                                                       QRhi *rhi,
+                                                       QRhiResourceUpdateBatch *resourceUpdates,
+                                                       const QRegion &dirtyRegion,
+                                                       QPlatformBackingStore::TextureFlags *flags) const
+{
+    Q_ASSERT(rhi);
+    Q_ASSERT(resourceUpdates);
+    Q_ASSERT(flags);
+
+    if (!m_rhi) {
+        m_rhi = rhi;
+    } else if (m_rhi != rhi) {
+        qWarning("QBackingStoreDefaultCompositor: the QRhi has changed unexpectedly, this should not happen");
+        return nullptr;
     }
-}
 
-void QSGRhiShaderLinker::feedSamplers(const QSGShaderEffectNode::ShaderData &shader, const QSet<int> *dirtyIndices)
-{
-    if (!dirtyIndices) {
-        for (int i = 0; i < shader.shaderInfo.variables.size(); ++i) {
-            const QSGGuiThreadShaderEffectManager::ShaderInfo::Variable &var(shader.shaderInfo.variables.at(i));
-            const QSGShaderEffectNode::VariableData &vd(shader.varData.at(i));
-            if (var.type == QSGGuiThreadShaderEffectManager::ShaderInfo::Sampler) {
-                Q_ASSERT(vd.specialType == QSGShaderEffectNode::VariableData::Source);
+    QImage image = sourceImage;
 
-#ifndef QT_NO_DEBUG
-                int existingBindPoint = m_samplerNameMap.value(var.name, -1);
-                Q_ASSERT(existingBindPoint < 0 || existingBindPoint == var.bindPoint);
-#endif
+    bool needsConversion = false;
+    *flags = {};
 
-                m_samplers.insert(var.bindPoint, vd.value);
-                m_samplerNameMap.insert(var.name, var.bindPoint);
-            }
-        }
-    } else {
-        for (int idx : *dirtyIndices) {
-            const QSGGuiThreadShaderEffectManager::ShaderInfo::Variable &var(shader.shaderInfo.variables.at(idx));
-            const QSGShaderEffectNode::VariableData &vd(shader.varData.at(idx));
-
-#ifndef QT_NO_DEBUG
-            int existingBindPoint = m_samplerNameMap.value(var.name, -1);
-            Q_ASSERT(existingBindPoint < 0 || existingBindPoint == var.bindPoint);
-#endif
-
-            m_samplers.insert(var.bindPoint, vd.value);
-            m_samplerNameMap.insert(var.name, var.bindPoint);
-        }
+    switch (image.format()) {
+    case QImage::Format_ARGB32_Premultiplied:
+        *flags |= QPlatformBackingStore::TexturePremultiplied;
+        Q_FALLTHROUGH();
+    case QImage::Format_RGB32:
+    case QImage::Format_ARGB32:
+        *flags |= QPlatformBackingStore::TextureSwizzle;
+        break;
+    case QImage::Format_RGBA8888_Premultiplied:
+        *flags |= QPlatformBackingStore::TexturePremultiplied;
+        Q_FALLTHROUGH();
+    case QImage::Format_RGBX8888:
+    case QImage::Format_RGBA8888:
+        break;
+    case QImage::Format_BGR30:
+    case QImage::Format_A2BGR30_Premultiplied:
+        // no fast path atm
+        needsConversion = true;
+        break;
+    case QImage::Format_RGB30:
+    case QImage::Format_A2RGB30_Premultiplied:
+        // no fast path atm
+        needsConversion = true;
+        break;
+    default:
+        needsConversion = true;
+        break;
     }
-}
 
-void QSGRhiShaderLinker::linkTextureSubRects()
-{
-    // feedConstants stores <name> in Constant::value for subrect entries. Now
-    // that both constants and textures are known, replace the name with the
-    // texture binding point.
-    for (Constant &c : m_constants) {
-        if (c.specialType == QSGShaderEffectNode::VariableData::SubRect) {
-            if (c.value.userType() == QMetaType::QByteArray) {
-                const QByteArray name = c.value.toByteArray();
-                if (!m_samplerNameMap.contains(name))
-                    qWarning("ShaderEffect: qt_SubRect_%s refers to unknown source texture", name.constData());
-                const int binding = m_samplerNameMap[name];
-                c.value = binding;
-                m_subRectBindings.insert(binding);
-            }
-        }
-    }
-}
+    if (image.size().isEmpty())
+        return nullptr;
 
-void QSGRhiShaderLinker::dump()
-{
-    if (m_error) {
-        qDebug() << "Failed to generate program data";
-        return;
-    }
-    qDebug() << "Combined shader data" << m_vs << m_fs;
-    qDebug() << " - constants" << m_constants;
-    qDebug() << " - samplers" << m_samplers;
-}
+    const bool resized = !m_texture || m_texture->pixelSize() != image.size();
+    if (dirtyRegion.isEmpty() && !resized)
+        return m_texture.get();
 
-QDebug operator<<(QDebug debug, const QSGRhiShaderLinker::Constant &c)
-{
-    QDebugStateSaver saver(debug);
-    debug.space();
-    debug << "size" << c.size;
-    if (c.specialType != QSGShaderEffectNode::VariableData::None)
-        debug << "special" << c.specialType;
+    if (needsConversion)
+        image = image.convertToFormat(QImage::Format_RGBA8888);
     else
-        debug << "value" << c.value;
-    return debug;
-}
+        image.detach(); // if it was just wrapping data, that's no good, we need ownership, so detach
 
-struct QSGRhiShaderMaterialTypeCache
-{
-    QSGMaterialType *ref(const QShader &vs, const QShader &fs);
-    void unref(const QShader &vs, const QShader &fs);
-    void reset() {
-        for (auto it = m_types.begin(), end = m_types.end(); it != end; ++it)
-            delete it->type;
-        m_types.clear();
-        clearGraveyard();
-    }
-    void clearGraveyard() {
-        qDeleteAll(m_graveyard);
-        m_graveyard.clear();
-    }
-    struct Key {
-        QShader vs;
-        QShader fs;
-        size_t hash;
-        Key(const QShader &vs, const QShader &fs)
-            : vs(vs),
-              fs(fs)
-        {
-            hash = qHashMulti(0, vs, fs);
-        }
-        bool operator==(const Key &other) const {
-            return vs == other.vs && fs == other.fs;
-        }
-    };
-    struct MaterialType {
-        int ref;
-        QSGMaterialType *type;
-    };
-    QHash<Key, MaterialType> m_types;
-    QHash<Key, QSGMaterialType *> m_graveyard;
-};
-
-size_t qHash(const QSGRhiShaderMaterialTypeCache::Key &key, size_t seed = 0)
-{
-    return seed ^ key.hash;
-}
-
-static QMutex shaderMaterialTypeCacheMutex;
-
-QSGMaterialType *QSGRhiShaderMaterialTypeCache::ref(const QShader &vs, const QShader &fs)
-{
-    QMutexLocker lock(&shaderMaterialTypeCacheMutex);
-    const Key k(vs, fs);
-    auto it = m_types.find(k);
-    if (it != m_types.end()) {
-        it->ref += 1;
-        return it->type;
-    }
-
-    auto reuseIt = m_graveyard.constFind(k);
-    if (reuseIt != m_graveyard.cend()) {
-        QSGMaterialType *t = reuseIt.value();
-        m_types.insert(k, { 1, t });
-        m_graveyard.erase(reuseIt);
-        return t;
-    }
-
-    QSGMaterialType *t = new QSGMaterialType;
-    m_types.insert(k, { 1, t });
-    return t;
-}
-
-void QSGRhiShaderMaterialTypeCache::unref(const QShader &vs, const QShader &fs)
-{
-    QMutexLocker lock(&shaderMaterialTypeCacheMutex);
-    const Key k(vs, fs);
-    auto it = m_types.find(k);
-    if (it != m_types.end()) {
-        if (!--it->ref) {
-            m_graveyard.insert(k, it->type);
-            m_types.erase(it);
-        }
-    }
-}
-
-static QHash<void *, QSGRhiShaderMaterialTypeCache> shaderMaterialTypeCache;
-
-void QSGRhiShaderEffectNode::resetMaterialTypeCache(void *materialTypeCacheKey)
-{
-    QMutexLocker lock(&shaderMaterialTypeCacheMutex);
-    shaderMaterialTypeCache[materialTypeCacheKey].reset();
-}
-
-void QSGRhiShaderEffectNode::garbageCollectMaterialTypeCache(void *materialTypeCacheKey)
-{
-    QMutexLocker lock(&shaderMaterialTypeCacheMutex);
-    shaderMaterialTypeCache[materialTypeCacheKey].clearGraveyard();
-}
-
-class QSGRhiShaderEffectMaterialShader : public QSGMaterialShader
-{
-public:
-    QSGRhiShaderEffectMaterialShader(const QSGRhiShaderEffectMaterial *material);
-
-    bool updateUniformData(RenderState &state, QSGMaterial *newMaterial, QSGMaterial *oldMaterial) override;
-    void updateSampledImage(RenderState &state, int binding, QSGTexture **texture, QSGMaterial *newMaterial, QSGMaterial *oldMaterial) override;
-    bool updateGraphicsPipelineState(RenderState &state, GraphicsPipelineState *ps, QSGMaterial *newMaterial, QSGMaterial *oldMaterial) override;
-};
-
-QSGRhiShaderEffectMaterialShader::QSGRhiShaderEffectMaterialShader(const QSGRhiShaderEffectMaterial *material)
-{
-    setFlag(UpdatesGraphicsPipelineState, true);
-    setShader(VertexStage, material->m_vertexShader);
-    setShader(FragmentStage, material->m_fragmentShader);
-}
-
-static inline QColor qsg_premultiply_color(const QColor &c)
-{
-    float r, g, b, a;
-    c.getRgbF(&r, &g, &b, &a);
-    return QColor::fromRgbF(r * a, g * a, b * a, a);
-}
-
-template<typename T>
-static inline void fillUniformBlockMember(char *dst, const T *value, int valueCount, int fieldSizeBytes)
-{
-    const size_t valueBytes = sizeof(T) * valueCount;
-    const size_t fieldBytes = fieldSizeBytes;
-    if (valueBytes <= fieldBytes) {
-        memcpy(dst, value, valueBytes);
-        if (valueBytes < fieldBytes)
-            memset(dst + valueBytes, 0, fieldBytes - valueBytes);
+    if (resized) {
+        if (!m_texture)
+            m_texture.reset(rhi->newTexture(QRhiTexture::RGBA8, image.size()));
+        else
+            m_texture->setPixelSize(image.size());
+        m_texture->create();
+        resourceUpdates->uploadTexture(m_texture.get(), image);
     } else {
-        memcpy(dst, value, fieldBytes);
-    }
-}
-
-bool QSGRhiShaderEffectMaterialShader::updateUniformData(RenderState &state, QSGMaterial *newMaterial, QSGMaterial *oldMaterial)
-{
-    Q_UNUSED(oldMaterial);
-    QSGRhiShaderEffectMaterial *mat = static_cast<QSGRhiShaderEffectMaterial *>(newMaterial);
-
-    bool changed = false;
-    QByteArray *buf = state.uniformData();
-
-    for (auto it = mat->m_linker.m_constants.constBegin(), itEnd = mat->m_linker.m_constants.constEnd(); it != itEnd; ++it) {
-        const int offset = it.key();
-        char *dst = buf->data() + offset;
-        const QSGRhiShaderLinker::Constant &c(it.value());
-        if (c.specialType == QSGShaderEffectNode::VariableData::Opacity) {
-            if (state.isOpacityDirty()) {
-                const float f = state.opacity();
-                fillUniformBlockMember<float>(dst, &f, 1, c.size);
-                changed = true;
-            }
-        } else if (c.specialType == QSGShaderEffectNode::VariableData::Matrix) {
-            if (state.isMatrixDirty()) {
-                Q_ASSERT(state.projectionMatrixCount() == mat->viewCount());
-                const int rendererViewCount = state.projectionMatrixCount();
-                const int shaderMatrixCount = c.size / 64;
-                if (shaderMatrixCount < mat->viewCount() && mat->viewCount() >= 2) {
-                    qWarning("qt_Matrix uniform block member size is wrong: expected at least view_count * 64 bytes, "
-                             "where view_count is %d, meaning %d bytes in total, but got only %d bytes. "
-                             "This may be due to the ShaderEffect and its shaders not being multiview-capable, "
-                             "or they are used with an unexpected render target. "
-                             "Check if the shaders declare qt_Matrix as appropriate, "
-                             "and if gl_ViewIndex is used correctly in the vertex shader.",
-                             mat->viewCount(), mat->viewCount() * 64, c.size);
-                }
-                const int matrixCount = qMin(rendererViewCount, shaderMatrixCount);
-                size_t offset = 0;
-                for (int viewIndex = 0; viewIndex < matrixCount; ++viewIndex) {
-                    const QMatrix4x4 m = state.combinedMatrix(viewIndex);
-                    fillUniformBlockMember<float>(dst + offset, m.constData(), 16, 64);
-                    offset += 64;
-                }
-                if (offset < c.size)
-                    memset(dst + offset, 0, c.size - offset);
-                changed = true;
-            }
-        } else if (c.specialType == QSGShaderEffectNode::VariableData::SubRect) {
-            // vec4
-            QRectF subRect(0, 0, 1, 1);
-            const int binding = c.value.toInt(); // filled in by linkTextureSubRects
-            if (binding < QSGRhiShaderEffectMaterial::MAX_BINDINGS) {
-                if (QSGTextureProvider *tp = mat->m_textureProviders.at(binding)) {
-                    if (QSGTexture *t = tp->texture())
-                        subRect = t->normalizedTextureSubRect();
-                }
-            }
-            const float f[4] = { float(subRect.x()), float(subRect.y()),
-                                 float(subRect.width()), float(subRect.height()) };
-            fillUniformBlockMember<float>(dst, f, 4, c.size);
-        } else if (c.specialType == QSGShaderEffectNode::VariableData::None) {
-            changed = true;
-            switch (int(c.value.userType())) {
-            case QMetaType::QColor: {
-                const QColor v = qsg_premultiply_color(qvariant_cast<QColor>(c.value)).toRgb();
-                const float f[4] = { float(v.redF()), float(v.greenF()), float(v.blueF()), float(v.alphaF()) };
-                fillUniformBlockMember<float>(dst, f, 4, c.size);
-                break;
-            }
-            case QMetaType::Float: {
-                const float f = qvariant_cast<float>(c.value);
-                fillUniformBlockMember<float>(dst, &f, 1, c.size);
-                break;
-            }
-            case QMetaType::Double: {
-                const float f = float(qvariant_cast<double>(c.value));
-                fillUniformBlockMember<float>(dst, &f, 1, c.size);
-                break;
-            }
-            case QMetaType::Int: {
-                const qint32 i = c.value.toInt();
-                fillUniformBlockMember<qint32>(dst, &i, 1, c.size);
-                break;
-            }
-            case QMetaType::Bool: {
-                const qint32 b = c.value.toBool();
-                fillUniformBlockMember<qint32>(dst, &b, 1, c.size);
-                break;
-            }
-            case QMetaType::QTransform: { // mat3
-                const QTransform v = qvariant_cast<QTransform>(c.value);
-                const float m[3][3] = {
-                    { float(v.m11()), float(v.m12()), float(v.m13()) },
-                    { float(v.m21()), float(v.m22()), float(v.m23()) },
-                    { float(v.m31()), float(v.m32()), float(v.m33()) }
-                };
-                // stored as 4 floats per column, 1 unused
-                memset(dst, 0, c.size);
-                const size_t bytesPerColumn = 4 * sizeof(float);
-                if (c.size >= bytesPerColumn)
-                    fillUniformBlockMember<float>(dst, m[0], 3, 3 * sizeof(float));
-                if (c.size >= 2 * bytesPerColumn)
-                    fillUniformBlockMember<float>(dst + bytesPerColumn, m[1], 3, 3 * sizeof(float));
-                if (c.size >= 3 * bytesPerColumn)
-                    fillUniformBlockMember<float>(dst + 2 * bytesPerColumn, m[2], 3, 3 * sizeof(float));
-                break;
-            }
-            case QMetaType::QSize:
-            case QMetaType::QSizeF: { // vec2
-                const QSizeF v = c.value.toSizeF();
-                const float f[2] = { float(v.width()), float(v.height()) };
-                fillUniformBlockMember<float>(dst, f, 2, c.size);
-                break;
-            }
-            case QMetaType::QPoint:
-            case QMetaType::QPointF: { // vec2
-                const QPointF v = c.value.toPointF();
-                const float f[2] = { float(v.x()), float(v.y()) };
-                fillUniformBlockMember<float>(dst, f, 2, c.size);
-                break;
-            }
-            case QMetaType::QRect:
-            case QMetaType::QRectF: { // vec4
-                const QRectF v = c.value.toRectF();
-                const float f[4] = { float(v.x()), float(v.y()), float(v.width()), float(v.height()) };
-                fillUniformBlockMember<float>(dst, f, 4, c.size);
-                break;
-            }
-            case QMetaType::QVector2D: { // vec2
-                const QVector2D v = qvariant_cast<QVector2D>(c.value);
-                const float f[2] = { float(v.x()), float(v.y()) };
-                fillUniformBlockMember<float>(dst, f, 2, c.size);
-                break;
-            }
-            case QMetaType::QVector3D: { // vec3
-                const QVector3D v = qvariant_cast<QVector3D>(c.value);
-                const float f[3] = { float(v.x()), float(v.y()), float(v.z()) };
-                fillUniformBlockMember<float>(dst, f, 3, c.size);
-                break;
-            }
-            case QMetaType::QVector4D: { // vec4
-                const QVector4D v = qvariant_cast<QVector4D>(c.value);
-                const float f[4] = { float(v.x()), float(v.y()), float(v.z()), float(v.w()) };
-                fillUniformBlockMember<float>(dst, f, 4, c.size);
-                break;
-            }
-            case QMetaType::QQuaternion: { // vec4
-                const QQuaternion v = qvariant_cast<QQuaternion>(c.value);
-                const float f[4] = { float(v.x()), float(v.y()), float(v.z()), float(v.scalar()) };
-                fillUniformBlockMember<float>(dst, f, 4, c.size);
-                break;
-            }
-            case QMetaType::QMatrix4x4: { // mat4
-                const QMatrix4x4 m = qvariant_cast<QMatrix4x4>(c.value);
-                fillUniformBlockMember<float>(dst, m.constData(), 16, c.size);
-                break;
-            }
-            default:
-                break;
-            }
-        }
+        QRect imageRect = image.rect();
+        QRect rect = dirtyRegion.boundingRect() & imageRect;
+        QRhiTextureSubresourceUploadDescription subresDesc(image);
+        subresDesc.setSourceTopLeft(rect.topLeft());
+        subresDesc.setSourceSize(rect.size());
+        subresDesc.setDestinationTopLeft(rect.topLeft());
+        QRhiTextureUploadDescription uploadDesc(QRhiTextureUploadEntry(0, 0, subresDesc));
+        resourceUpdates->uploadTexture(m_texture.get(), uploadDesc);
     }
 
-    return changed;
+    return m_texture.get();
 }
 
-void QSGRhiShaderEffectMaterialShader::updateSampledImage(RenderState &state, int binding, QSGTexture **texture,
-                                                          QSGMaterial *newMaterial, QSGMaterial *oldMaterial)
+static inline QRect scaledRect(const QRect &rect, qreal factor)
 {
-    Q_UNUSED(oldMaterial);
-    QSGRhiShaderEffectMaterial *mat = static_cast<QSGRhiShaderEffectMaterial *>(newMaterial);
-
-    if (binding >= QSGRhiShaderEffectMaterial::MAX_BINDINGS)
-        return;
-
-    QSGTextureProvider *tp = mat->m_textureProviders.at(binding);
-    if (tp) {
-        if (QSGTexture *t = tp->texture()) {
-            t->commitTextureOperations(state.rhi(), state.resourceUpdateBatch());
-
-            if (t->isAtlasTexture() && !mat->m_geometryUsesTextureSubRect && !mat->usesSubRectUniform(binding)) {
-                // Why the hassle with the batch: while removedFromAtlas() is
-                // able to operate with its own resource update batch (which is
-                // then committed immediately), that approach is wrong when the
-                // atlas enqueued (in the updateRhiTexture() above) not yet
-                // committed operations to state.resourceUpdateBatch()... The
-                // only safe way then is to use the same batch the atlas'
-                // updateRhiTexture() used.
-                QSGTexture *newTexture = t->removedFromAtlas(state.resourceUpdateBatch());
-                if (newTexture) {
-                    t = newTexture;
-                    t->commitTextureOperations(state.rhi(), state.resourceUpdateBatch());
-                }
-            }
-            *texture = t;
-            return;
-        }
-    }
-
-    if (!mat->m_dummyTexture) {
-        mat->m_dummyTexture = new QSGPlainTexture;
-        mat->m_dummyTexture->setFiltering(QSGTexture::Nearest);
-        mat->m_dummyTexture->setHorizontalWrapMode(QSGTexture::Repeat);
-        mat->m_dummyTexture->setVerticalWrapMode(QSGTexture::Repeat);
-        QImage img(128, 128, QImage::Format_ARGB32_Premultiplied);
-        img.fill(0);
-        mat->m_dummyTexture->setImage(img);
-        mat->m_dummyTexture->commitTextureOperations(state.rhi(), state.resourceUpdateBatch());
-    }
-    *texture = mat->m_dummyTexture;
+    return QRect(rect.topLeft() * factor, rect.size() * factor);
 }
 
-bool QSGRhiShaderEffectMaterialShader::updateGraphicsPipelineState(RenderState &state, GraphicsPipelineState *ps,
-                                                                   QSGMaterial *newMaterial, QSGMaterial *oldMaterial)
+static inline QPoint scaledOffset(const QPoint &pt, qreal factor)
 {
-    Q_UNUSED(state);
-    Q_UNUSED(oldMaterial);
-    QSGRhiShaderEffectMaterial *mat = static_cast<QSGRhiShaderEffectMaterial *>(newMaterial);
-
-    switch (mat->m_cullMode) {
-    case QSGShaderEffectNode::FrontFaceCulling:
-        ps->cullMode = GraphicsPipelineState::CullFront;
-        return true;
-    case QSGShaderEffectNode::BackFaceCulling:
-        ps->cullMode = GraphicsPipelineState::CullBack;
-        return true;
-    default:
-        return false;
-    }
+    return pt * factor;
 }
 
-QSGRhiShaderEffectMaterial::QSGRhiShaderEffectMaterial(QSGRhiShaderEffectNode *node)
-    : m_node(node)
+static QRegion scaledRegion(const QRegion &region, qreal factor, const QPoint &offset)
 {
-    setFlag(Blending | RequiresFullMatrix, true); // may be changed in syncMaterial()
+    if (offset.isNull() && factor <= 1)
+        return region;
+
+    QVarLengthArray<QRect, 4> rects;
+    rects.reserve(region.rectCount());
+    for (const QRect &rect : region)
+        rects.append(scaledRect(rect.translated(offset), factor));
+
+    QRegion deviceRegion;
+    deviceRegion.setRects(rects.constData(), rects.size());
+    return deviceRegion;
 }
 
-QSGRhiShaderEffectMaterial::~QSGRhiShaderEffectMaterial()
+static QMatrix4x4 targetTransform(const QRectF &target, const QRect &viewport, bool invertY)
 {
-    if (m_materialType && m_materialTypeCacheKey)
-        shaderMaterialTypeCache[m_materialTypeCacheKey].unref(m_vertexShader, m_fragmentShader);
+    qreal x_scale = target.width() / viewport.width();
+    qreal y_scale = target.height() / viewport.height();
 
-    delete m_dummyTexture;
+    const QPointF relative_to_viewport = target.topLeft() - viewport.topLeft();
+    qreal x_translate = x_scale - 1 + ((relative_to_viewport.x() / viewport.width()) * 2);
+    qreal y_translate;
+    if (invertY)
+        y_translate = y_scale - 1 + ((relative_to_viewport.y() / viewport.height()) * 2);
+    else
+        y_translate = -y_scale + 1 - ((relative_to_viewport.y() / viewport.height()) * 2);
+
+    QMatrix4x4 matrix;
+    matrix(0,3) = x_translate;
+    matrix(1,3) = y_translate;
+
+    matrix(0,0) = x_scale;
+    matrix(1,1) = (invertY ? -1.0 : 1.0) * y_scale;
+
+    return matrix;
 }
 
-static bool hasAtlasTexture(const QList<QSGTextureProvider *> &textureProviders)
-{
-    for (QSGTextureProvider *tp : textureProviders) {
-        if (tp && tp->texture() && tp->texture()->isAtlasTexture())
-            return true;
-    }
-    return false;
-}
-
-int QSGRhiShaderEffectMaterial::compare(const QSGMaterial *other) const
-{
-    Q_ASSERT(other && type() == other->type());
-    const QSGRhiShaderEffectMaterial *o = static_cast<const QSGRhiShaderEffectMaterial *>(other);
-
-    if (int diff = m_cullMode - o->m_cullMode)
-        return diff;
-
-    if (int diff = m_textureProviders.size() - o->m_textureProviders.size())
-        return diff;
-
-    if (m_linker.m_constants != o->m_linker.m_constants)
-        return 1;
-
-    if (hasAtlasTexture(m_textureProviders) && !m_geometryUsesTextureSubRect)
-        return -1;
-
-    if (hasAtlasTexture(o->m_textureProviders) && !o->m_geometryUsesTextureSubRect)
-        return 1;
-
-    for (int binding = 0, count = m_textureProviders.size(); binding != count; ++binding) {
-        QSGTextureProvider *tp1 = m_textureProviders.at(binding);
-        QSGTextureProvider *tp2 = o->m_textureProviders.at(binding);
-        if (tp1 && tp2) {
-            QSGTexture *t1 = tp1->texture();
-            QSGTexture *t2 = tp2->texture();
-            if (t1 && t2) {
-                const qint64 diff = t1->comparisonKey() - t2->comparisonKey();
-                if (diff != 0)
-                    return diff < 0 ? -1 : 1;
-            } else {
-                if (!t1 && t2)
-                    return -1;
-                if (t1 && !t2)
-                    return 1;
-            }
-        } else {
-            if (!tp1 && tp2)
-                return -1;
-            if (tp1 && !tp2)
-                return 1;
-        }
-    }
-
-    return 0;
-}
-
-QSGMaterialType *QSGRhiShaderEffectMaterial::type() const
-{
-    return m_materialType;
-}
-
-QSGMaterialShader *QSGRhiShaderEffectMaterial::createShader(QSGRendererInterface::RenderMode renderMode) const
-{
-    Q_UNUSED(renderMode);
-    return new QSGRhiShaderEffectMaterialShader(this);
-}
-
-void QSGRhiShaderEffectMaterial::updateTextureProviders(bool layoutChange)
-{
-    if (layoutChange) {
-        for (QSGTextureProvider *tp : m_textureProviders) {
-            if (tp) {
-                QObject::disconnect(tp, SIGNAL(textureChanged()), m_node,
-                                    SLOT(handleTextureChange()));
-                QObject::disconnect(tp, SIGNAL(destroyed(QObject*)), m_node,
-                                    SLOT(handleTextureProviderDestroyed(QObject*)));
-            }
-        }
-        m_textureProviders.fill(nullptr, MAX_BINDINGS);
-    }
-
-    for (auto it = m_linker.m_samplers.constBegin(), itEnd = m_linker.m_samplers.constEnd(); it != itEnd; ++it) {
-        const int binding = it.key();
-        QQuickItem *source = qobject_cast<QQuickItem *>(qvariant_cast<QObject *>(it.value()));
-        QSGTextureProvider *newProvider = source && source->isTextureProvider() ? source->textureProvider() : nullptr;
-        if (binding >= MAX_BINDINGS) {
-            qWarning("Sampler at binding %d exceeds the available ShaderEffect binding slots; ignored",
-                     binding);
-            continue;
-        }
-        QSGTextureProvider *&activeProvider(m_textureProviders[binding]);
-        if (newProvider != activeProvider) {
-            if (activeProvider) {
-                QObject::disconnect(activeProvider, SIGNAL(textureChanged()), m_node,
-                                    SLOT(handleTextureChange()));
-                QObject::disconnect(activeProvider, SIGNAL(destroyed(QObject*)), m_node,
-                                    SLOT(handleTextureProviderDestroyed(QObject*)));
-            }
-            if (newProvider) {
-                Q_ASSERT_X(newProvider->thread() == QThread::currentThread(),
-                           "QSGRhiShaderEffectMaterial::updateTextureProviders",
-                           "Texture provider must belong to the rendering thread");
-                QObject::connect(newProvider, SIGNAL(textureChanged()), m_node, SLOT(handleTextureChange()));
-                QObject::connect(newProvider, SIGNAL(destroyed(QObject*)), m_node,
-                                 SLOT(handleTextureProviderDestroyed(QObject*)));
-            } else {
-                const char *typeName = source ? source->metaObject()->className() : it.value().typeName();
-                qWarning("ShaderEffect: Texture t%d is not assigned a valid texture provider (%s).",
-                         binding, typeName);
-            }
-            activeProvider = newProvider;
-        }
-    }
-}
-
-QSGRhiShaderEffectNode::QSGRhiShaderEffectNode(QSGDefaultRenderContext *rc)
-    : m_material(this)
-{
-    Q_UNUSED(rc);
-    setFlag(UsePreprocess, true);
-    setMaterial(&m_material);
-}
-
-QRectF QSGRhiShaderEffectNode::updateNormalizedTextureSubRect(bool supportsAtlasTextures)
-{
-    QRectF srcRect(0, 0, 1, 1);
-    bool geometryUsesTextureSubRect = false;
-    if (supportsAtlasTextures) {
-        QSGTextureProvider *tp = nullptr;
-        for (int binding = 0, count = m_material.m_textureProviders.size(); binding != count; ++binding) {
-            if (QSGTextureProvider *candidate = m_material.m_textureProviders.at(binding)) {
-                if (!tp) {
-                    tp = candidate;
-                } else { // there can only be one...
-                    tp = nullptr;
-                    break;
-                }
-            }
-        }
-        if (tp && tp->texture()) {
-            srcRect = tp->texture()->normalizedTextureSubRect();
-            geometryUsesTextureSubRect = true;
-        }
-    }
-
-    if (m_material.m_geometryUsesTextureSubRect != geometryUsesTextureSubRect) {
-        m_material.m_geometryUsesTextureSubRect = geometryUsesTextureSubRect;
-        markDirty(QSGNode::DirtyMaterial);
-    }
-
-    return srcRect;
-}
-
-static QShader loadShaderFromFile(const QString &filename)
-{
-    QFile f(filename);
-    if (!f.open(QIODevice::ReadOnly)) {
-        qWarning() << "Failed to find shader" << filename;
-        return QShader();
-    }
-    return QShader::fromSerialized(f.readAll());
-}
-
-struct QSGRhiShaderEffectDefaultShader
-{
-    QShader shader;
-    quint32 matrixArrayByteSize;
-    quint32 opacityOffset;
-    qint8 viewCount;
-    static QSGRhiShaderEffectDefaultShader create(const QString &filename, int viewCount);
+enum class SourceTransformOrigin {
+    BottomLeft,
+    TopLeft
 };
 
-QSGRhiShaderEffectDefaultShader QSGRhiShaderEffectDefaultShader::create(const QString &filename, int viewCount)
+static QMatrix3x3 sourceTransform(const QRectF &subTexture,
+                                  const QSize &textureSize,
+                                  SourceTransformOrigin origin)
 {
-    QSGRhiShaderEffectDefaultShader s;
-    s.shader = loadShaderFromFile(filename);
-    const QList<QShaderDescription::BlockVariable> uboMembers = s.shader.description().uniformBlocks().constFirst().members;
-    for (const auto &member: uboMembers) {
-        if (member.name == QByteArrayLiteral("qt_Matrix"))
-            s.matrixArrayByteSize = member.size;
-        else if (member.name == QByteArrayLiteral("qt_Opacity"))
-            s.opacityOffset = member.offset;
+    qreal x_scale = subTexture.width() / textureSize.width();
+    qreal y_scale = subTexture.height() / textureSize.height();
+
+    const QPointF topLeft = subTexture.topLeft();
+    qreal x_translate = topLeft.x() / textureSize.width();
+    qreal y_translate = topLeft.y() / textureSize.height();
+
+    if (origin == SourceTransformOrigin::TopLeft) {
+        y_scale = -y_scale;
+        y_translate = 1 - y_translate;
     }
-    s.viewCount = viewCount;
-    return s;
+
+    QMatrix3x3 matrix;
+    matrix(0,2) = x_translate;
+    matrix(1,2) = y_translate;
+
+    matrix(0,0) = x_scale;
+    matrix(1,1) = y_scale;
+
+    return matrix;
 }
 
-void QSGRhiShaderEffectNode::syncMaterial(SyncData *syncData)
+static inline QRect toBottomLeftRect(const QRect &topLeftRect, int windowHeight)
 {
-    static const int defaultVertexShaderCount = 2;
-    static QSGRhiShaderEffectDefaultShader defaultVertexShaders[defaultVertexShaderCount] = {
-        QSGRhiShaderEffectDefaultShader::create(QStringLiteral(":/qt-project.org/scenegraph/shaders_ng/shadereffect.vert.qsb"), 1),
-        QSGRhiShaderEffectDefaultShader::create(QStringLiteral(":/qt-project.org/scenegraph/shaders_ng/shadereffect.vert.qsb.mv2qsb"), 2)
-    };
-    static const int defaultFragmentShaderCount = 2;
-    static QSGRhiShaderEffectDefaultShader defaultFragmentShaders[defaultFragmentShaderCount] = {
-        QSGRhiShaderEffectDefaultShader::create(QStringLiteral(":/qt-project.org/scenegraph/shaders_ng/shadereffect.frag.qsb"), 1),
-        QSGRhiShaderEffectDefaultShader::create(QStringLiteral(":/qt-project.org/scenegraph/shaders_ng/shadereffect.frag.qsb.mv2qsb"), 2)
-    };
-
-    if (bool(m_material.flags() & QSGMaterial::Blending) != syncData->blending) {
-        m_material.setFlag(QSGMaterial::Blending, syncData->blending);
-        markDirty(QSGNode::DirtyMaterial);
-    }
-
-    if (m_material.m_cullMode != syncData->cullMode) {
-        m_material.m_cullMode = syncData->cullMode;
-        markDirty(QSGNode::DirtyMaterial);
-    }
-
-    if (syncData->dirty & QSGShaderEffectNode::DirtyShaders) {
-        if (m_material.m_materialType) {
-            shaderMaterialTypeCache[m_material.m_materialTypeCacheKey].unref(m_material.m_vertexShader,
-                                                                             m_material.m_fragmentShader);
-        }
-
-        m_material.m_hasCustomVertexShader = syncData->vertex.shader->hasShaderCode;
-        quint32 defaultMatrixArrayByteSize = 0;
-        if (m_material.m_hasCustomVertexShader) {
-            m_material.m_vertexShader = syncData->vertex.shader->shaderInfo.rhiShader;
-        } else {
-            bool found = false;
-            for (int i = 0; i < defaultVertexShaderCount; ++i) {
-                if (defaultVertexShaders[i].viewCount == syncData->viewCount) {
-                    m_material.m_vertexShader = defaultVertexShaders[i].shader;
-                    defaultMatrixArrayByteSize = defaultVertexShaders[i].matrixArrayByteSize;
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                qWarning("No default vertex shader found for view count %d", syncData->viewCount);
-                m_material.m_vertexShader = defaultVertexShaders[0].shader;
-                defaultMatrixArrayByteSize = 64;
-            }
-        }
-
-        m_material.m_hasCustomFragmentShader = syncData->fragment.shader->hasShaderCode;
-        quint32 defaultOpacityOffset = 0;
-        if (m_material.m_hasCustomFragmentShader) {
-            m_material.m_fragmentShader = syncData->fragment.shader->shaderInfo.rhiShader;
-        } else {
-            bool found = false;
-            for (int i = 0; i < defaultFragmentShaderCount; ++i) {
-                if (defaultFragmentShaders[i].viewCount == syncData->viewCount) {
-                    m_material.m_fragmentShader = defaultFragmentShaders[i].shader;
-                    defaultOpacityOffset = defaultFragmentShaders[i].opacityOffset;
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                qWarning("No default fragment shader found for view count %d", syncData->viewCount);
-                m_material.m_fragmentShader = defaultFragmentShaders[0].shader;
-                defaultOpacityOffset = 64;
-            }
-        }
-
-        m_material.m_materialType = shaderMaterialTypeCache[syncData->materialTypeCacheKey].ref(m_material.m_vertexShader,
-                                                                                                m_material.m_fragmentShader);
-        m_material.m_materialTypeCacheKey = syncData->materialTypeCacheKey;
-
-        m_material.m_linker.reset(m_material.m_vertexShader, m_material.m_fragmentShader);
-
-        if (m_material.m_hasCustomVertexShader) {
-            m_material.m_linker.feedConstants(*syncData->vertex.shader);
-            m_material.m_linker.feedSamplers(*syncData->vertex.shader);
-        } else {
-            QSGShaderEffectNode::ShaderData defaultSD;
-            defaultSD.shaderInfo.name = QLatin1String("Default ShaderEffect vertex shader");
-            defaultSD.shaderInfo.rhiShader = m_material.m_vertexShader;
-            defaultSD.shaderInfo.type = QSGGuiThreadShaderEffectManager::ShaderInfo::TypeVertex;
-
-            // { mat4 qt_Matrix[VIEW_COUNT]; float qt_Opacity; } where only the matrix is used
-            QSGGuiThreadShaderEffectManager::ShaderInfo::Variable v;
-            v.name = QByteArrayLiteral("qt_Matrix");
-            v.offset = 0;
-            v.size = defaultMatrixArrayByteSize;
-            defaultSD.shaderInfo.variables.append(v);
-            QSGShaderEffectNode::VariableData vd;
-            vd.specialType = QSGShaderEffectNode::VariableData::Matrix;
-            defaultSD.varData.append(vd);
-            m_material.m_linker.feedConstants(defaultSD);
-        }
-
-        if (m_material.m_hasCustomFragmentShader) {
-            m_material.m_linker.feedConstants(*syncData->fragment.shader);
-            m_material.m_linker.feedSamplers(*syncData->fragment.shader);
-        } else {
-            QSGShaderEffectNode::ShaderData defaultSD;
-            defaultSD.shaderInfo.name = QLatin1String("Default ShaderEffect fragment shader");
-            defaultSD.shaderInfo.rhiShader = m_material.m_fragmentShader;
-            defaultSD.shaderInfo.type = QSGGuiThreadShaderEffectManager::ShaderInfo::TypeFragment;
-
-            // { mat4 qt_Matrix[VIEW_COUNT]; float qt_Opacity; } where only the opacity is used
-            QSGGuiThreadShaderEffectManager::ShaderInfo::Variable v;
-            v.name = QByteArrayLiteral("qt_Opacity");
-            v.offset = defaultOpacityOffset;
-            v.size = sizeof(float);
-            defaultSD.shaderInfo.variables.append(v);
-            QSGShaderEffectNode::VariableData vd;
-            vd.specialType = QSGShaderEffectNode::VariableData::Opacity;
-            defaultSD.varData.append(vd);
-
-            v.name = QByteArrayLiteral("source");
-            v.bindPoint = 1;
-            v.type = QSGGuiThreadShaderEffectManager::ShaderInfo::Sampler;
-            defaultSD.shaderInfo.variables.append(v);
-            for (const QSGShaderEffectNode::VariableData &extVarData : std::as_const(syncData->fragment.shader->varData)) {
-                if (extVarData.specialType == QSGShaderEffectNode::VariableData::Source) {
-                    vd.value = extVarData.value;
-                    break;
-                }
-            }
-            vd.specialType = QSGShaderEffectNode::VariableData::Source;
-            defaultSD.varData.append(vd);
-
-            m_material.m_linker.feedConstants(defaultSD);
-            m_material.m_linker.feedSamplers(defaultSD);
-        }
-
-        m_material.m_linker.linkTextureSubRects();
-        m_material.updateTextureProviders(true);
-        markDirty(QSGNode::DirtyMaterial);
-
-    } else  {
-
-        if (syncData->dirty & QSGShaderEffectNode::DirtyShaderConstant) {
-            if (!syncData->vertex.dirtyConstants->isEmpty())
-                m_material.m_linker.feedConstants(*syncData->vertex.shader, syncData->vertex.dirtyConstants);
-            if (!syncData->fragment.dirtyConstants->isEmpty())
-                m_material.m_linker.feedConstants(*syncData->fragment.shader, syncData->fragment.dirtyConstants);
-            markDirty(QSGNode::DirtyMaterial);
-        }
-
-        if (syncData->dirty & QSGShaderEffectNode::DirtyShaderTexture) {
-            if (!syncData->vertex.dirtyTextures->isEmpty())
-                m_material.m_linker.feedSamplers(*syncData->vertex.shader, syncData->vertex.dirtyTextures);
-            if (!syncData->fragment.dirtyTextures->isEmpty())
-                m_material.m_linker.feedSamplers(*syncData->fragment.shader, syncData->fragment.dirtyTextures);
-            m_material.m_linker.linkTextureSubRects();
-            m_material.updateTextureProviders(false);
-            markDirty(QSGNode::DirtyMaterial);
-        }
-    }
-
-    if (bool(m_material.flags() & QSGMaterial::RequiresFullMatrix) != m_material.m_hasCustomVertexShader) {
-        m_material.setFlag(QSGMaterial::RequiresFullMatrix, m_material.m_hasCustomVertexShader);
-        markDirty(QSGNode::DirtyMaterial);
-    }
+    return QRect(topLeftRect.x(), windowHeight - topLeftRect.bottomRight().y() - 1,
+                 topLeftRect.width(), topLeftRect.height());
 }
 
-void QSGRhiShaderEffectNode::handleTextureChange()
+static bool prepareDrawForRenderToTextureWidget(const QPlatformTextureList *textures,
+                                                int idx,
+                                                QWindow *window,
+                                                const QRect &deviceWindowRect,
+                                                const QPoint &offset,
+                                                bool invertTargetY,
+                                                bool invertSource,
+                                                QMatrix4x4 *target,
+                                                QMatrix3x3 *source)
 {
-    markDirty(QSGNode::DirtyMaterial);
-    emit textureChanged();
-}
-
-void QSGRhiShaderEffectNode::handleTextureProviderDestroyed(QObject *object)
-{
-    for (QSGTextureProvider *&tp : m_material.m_textureProviders) {
-        if (tp == object)
-            tp = nullptr;
-    }
-}
-
-void QSGRhiShaderEffectNode::preprocess()
-{
-    for (QSGTextureProvider *tp : m_material.m_textureProviders) {
-        if (tp) {
-            if (QSGDynamicTexture *texture = qobject_cast<QSGDynamicTexture *>(tp->texture()))
-                texture->updateTexture();
-        }
-    }
-}
-
-bool QSGRhiGuiThreadShaderEffectManager::hasSeparateSamplerAndTextureObjects() const
-{
-    return false; // because SPIR-V and QRhi make it look so, regardless of the underlying API
-}
-
-QString QSGRhiGuiThreadShaderEffectManager::log() const
-{
-    return QString();
-}
-
-QSGGuiThreadShaderEffectManager::Status QSGRhiGuiThreadShaderEffectManager::status() const
-{
-    return m_status;
-}
-
-void QSGRhiGuiThreadShaderEffectManager::prepareShaderCode(ShaderInfo::Type typeHint, const QUrl &src, ShaderInfo *result)
-{
-    if (!(src.scheme().compare(u"qrc", Qt::CaseInsensitive) == 0 || src.isLocalFile())) [[unlikely]] {
-        emit shaderCodePrepared(false, typeHint, src, result);
-        return;
-    }
-
-    struct CacheEntry {
-        QShader shader;
-        ShaderInfo::Type type;
-        QList<ShaderInfo::Variable> variables;
-        QDateTime mtime;
-        bool valid = false;
-        bool initialized = false;
-    };
-
-    static std::flat_map<QString, CacheEntry> reflectCache;
-    static std::shared_mutex reflectMutex;
-    static QFileSelector selector;
-
-    const QString fn = selector.select(QQmlFile::urlToLocalFileOrQrc(src));
-    const QDateTime currentMtime = QFileInfo(fn).lastModified();
-
-    {
-        std::shared_lock lock(reflectMutex);
-        if (auto it = reflectCache.find(fn); it != reflectCache.end() && it->second.initialized) [[likely]] {
-            if (it->second.mtime == currentMtime) [[likely]] {
-                result->name = fn;
-                result->rhiShader = it->second.shader;
-                result->type = it->second.type;
-                result->variables = it->second.variables;
-                m_status = it->second.valid ? Compiled : Error;
-                emit shaderCodePrepared(it->second.valid, typeHint, src, result);
-                emit logAndStatusChanged();
-                return;
-            }
-        }
-    }
-
-    std::unique_lock lock(reflectMutex);
-    auto& entry = reflectCache[fn];
-    if (!entry.initialized || entry.mtime != currentMtime) [[likely]] {
-        QFile f(fn);
-        if (!f.open(QIODevice::ReadOnly)) [[unlikely]] {
-            m_status = Error;
-            emit shaderCodePrepared(false, typeHint, src, result);
-            emit logAndStatusChanged();
-            return;
-        }
-        entry.shader = QShader::fromSerialized(f.readAll());
-        if (!entry.shader.isValid()) [[unlikely]] {
-            m_status = Error;
-            emit shaderCodePrepared(false, typeHint, src, result);
-            emit logAndStatusChanged();
-            return;
-        }
-        result->name = fn;
-        result->rhiShader = entry.shader;
-        entry.valid = reflect(result);
-        entry.type = result->type;
-        entry.variables = result->variables;
-        entry.mtime = currentMtime;
-        entry.initialized = true;
-    } else {
-        result->name = fn;
-        result->rhiShader = entry.shader;
-        result->type = entry.type;
-        result->variables = entry.variables;
-    }
-
-    m_status = entry.valid ? Compiled : Error;
-    emit shaderCodePrepared(entry.valid, typeHint, src, result);
-    emit logAndStatusChanged();
-}
-
-bool QSGRhiGuiThreadShaderEffectManager::reflect(ShaderInfo *result)
-{
-    switch (result->rhiShader.stage()) {
-    case QShader::VertexStage:
-        result->type = ShaderInfo::TypeVertex;
-        break;
-    case QShader::FragmentStage:
-        result->type = ShaderInfo::TypeFragment;
-        break;
-    default:
-        result->type = ShaderInfo::TypeOther;
-        qWarning("Unsupported shader stage (%d)", result->rhiShader.stage());
+    const QRect clipRect = textures->clipRect(idx);
+    if (clipRect.isEmpty())
         return false;
-    }
 
-    const QShaderDescription desc = result->rhiShader.description();
+    QRect rectInWindow = textures->geometry(idx);
+    // relative to the TLW, not necessarily our window (if the flush is for a native child widget), have to adjust
+    rectInWindow.translate(-offset);
 
-    int ubufBinding = -1;
-    const QList<QShaderDescription::UniformBlock> ubufs = desc.uniformBlocks();
-    const int ubufCount = ubufs.size();
-    for (int i = 0; i < ubufCount; ++i) {
-        const QShaderDescription::UniformBlock &ubuf(ubufs[i]);
-        if (ubufBinding == -1 && ubuf.binding >= 0) {
-            ubufBinding = ubuf.binding;
-            for (const QShaderDescription::BlockVariable &member : ubuf.members) {
-                ShaderInfo::Variable v;
-                v.type = ShaderInfo::Constant;
-                v.name = member.name;
-                v.offset = member.offset;
-                v.size = member.size;
-                result->variables.append(v);
-            }
-        } else {
-            qWarning("Uniform block %s (binding %d) ignored", ubuf.blockName.constData(),
-                     ubuf.binding);
-        }
-    }
+    const QRect clippedRectInWindow = rectInWindow & clipRect.translated(rectInWindow.topLeft());
+    const QRect srcRect = toBottomLeftRect(clipRect, rectInWindow.height());
 
-    const QList<QShaderDescription::InOutVariable> combinedImageSamplers = desc.combinedImageSamplers();
-    const int samplerCount = combinedImageSamplers.size();
-    for (int i = 0; i < samplerCount; ++i) {
-        const QShaderDescription::InOutVariable &combinedImageSampler(combinedImageSamplers[i]);
-        ShaderInfo::Variable v;
-        v.type = ShaderInfo::Sampler;
-        v.name = combinedImageSampler.name;
-        v.bindPoint = combinedImageSampler.binding;
-        result->variables.append(v);
-    }
+    *target = targetTransform(scaledRect(clippedRectInWindow, window->devicePixelRatio()),
+                              deviceWindowRect,
+                              invertTargetY);
+
+    *source = sourceTransform(scaledRect(srcRect, window->devicePixelRatio()),
+                              scaledRect(rectInWindow, window->devicePixelRatio()).size(),
+                              invertSource ? SourceTransformOrigin::TopLeft : SourceTransformOrigin::BottomLeft);
 
     return true;
 }
 
-QT_END_NAMESPACE
+static QShader getShader(const QString &name)
+{
+    QFile f(name);
+    if (f.open(QIODevice::ReadOnly))
+        return QShader::fromSerialized(f.readAll());
 
-#include "moc_qsgrhishadereffectnode_p.cpp"
+    qWarning("QBackingStoreDefaultCompositor: Could not find built-in shader %s "
+             "(is something wrong with QtGui library resources?)",
+             qPrintable(name));
+    return QShader();
+}
+
+static void updateMatrix3x3(QRhiResourceUpdateBatch *resourceUpdates, QRhiBuffer *ubuf, const QMatrix3x3 &m)
+{
+    // mat3 is still 4 floats per column in the uniform buffer (but there is no
+    // 4th column), so 48 bytes altogether, not 36 or 64.
+
+    float f[12];
+    const float *src = static_cast<const float *>(m.constData());
+    float *dst = f;
+    memcpy(dst, src, 3 * sizeof(float));
+    memcpy(dst + 4, src + 3, 3 * sizeof(float));
+    memcpy(dst + 8, src + 6, 3 * sizeof(float));
+
+    resourceUpdates->updateDynamicBuffer(ubuf, 64, 48, f);
+}
+
+enum class PipelineBlend {
+    None,
+    Alpha,
+    PremulAlpha
+};
+
+static QRhiGraphicsPipeline *createGraphicsPipeline(QRhi *rhi,
+                                                    QRhiShaderResourceBindings *srb,
+                                                    QRhiRenderPassDescriptor *rpDesc,
+                                                    PipelineBlend blend)
+{
+    QRhiGraphicsPipeline *ps = rhi->newGraphicsPipeline();
+
+    switch (blend) {
+    case PipelineBlend::Alpha:
+    {
+        QRhiGraphicsPipeline::TargetBlend blend;
+        blend.enable = true;
+        blend.srcColor = QRhiGraphicsPipeline::SrcAlpha;
+        blend.dstColor = QRhiGraphicsPipeline::OneMinusSrcAlpha;
+        blend.srcAlpha = QRhiGraphicsPipeline::One;
+        blend.dstAlpha = QRhiGraphicsPipeline::One;
+        ps->setTargetBlends({ blend });
+    }
+        break;
+    case PipelineBlend::PremulAlpha:
+    {
+        QRhiGraphicsPipeline::TargetBlend blend;
+        blend.enable = true;
+        blend.srcColor = QRhiGraphicsPipeline::One;
+        blend.dstColor = QRhiGraphicsPipeline::OneMinusSrcAlpha;
+        blend.srcAlpha = QRhiGraphicsPipeline::One;
+        blend.dstAlpha = QRhiGraphicsPipeline::One;
+        ps->setTargetBlends({ blend });
+    }
+        break;
+    default:
+        break;
+    }
+
+    ps->setShaderStages({
+        { QRhiShaderStage::Vertex, getShader(":/qt-project.org/gui/painting/shaders/backingstorecompose.vert.qsb"_L1) },
+        { QRhiShaderStage::Fragment, getShader(":/qt-project.org/gui/painting/shaders/backingstorecompose.frag.qsb"_L1) }
+    });
+    QRhiVertexInputLayout inputLayout;
+    inputLayout.setBindings({ { 5 * sizeof(float) } });
+    inputLayout.setAttributes({
+        { 0, 0, QRhiVertexInputAttribute::Float3, 0 },
+        { 0, 1, QRhiVertexInputAttribute::Float2, quint32(3 * sizeof(float)) }
+    });
+    ps->setVertexInputLayout(inputLayout);
+    ps->setShaderResourceBindings(srb);
+    ps->setRenderPassDescriptor(rpDesc);
+
+    if (!ps->create()) {
+        qWarning("QBackingStoreDefaultCompositor: Failed to build graphics pipeline");
+        delete ps;
+        return nullptr;
+    }
+    return ps;
+}
+
+static const int UBUF_SIZE = 120;
+
+QBackingStoreDefaultCompositor::PerQuadData QBackingStoreDefaultCompositor::createPerQuadData(QRhiTexture *texture, QRhiTexture *textureExtra)
+{
+    PerQuadData d;
+
+    d.ubuf = m_rhi->newBuffer(QRhiBuffer::Dynamic, QRhiBuffer::UniformBuffer, UBUF_SIZE);
+    if (!d.ubuf->create())
+        qWarning("QBackingStoreDefaultCompositor: Failed to create uniform buffer");
+
+    d.srb = m_rhi->newShaderResourceBindings();
+    d.srb->setBindings({
+        QRhiShaderResourceBinding::uniformBuffer(0, QRhiShaderResourceBinding::VertexStage | QRhiShaderResourceBinding::FragmentStage, d.ubuf, 0, UBUF_SIZE),
+        QRhiShaderResourceBinding::sampledTexture(1, QRhiShaderResourceBinding::FragmentStage, texture, m_samplerNearest.get())
+    });
+    if (!d.srb->create())
+        qWarning("QBackingStoreDefaultCompositor: Failed to create srb");
+    d.lastUsedTexture = texture;
+
+    if (textureExtra) {
+        d.srbExtra = m_rhi->newShaderResourceBindings();
+        d.srbExtra->setBindings({
+            QRhiShaderResourceBinding::uniformBuffer(0, QRhiShaderResourceBinding::VertexStage | QRhiShaderResourceBinding::FragmentStage, d.ubuf, 0, UBUF_SIZE),
+            QRhiShaderResourceBinding::sampledTexture(1, QRhiShaderResourceBinding::FragmentStage, textureExtra, m_samplerNearest.get())
+        });
+        if (!d.srbExtra->create())
+            qWarning("QBackingStoreDefaultCompositor: Failed to create srb");
+    }
+
+    d.lastUsedTextureExtra = textureExtra;
+
+    return d;
+}
+
+void QBackingStoreDefaultCompositor::updatePerQuadData(PerQuadData *d, QRhiTexture *texture, QRhiTexture *textureExtra,
+                                                       UpdateQuadDataOptions options)
+{
+    // This whole check-if-texture-ptr-is-different is needed because there is
+    // nothing saying a QPlatformTextureList cannot return a different
+    // QRhiTexture* from the same index in a subsequent flush.
+
+    const QRhiSampler::Filter filter = options.testFlag(NeedsLinearFiltering) ? QRhiSampler::Linear : QRhiSampler::Nearest;
+    if ((d->lastUsedTexture == texture && d->lastUsedFilter == filter) || !d->srb)
+        return;
+
+    QRhiSampler *sampler = filter == QRhiSampler::Linear ? m_samplerLinear.get() : m_samplerNearest.get();
+    d->srb->setBindings({
+        QRhiShaderResourceBinding::uniformBuffer(0, QRhiShaderResourceBinding::VertexStage | QRhiShaderResourceBinding::FragmentStage, d->ubuf, 0, UBUF_SIZE),
+        QRhiShaderResourceBinding::sampledTexture(1, QRhiShaderResourceBinding::FragmentStage, texture, sampler)
+    });
+
+    d->srb->updateResources(QRhiShaderResourceBindings::BindingsAreSorted);
+    d->lastUsedTexture = texture;
+    d->lastUsedFilter = filter;
+
+    if (textureExtra) {
+        d->srbExtra->setBindings({
+            QRhiShaderResourceBinding::uniformBuffer(0, QRhiShaderResourceBinding::VertexStage | QRhiShaderResourceBinding::FragmentStage, d->ubuf, 0, UBUF_SIZE),
+            QRhiShaderResourceBinding::sampledTexture(1, QRhiShaderResourceBinding::FragmentStage, textureExtra, sampler)
+        });
+
+        d->srbExtra->updateResources(QRhiShaderResourceBindings::BindingsAreSorted);
+        d->lastUsedTextureExtra = textureExtra;
+    }
+}
+
+void QBackingStoreDefaultCompositor::updateUniforms(PerQuadData *d, QRhiResourceUpdateBatch *resourceUpdates,
+                                                    const QMatrix4x4 &target, const QMatrix3x3 &source,
+                                                    UpdateUniformOptions options)
+{
+    resourceUpdates->updateDynamicBuffer(d->ubuf, 0, 64, target.constData());
+    updateMatrix3x3(resourceUpdates, d->ubuf, source);
+    float opacity = 1.0f;
+    resourceUpdates->updateDynamicBuffer(d->ubuf, 112, 4, &opacity);
+    qint32 textureSwizzle = options;
+    resourceUpdates->updateDynamicBuffer(d->ubuf, 116, 4, &textureSwizzle);
+}
+
+void QBackingStoreDefaultCompositor::ensureResources(QRhiResourceUpdateBatch *resourceUpdates, QRhiRenderPassDescriptor *rpDesc)
+{
+    static const float vertexData[] = {
+        -1, -1, 0,   0, 0,
+        -1,  1, 0,   0, 1,
+         1, -1, 0,   1, 0,
+        -1,  1, 0,   0, 1,
+         1, -1, 0,   1, 0,
+         1,  1, 0,   1, 1
+    };
+
+    if (!m_vbuf) {
+        m_vbuf.reset(m_rhi->newBuffer(QRhiBuffer::Immutable, QRhiBuffer::VertexBuffer, sizeof(vertexData)));
+        if (m_vbuf->create())
+            resourceUpdates->uploadStaticBuffer(m_vbuf.get(), vertexData);
+        else
+            qWarning("QBackingStoreDefaultCompositor: Failed to create vertex buffer");
+    }
+
+    if (!m_samplerNearest) {
+        m_samplerNearest.reset(m_rhi->newSampler(QRhiSampler::Nearest, QRhiSampler::Nearest, QRhiSampler::None,
+                                                 QRhiSampler::ClampToEdge, QRhiSampler::ClampToEdge));
+        if (!m_samplerNearest->create())
+            qWarning("QBackingStoreDefaultCompositor: Failed to create sampler (Nearest filtering)");
+    }
+
+    if (!m_samplerLinear) {
+        m_samplerLinear.reset(m_rhi->newSampler(QRhiSampler::Linear, QRhiSampler::Linear, QRhiSampler::None,
+                                                QRhiSampler::ClampToEdge, QRhiSampler::ClampToEdge));
+        if (!m_samplerLinear->create())
+            qWarning("QBackingStoreDefaultCompositor: Failed to create sampler (Linear filtering)");
+    }
+
+    if (!m_widgetQuadData.isValid())
+        m_widgetQuadData = createPerQuadData(m_texture.get());
+
+    QRhiShaderResourceBindings *srb = m_widgetQuadData.srb; // just for the layout
+    if (!m_psNoBlend)
+        m_psNoBlend.reset(createGraphicsPipeline(m_rhi, srb, rpDesc, PipelineBlend::None));
+    if (!m_psBlend)
+        m_psBlend.reset(createGraphicsPipeline(m_rhi, srb, rpDesc, PipelineBlend::Alpha));
+    if (!m_psPremulBlend)
+        m_psPremulBlend.reset(createGraphicsPipeline(m_rhi, srb, rpDesc, PipelineBlend::PremulAlpha));
+}
+
+QPlatformBackingStore::FlushResult QBackingStoreDefaultCompositor::flush(QPlatformBackingStore *backingStore, QRhi *rhi, QRhiSwapChain *swapchain, QWindow *window, qreal sourceDevicePixelRatio, const QRegion &region, const QPoint &offset, QPlatformTextureList *textures, bool translucentBackground, qreal sourceTransformFactor)
+{
+    if (!rhi || !swapchain) [[unlikely]] return QPlatformBackingStore::FlushFailed;
+    if (!m_rhi) m_rhi = rhi; else if (m_rhi != rhi) [[unlikely]] return QPlatformBackingStore::FlushFailed;
+
+    auto *wp = qt_window_private(window);
+    if (!wp->receivedExpose) return QPlatformBackingStore::FlushSuccess;
+    wp->lastComposeTime.start();
+
+    if (swapchain->currentPixelSize() != swapchain->surfacePixelSize()) swapchain->createOrResize();
+
+    auto fOp = rhi->beginFrame(swapchain);
+    if (fOp == QRhi::FrameOpSwapChainOutOfDate) { if (!swapchain->createOrResize()) return QPlatformBackingStore::FlushFailed; fOp = rhi->beginFrame(swapchain); }
+    if (fOp != QRhi::FrameOpSuccess) [[unlikely]] return fOp == QRhi::FrameOpDeviceLost ? QPlatformBackingStore::FlushFailedDueToLostDevice : QPlatformBackingStore::FlushFailed;
+
+    auto *uBatch = rhi->nextResourceUpdateBatch();
+    QPlatformBackingStore::TextureFlags tFlags;
+    const qreal sFactor = sourceTransformFactor ? sourceTransformFactor : sourceDevicePixelRatio;
+
+    if (auto *gb = backingStore->graphicsBuffer(); gb && gb->lock(QPlatformGraphicsBuffer::SWReadAccess)) {
+        toTexture(QImage(gb->data(), gb->size().width(), gb->size().height(), gb->bytesPerLine(), QImage::toImageFormat(gb->format())), rhi, uBatch, scaledRegion(region, sFactor, offset), &tFlags);
+        if (gb->origin() == QPlatformGraphicsBuffer::OriginBottomLeft) tFlags |= QPlatformBackingStore::TextureFlip;
+        gb->unlock();
+    } else toTexture(backingStore, rhi, uBatch, scaledRegion(region, sFactor, offset), &tFlags);
+
+    ensureResources(uBatch, swapchain->renderPassDescriptor());
+
+    const bool invY = !rhi->isYUpInNDC(), invS = !rhi->isYUpInFramebuffer();
+    const float dpr = (float)window->devicePixelRatio();
+    const QSize sz = window->size();
+    const float iW = 2.0f / (sz.width() * dpr), iH = 2.0f / (sz.height() * dpr);
+    const bool linear = (sz.width() * sourceDevicePixelRatio) > (sz.width() * dpr);
+
+    struct alignas(16) GPUData { float mat4[16]; float mat3[12]; float opacity; int swizzle; };
+    const int nT = textures->count();
+    m_textureQuadData.resize(nT);
+
+    auto computeUbo = [&](const QRectF &tRect, const QRectF &sRect, const QSize &texSz, bool flipS, int swz) {
+        GPUData d{.mat4 = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1}, .opacity = 1.0f, .swizzle = swz};
+        const float tw = (float)tRect.width(), th = (float)tRect.height();
+        d.mat4[0] = tw * (iW * 0.5f);
+        d.mat4[5] = (invY ? -1.0f : 1.0f) * (th * (iH * 0.5f));
+        d.mat4[12] = (float)tRect.x() * iW + d.mat4[0] - 1.0f;
+        d.mat4[13] = invY ? ((float)tRect.y() * iH + th * iH * 0.5f - 1.0f) : (1.0f - (float)tRect.y() * iH - th * iH * 0.5f);
+        const float isW = 1.0f / texSz.width(), isH = 1.0f / texSz.height();
+        d.mat3[0] = (float)sRect.width() * isW; d.mat3[5] = (float)sRect.height() * isH;
+        d.mat3[8] = (float)sRect.x() * isW; d.mat3[9] = (float)sRect.y() * isH;
+        if (!flipS) { d.mat3[5] = -d.mat3[5]; d.mat3[9] = 1.0f - d.mat3[9]; }
+        return d;
+    };
+
+    int swz = (tFlags & QPlatformBackingStore::TextureSwizzle) ? (std::endian::native == std::endian::little ? 1 : 2) : 0;
+    if (m_texture) {
+        auto d = computeUbo({0, 0, sz.width() * dpr, sz.height() * dpr}, toBottomLeftRect(scaledRect({QPoint(), sz}, sourceDevicePixelRatio).translated(scaledOffset(offset, sFactor)), m_texture->pixelSize().height()), m_texture->pixelSize(), tFlags & QPlatformBackingStore::TextureFlip, swz);
+        uBatch->updateDynamicBuffer(m_widgetQuadData.ubuf, 0, sizeof(GPUData), &d);
+        if (linear) updatePerQuadData(&m_widgetQuadData, m_texture.get(), nullptr, NeedsLinearFiltering);
+    }
+
+    for (int i = 0; i < nT; ++i) {
+        const QRect cr = textures->clipRect(i);
+        if (cr.isEmpty()) { m_textureQuadData[i].reset(); continue; }
+        QRect gm = textures->geometry(i); gm.translate(-offset);
+        if (auto *t = textures->texture(i)) {
+            if (!m_textureQuadData[i].isValid()) m_textureQuadData[i] = createPerQuadData(t, textures->textureExtra(i));
+            else updatePerQuadData(&m_textureQuadData[i], t, textures->textureExtra(i));
+            auto d = computeUbo(scaledRect(gm & cr.translated(gm.topLeft()), dpr), scaledRect(toBottomLeftRect(cr, gm.height()), dpr), scaledRect(gm, dpr).size(), (textures->flags(i).testFlag(QPlatformTextureList::MirrorVertically) != invS), 0);
+            uBatch->updateDynamicBuffer(m_textureQuadData[i].ubuf, 0, sizeof(GPUData), &d);
+            if (linear) updatePerQuadData(&m_textureQuadData[i], t, textures->textureExtra(i), NeedsLinearFiltering);
+        } else m_textureQuadData[i].reset();
+    }
+
+    auto *cb = swapchain->currentFrameCommandBuffer();
+    cb->resourceUpdate(uBatch);
+    auto drawPass = [&](QRhiRenderTarget *rt) {
+        cb->beginPass(rt, translucentBackground ? Qt::transparent : Qt::black, { 1.0f, 0 });
+        cb->setViewport({ 0, 0, (float)rt->pixelSize().width(), (float)rt->pixelSize().height() });
+        QRhiCommandBuffer::VertexInput vbi(m_vbuf.get(), 0); cb->setVertexInput(0, 1, &vbi);
+
+        cb->setGraphicsPipeline(m_psNoBlend.get());
+        for (int i = 0; i < nT; ++i) {
+            const auto f = textures->flags(i);
+            if (!f.testFlag(QPlatformTextureList::StacksOnTop) && m_textureQuadData[i].isValid()) {
+                cb->setShaderResources((rt == swapchain->currentFrameRenderTarget(QRhiSwapChain::RightBuffer) && m_textureQuadData[i].srbExtra) ? m_textureQuadData[i].srbExtra : m_textureQuadData[i].srb);
+                cb->draw(6);
+            }
+        }
+
+        cb->setGraphicsPipeline((tFlags & QPlatformBackingStore::TexturePremultiplied) ? m_psPremulBlend.get() : m_psBlend.get());
+        if (m_texture) { cb->setShaderResources(m_widgetQuadData.srb); cb->draw(6); }
+
+        for (int i = 0; i < nT; ++i) {
+            const auto f = textures->flags(i);
+            if (f.testFlag(QPlatformTextureList::StacksOnTop) && m_textureQuadData[i].isValid()) {
+                cb->setGraphicsPipeline(f.testFlag(QPlatformTextureList::NeedsPremultipliedAlphaBlending) ? m_psPremulBlend.get() : m_psBlend.get());
+                cb->setShaderResources((rt == swapchain->currentFrameRenderTarget(QRhiSwapChain::RightBuffer) && m_textureQuadData[i].srbExtra) ? m_textureQuadData[i].srbExtra : m_textureQuadData[i].srb);
+                cb->draw(6);
+            }
+        }
+        cb->endPass();
+    };
+
+    if (swapchain->window()->format().stereo()) {
+        drawPass(swapchain->currentFrameRenderTarget(QRhiSwapChain::LeftBuffer));
+        drawPass(swapchain->currentFrameRenderTarget(QRhiSwapChain::RightBuffer));
+    } else drawPass(swapchain->currentFrameRenderTarget());
+
+    rhi->endFrame(swapchain);
+    return QPlatformBackingStore::FlushSuccess;
+}
+
+QT_END_NAMESPACE
