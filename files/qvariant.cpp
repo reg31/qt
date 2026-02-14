@@ -498,4 +498,27 @@ QDataStream &operator>>(QDataStream &s, QVariant &p) { p.load(s); return s; }
 QDataStream &operator<<(QDataStream &s, const QVariant &p) { p.save(s); return s; }
 #endif
 
+namespace QtPrivate {
+
+const void *QVariantTypeCoercer::convert(const QVariant &value, const QMetaType &type)
+{
+    if (value.metaType() == type)
+        return value.constData();
+    
+    converted = value;
+    if (converted.convert(type))
+        return converted.constData();
+    
+    return nullptr;
+}
+
+const void *QVariantTypeCoercer::coerce(const QVariant &value, const QMetaType &type)
+{
+    if (value.canConvert(type))
+        return convert(value, type);
+    return nullptr;
+}
+
+}
+
 QT_END_NAMESPACE
