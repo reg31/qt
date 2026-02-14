@@ -344,6 +344,39 @@ QVariant QVariant::copyConstruct(QMetaType type, const void *data)
     return v;
 }
 
+void *QVariant::prepareForEmplace(QMetaType type)
+{
+    if (Private::canUseInternalSpace(type.iface())) {
+        clear();
+        d.packedType = quintptr(type.iface()) >> 2;
+        return d.data.data;
+    }
+    QVariant next(std::in_place, type);
+    std::swap(d, next.d);
+    return const_cast<void *>(d.storage());
+}
+
+bool QVariant::view(int type, void *ptr)
+{
+    return QMetaType::view(d.type(), data(), QMetaType(type), ptr);
+}
+
+#ifndef QT_NO_DEBUG_STREAM
+QDebug QVariant::qdebugHelper(QDebug dbg) const
+{
+    QDebugStateSaver saver(dbg);
+    const uint tid = d.type().id();
+    dbg.nospace() << "QVariant(";
+    if (tid != QMetaType::UnknownType) {
+        dbg << d.type().name() << ", ";
+        if (!d.type().debugStream(dbg, storage()) && canConvert<QString>())
+            dbg << toString();
+    } else dbg << "Invalid";
+    dbg << ')';
+    return dbg;
+}
+#endif
+
 template <typename T>
 inline T qNumVariantToHelper(const QVariant::Private &d, bool *ok)
 {
