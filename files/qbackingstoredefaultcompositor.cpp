@@ -485,26 +485,34 @@ QPlatformBackingStore::FlushResult QBackingStoreDefaultCompositor::flush(QPlatfo
     const float rw = 1.0f / (sz.width() * dpr), rh = 1.0f / (sz.height() * dpr);
     const bool linear = (sz.width() * sourceDevicePixelRatio) > (sz.width() * dpr);
 
-    struct alignas(16) GPUData { float mat4[16]; float mat3[12]; float opacity; int swizzle; };
+    struct alignas(16) GPUData {
+        float mat4[16]{1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+        float mat3[12]{};
+        float opacity = 1.0f;
+        int swizzle = 0;
+    };
 
-    auto writeUbo = [&](QRhiBuffer *buf, const QRectF &tRect, const QRectF &sRect, const QSize &texSz, bool flipS, int swz) {
-        GPUData d{.mat4 = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1}, .opacity = 1.0f, .swizzle = swz};
+    auto packUbo = [&](QRhiBuffer *buf, const QRectF &tRect, const QRectF &sRect, const QSize &texSz, bool flipS, int swz) {
+        GPUData d;
+        d.swizzle = swz;
         float tw = (float)tRect.width(), th = (float)tRect.height();
         d.mat4[0] = tw * rw;
         d.mat4[5] = (invY ? -1.0f : 1.0f) * (th * rh);
         d.mat4[12] = d.mat4[0] - 1.0f + (((float)tRect.x() * rw) * 2.0f);
         d.mat4[13] = invY ? (th * rh - 1.0f + (((float)tRect.y() * rh) * 2.0f)) : (1.0f - th * rh - (((float)tRect.y() * rh) * 2.0f));
         float isW = 1.0f / texSz.width(), isH = 1.0f / texSz.height();
-        d.mat3[0] = (float)sRect.width() * isW; d.mat3[5] = (float)sRect.height() * isH;
-        d.mat3[8] = (float)sRect.x() * isW; d.mat3[9] = (float)sRect.y() * isH;
+        d.mat3[0] = (float)sRect.width() * isW;
+        d.mat3[5] = (float)sRect.height() * isH;
+        d.mat3[8] = (float)sRect.x() * isW;
+        d.mat3[9] = (float)sRect.y() * isH;
         if (!flipS) { d.mat3[5] = -d.mat3[5]; d.mat3[9] = 1.0f - d.mat3[9]; }
         uBatch->updateDynamicBuffer(buf, 0, sizeof(GPUData), &d);
     };
 
-    int swz = (tFlags & QPlatformBackingStore::TextureSwizzle) ? (std::endian::native == std::endian::little ? 1 : 2) : 0;
+    int swzVal = (tFlags & QPlatformBackingStore::TextureSwizzle) ? (std::endian::native == std::endian::little ? 1 : 2) : 0;
     if (m_texture) {
         const QSize ts = m_texture->pixelSize();
-        writeUbo(m_widgetQuadData.ubuf, {0, 0, sz.width() * dpr, sz.height() * dpr}, toBottomLeftRect(scaledRect({QPoint(), sz}, sourceDevicePixelRatio).translated(scaledOffset(offset, sFactor)), ts.height()), ts, tFlags & QPlatformBackingStore::TextureFlip, swz);
+        packUbo(m_widgetQuadData.ubuf, {0, 0, sz.width() * dpr, sz.height() * dpr}, toBottomLeftRect(scaledRect({QPoint(), sz}, sourceDevicePixelRatio).translated(scaledOffset(offset, sFactor)), ts.height()), ts, tFlags & QPlatformBackingStore::TextureFlip, swzVal);
         if (linear) updatePerQuadData(&m_widgetQuadData, m_texture.get(), nullptr, NeedsLinearFiltering);
     }
 
@@ -517,7 +525,7 @@ QPlatformBackingStore::FlushResult QBackingStoreDefaultCompositor::flush(QPlatfo
         if (auto *t = textures->texture(i)) {
             if (!m_textureQuadData[i].isValid()) m_textureQuadData[i] = createPerQuadData(t, textures->textureExtra(i));
             else updatePerQuadData(&m_textureQuadData[i], t, textures->textureExtra(i));
-            writeUbo(m_textureQuadData[i].ubuf, scaledRect(gm & cr.translated(gm.topLeft()), dpr), scaledRect(toBottomLeftRect(cr, gm.height()), dpr), scaledRect(gm, dpr).size(), (textures->flags(i).testFlag(QPlatformTextureList::MirrorVertically) != invS), 0);
+            packUbo(m_textureQuadData[i].ubuf, scaledRect(gm & cr.translated(gm.topLeft()), dpr), scaledRect(toBottomLeftRect(cr, gm.height()), dpr), scaledRect(gm, dpr).size(), (textures->flags(i).testFlag(QPlatformTextureList::MirrorVertically) != invS), 0);
             if (linear) updatePerQuadData(&m_textureQuadData[i], t, textures->textureExtra(i), NeedsLinearFiltering);
         } else m_textureQuadData[i].reset();
     }
