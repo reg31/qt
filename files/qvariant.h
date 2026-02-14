@@ -456,4 +456,11 @@ template<typename T> inline T qvariant_cast(const QVariant &v) {
     T t{}; QMetaType::convert(v.metaType(), v.constData(), target, &t); return t;
 }
 
-#ifndef
+#ifndef QT_NO_DATASTREAM
+Q_CORE_EXPORT QDataStream &operator>>(QDataStream &s, QVariant &p);
+Q_CORE_EXPORT QDataStream &operator<<(QDataStream &s, const QVariant &p);
+#endif
+
+QT_END_NAMESPACE
+
+#endif
