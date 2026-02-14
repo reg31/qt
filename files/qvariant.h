@@ -237,6 +237,14 @@ public:
     QVariant(ulong ul) noexcept : QVariant(qulonglong(ul)) {}
     QVariant(short s) noexcept : QVariant(int(s)) {}
     QVariant(ushort us) noexcept : QVariant(uint(us)) {}
+    QVariant(qint8 c) noexcept : QVariant(int(c)) {}
+    QVariant(quint8 uc) noexcept : QVariant(uint(uc)) {}
+    QVariant(qint16 s16) noexcept : QVariant(int(s16)) {}
+    QVariant(quint16 us16) noexcept : QVariant(uint(us16)) {}
+    QVariant(qint32 i32) noexcept : QVariant(int(i32)) {}
+    QVariant(quint32 ui32) noexcept : QVariant(uint(ui32)) {}
+    QVariant(qint64 i64) noexcept : QVariant(qlonglong(i64)) {}
+    QVariant(quint64 ui64) noexcept : QVariant(qulonglong(ui64)) {}
     QVariant(QChar qchar) noexcept;
     QVariant(const QString &string) noexcept;
     QVariant(const QByteArray &bytearray) noexcept;
