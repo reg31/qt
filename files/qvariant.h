@@ -257,7 +257,7 @@ public:
               !std::is_same_v<std::remove_cvref_t<T>, QChar> &&
               !std::integral<std::remove_cvref_t<T>> &&
               !std::floating_point<std::remove_cvref_t<T>>)
-    QVariant(T &&val) noexcept(std::is_nothrow_copy_constructible_v<std::remove_cvref_t<T>> && Private::CanUseInternalSpace<std::remove_cvref_t<T>>) : d()
+    explicit QVariant(T &&val) noexcept(std::is_nothrow_copy_constructible_v<std::remove_cvref_t<T>> && Private::CanUseInternalSpace<std::remove_cvref_t<T>>) : d()
     {
         auto tmp = fromValue(std::forward<T>(val));
         std::swap(d, tmp.d);
