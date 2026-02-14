@@ -2079,15 +2079,14 @@ void QQuickDeliveryAgentPrivate::deliverPointerEvent(QPointerEvent *event)
     \endlist
 */
 // FIXME: should this be iterative instead of recursive?
-QVector<QQuickItem *> QQuickDeliveryAgentPrivate::eventTargets(QQuickItem *item, const QEvent *event, QPointF scenePos, qxp::function_ref<std::optional<bool> (QQuickItem *, const QEvent *)> predicate) const
+QList<QQuickItem *> QQuickDeliveryAgentPrivate::eventTargets(QQuickItem *item, const QEvent *event, int pointId, QPointF localPos, QPointF scenePos, qxp::function_ref<std::optional<bool> (QQuickItem *, const QEvent *)> predicate) const
 {
-    QVector<QQuickItem *> result;
+    QList<QQuickItem *> result;
     result.reserve(64);
 
-    auto walker = [&](auto self, QQuickItem *curr) -> void {
+    auto walker = [&](auto self, QQuickItem *curr, QPointF lp, QPointF sp) -> void {
         auto *priv = QQuickItemPrivate::get(curr);
-        const QPointF lp = curr->mapFromScene(scenePos);
-
+        
         if ((priv->flags & QQuickItem::ItemClipsChildrenToShape) && !curr->clipRect().contains(lp)) [[unlikely]]
             return;
 
@@ -2101,7 +2100,7 @@ QVector<QQuickItem *> QQuickDeliveryAgentPrivate::eventTargets(QQuickItem *item,
         for (auto *child : std::ranges::subrange(split, children.end()) | std::views::reverse) {
             auto *cp = QQuickItemPrivate::get(child);
             if (child->isVisible() && !cp->culled && child->isEnabled() && !(cp->extra.isAllocated() && cp->extra->subsceneDeliveryAgent))
-                self(self, child);
+                self(self, child, child->mapFromScene(sp), sp);
         }
 
         if (relevant) result.push_back(curr);
@@ -2109,11 +2108,11 @@ QVector<QQuickItem *> QQuickDeliveryAgentPrivate::eventTargets(QQuickItem *item,
         for (auto *child : std::ranges::subrange(children.begin(), split) | std::views::reverse) {
             auto *cp = QQuickItemPrivate::get(child);
             if (child->isVisible() && !cp->culled && child->isEnabled() && !(cp->extra.isAllocated() && cp->extra->subsceneDeliveryAgent))
-                self(self, child);
+                self(self, child, child->mapFromScene(sp), sp);
         }
     };
 
-    walker(walker, item);
+    walker(walker, item, localPos, scenePos);
     return result;
 }
 
