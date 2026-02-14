@@ -370,6 +370,11 @@ public:
     static QVariant fromMetaType(QMetaType type, const void *copy = nullptr);
     static QPartialOrdering compare(const QVariant &lhs, const QVariant &rhs);
 
+#ifndef QT_NO_DATASTREAM
+    void load(QDataStream &ds);
+    void save(QDataStream &ds) const;
+#endif
+
 private:
     friend bool comparesEqual(const QVariant &a, const QVariant &b) { return a.equals(b); }
     Q_DECLARE_EQUALITY_COMPARABLE_NON_NOEXCEPT(QVariant)
@@ -414,5 +419,50 @@ template<typename T> inline T qvariant_cast(const QVariant &v) {
     if (v.metaType() == target) return *static_cast<const T *>(v.constData());
     T t{}; QMetaType::convert(v.metaType(), v.constData(), target, &t); return t;
 }
+
+#ifndef QT_NO_DATASTREAM
+Q_CORE_EXPORT QDataStream &operator>>(QDataStream &s, QVariant &p);
+Q_CORE_EXPORT QDataStream &operator<<(QDataStream &s, const QVariant &p);
+#endif
+
+namespace QtPrivate {
+class Q_CORE_EXPORT QVariantTypeCoercer
+{
+public:
+    const void *convert(const QVariant &value, const QMetaType &type);
+    const void *coerce(const QVariant &value, const QMetaType &type);
+private:
+    QVariant converted;
+};
+}
+
+#if QT_DEPRECATED_SINCE(6, 15)
+QT_WARNING_PUSH
+QT_WARNING_DISABLE_DEPRECATED
+template<typename Pointer> class QT_DEPRECATED_VERSION_X_6_15("Use QVariant::Reference instead.") QVariantRef {
+private: const Pointer *m_pointer = nullptr;
+public:
+    explicit QVariantRef(const Pointer *r) : m_pointer(r) {}
+    operator QVariant() const;
+    QVariantRef &operator=(const QVariant &value);
+};
+
+class Q_CORE_EXPORT QT_DEPRECATED_VERSION_X_6_15("Use QVariant::ConstPointer instead.") QVariantConstPointer {
+private: QVariant m_variant;
+public:
+    explicit QVariantConstPointer(QVariant variant);
+    QVariant operator*() const;
+    const QVariant *operator->() const;
+};
+
+template<typename Pointer> class QT_DEPRECATED_VERSION_X_6_15("Use QVariant::Pointer instead.") QVariantPointer {
+private: const Pointer *m_pointer = nullptr;
+public:
+    explicit QVariantPointer(const Pointer *p) : m_pointer(p) {}
+    QVariantRef<Pointer> operator*() const { return QVariantRef<Pointer>(m_pointer); }
+};
+QT_WARNING_POP
+#endif
+
 QT_END_NAMESPACE
 #endif
