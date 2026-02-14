@@ -2167,20 +2167,24 @@ void QQuickDeliveryAgentPrivate::deliverPointerEvent(QPointerEvent *event)
     width and height aren't declared.)
 */
 // FIXME: should this be iterative instead of recursive?
-QQList<QQuickItem *> QQuickDeliveryAgentPrivate::eventTargets(QQuickItem *item, const QEvent *event, int pointId, QPointF localPos, QPointF scenePos, qxp::function_ref<std::optional<bool> (QQuickItem *, const QEvent *)> predicate) const
+QList<QQuickItem *> QQuickDeliveryAgentPrivate::eventTargets(QQuickItem *item, const QEvent *event, int pointId, QPointF localPos, QPointF scenePos, qxp::function_ref<std::optional<bool> (QQuickItem *, const QEvent *)> predicate) const
 {
     QList<QQuickItem *> result;
     result.reserve(64);
 
     auto walker = [&](auto self, QQuickItem *curr, QPointF lp) -> void {
         auto *priv = QQuickItemPrivate::get(curr);
-        if ((priv->flags & QQuickItem::ItemClipsChildrenToShape) && !curr->clipRect().contains(lp)) [[unlikely]]
-            return;
+        
+        const bool isRoot = (curr == rootItem);
+        if (!isRoot) [[likely]] {
+            if ((priv->flags & QQuickItem::ItemClipsChildrenToShape) && !curr->clipRect().contains(lp)) [[unlikely]]
+                return;
+        }
 
-        if (pointId >= 0) {
+        if (pointId >= 0) [[likely]] {
             auto *pev = const_cast<QPointerEvent *>(static_cast<const QPointerEvent *>(event));
-            if (auto *point = pev->pointById(pointId))
-                QMutableEventPoint::setPosition(*point, lp);
+            if (auto *pt = pev->pointById(pointId))
+                QMutableEventPoint::setPosition(*pt, lp);
         }
 
         bool relevant = curr->contains(lp);
@@ -2188,27 +2192,25 @@ QQList<QQuickItem *> QQuickDeliveryAgentPrivate::eventTargets(QQuickItem *item, 
             relevant = *op;
 
         const auto children = priv->paintOrderChildItems();
-        auto split = std::ranges::lower_bound(children, 0.0, std::ranges::less{}, [](auto *c) { return c->z(); });
+        if (children.isEmpty()) {
+            if (relevant) result.push_back(curr);
+            return;
+        }
 
-        for (auto *child : std::ranges::subrange(split, children.end()) | std::views::reverse) {
+        auto itSplit = std::ranges::lower_bound(children, 0.0, std::ranges::less{}, [](auto *c) { return c->z(); });
+
+        auto processChild = [&](QQuickItem *child) {
             auto *cp = QQuickItemPrivate::get(child);
-            if (child->isVisible() && !cp->culled && child->isEnabled() && !(cp->extra.isAllocated() && cp->extra->subsceneDeliveryAgent)) {
+            if (child->isVisible() && !cp->culled && child->isEnabled() && !(cp->extra.isAllocated() && cp->extra->subsceneDeliveryAgent)) [[likely]] {
                 QTransform c2p;
                 cp->itemToParentTransform(&c2p);
                 self(self, child, c2p.inverted().map(lp));
             }
-        }
+        };
 
+        for (auto *child : std::ranges::subrange(itSplit, children.end()) | std::views::reverse) processChild(child);
         if (relevant) result.push_back(curr);
-
-        for (auto *child : std::ranges::subrange(children.begin(), split) | std::views::reverse) {
-            auto *cp = QQuickItemPrivate::get(child);
-            if (child->isVisible() && !cp->culled && child->isEnabled() && !(cp->extra.isAllocated() && cp->extra->subsceneDeliveryAgent)) {
-                QTransform c2p;
-                cp->itemToParentTransform(&c2p);
-                self(self, child, c2p.inverted().map(lp));
-            }
-        }
+        for (auto *child : std::ranges::subrange(children.begin(), itSplit) | std::views::reverse) processChild(child);
     };
 
     walker(walker, item, localPos);
