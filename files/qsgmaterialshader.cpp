@@ -178,8 +178,7 @@ QShader QSGMaterialShaderPrivate::loadShader(const QString &filename)
     static std::flat_map<QString, CacheEntry> diskCache;
     static std::shared_mutex cacheMutex;
 
-    const QFileInfo info(filename);
-    const QDateTime currentMtime = info.lastModified();
+    const QDateTime currentMtime = QFileInfo(filename).lastModified();
 
     {
         std::shared_lock lock(cacheMutex);
@@ -194,7 +193,8 @@ QShader QSGMaterialShaderPrivate::loadShader(const QString &filename)
     if (it != diskCache.end() && it->second.mtime == currentMtime) [[likely]]
         return it->second.shader;
 
-    if (QFile f(filename); f.open(QIODevice::ReadOnly)) [[likely]] {
+    QFile f(filename);
+    if (f.open(QIODevice::ReadOnly)) [[likely]] {
         auto &entry = diskCache[filename];
         entry.shader = QShader::fromSerialized(f.readAll());
         entry.mtime = currentMtime;
@@ -209,9 +209,11 @@ void QSGMaterialShaderPrivate::prepare(QShader::Variant vertexShaderVariant)
         return;
 
     auto toSrbStage = [](QShader::Stage stage) constexpr -> QRhiShaderResourceBinding::StageFlags {
-        if (stage == QShader::VertexStage) return QRhiShaderResourceBinding::VertexStage;
-        if (stage == QShader::FragmentStage) return QRhiShaderResourceBinding::FragmentStage;
-        return {};
+        switch (stage) {
+        case QShader::VertexStage: return QRhiShaderResourceBinding::VertexStage;
+        case QShader::FragmentStage: return QRhiShaderResourceBinding::FragmentStage;
+        default: return {};
+        }
     };
 
     ubufBinding = -1;
@@ -221,6 +223,7 @@ void QSGMaterialShaderPrivate::prepare(QShader::Variant vertexShaderVariant)
     std::fill_n(combinedImageSamplerCount, MAX_SHADER_RESOURCE_BINDINGS, 0);
     vertexShader = fragmentShader = nullptr;
     masterUniformData.clear();
+
     clearCachedRendererData();
 
     static constexpr QShader::Stage stages[] = { QShader::VertexStage, QShader::FragmentStage };
@@ -239,8 +242,7 @@ void QSGMaterialShaderPrivate::prepare(QShader::Variant vertexShaderVariant)
         vsData.vertexInputLocations.clear();
         vsData.qt_order_attrib_location = -1;
 
-        const auto desc = vsData.shader.description();
-        for (const auto &v : desc.inputVariables()) {
+        for (const auto &v : vsData.shader.description().inputVariables()) {
             if (vertexShaderVariant == QShader::BatchableVertexShader && v.name == "_qt_order") [[unlikely]]
                 vsData.qt_order_attrib_location = v.location;
             else
@@ -254,15 +256,13 @@ void QSGMaterialShaderPrivate::prepare(QShader::Variant vertexShaderVariant)
         const auto stageFlag = toSrbStage(stageData.shader.stage());
 
         for (const auto &ub : desc.uniformBlocks()) {
-            if (ub.binding >= 0) [[likely]] {
-                if (ubufBinding == -1 || ubufBinding == ub.binding) {
-                    ubufBinding = ub.binding;
-                    if (ub.size > ubufSize) {
-                        ubufSize = ub.size;
-                        masterUniformData.fill('\0', ubufSize);
-                    }
-                    ubufStages |= stageFlag;
+            if (ub.binding >= 0 && (ubufBinding == -1 || ubufBinding == ub.binding)) [[likely]] {
+                ubufBinding = ub.binding;
+                if (ub.size > ubufSize) {
+                    ubufSize = ub.size;
+                    masterUniformData.fill('\0', ubufSize);
                 }
+                ubufStages |= stageFlag;
             }
         }
 
