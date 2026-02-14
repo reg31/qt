@@ -73,8 +73,8 @@ static qlonglong qMetaTypeNumber(const QVariant::Private *d)
         return qMetaTypeNumberBySize(d);
     case Float: return qRound64(d->get<float>());
     case Double: return qRound64(d->get<double>());
-    case QJsonValue: return qRound64(static_cast<const QJsonValue *>(d->storage())->toDouble());
-    case QCborValue: return static_cast<const QCborValue *>(d->storage())->toInteger();
+    case QJsonValue: return qRound64(static_cast<const class QJsonValue *>(d->storage())->toDouble());
+    case QCborValue: return static_cast<const class QCborValue *>(d->storage())->toInteger();
     default: Q_UNREACHABLE_RETURN(0);
     }
 }
