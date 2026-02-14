@@ -107,10 +107,6 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qbackingstoredefaultcompositor.cpp -o qtbase/src/gui/painting/qbackingstoredefaultcompositor.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgmaterialshader.cpp -o qtdeclarative/src/quick/scenegraph/coreapi/qsgmaterialshader.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgrhishadereffectnode.cpp -o qtdeclarative/src/quick/scenegraph/qsgrhishadereffectnode.cpp
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qvariant.h -o qtbase/src/corelib/kernel/qvariant.h
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qvariant.cpp -o qtbase/src/corelib/kernel/qvariant.cpp
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qqmlglobal_p.h -o qtdeclarative/src/qml/qml/qqmlglobal_p.h
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qqmlglobal.cpp -o qtdeclarative/src/qml/qml/qqmlglobal.cpp
           echo "Download completed  ..."
           
       - name: Configure
@@ -229,10 +225,6 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qbackingstoredefaultcompositor.cpp -o qtbase/src/gui/painting/qbackingstoredefaultcompositor.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgmaterialshader.cpp -o qtdeclarative/src/quick/scenegraph/coreapi/qsgmaterialshader.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgrhishadereffectnode.cpp -o qtdeclarative/src/quick/scenegraph/qsgrhishadereffectnode.cpp
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qvariant.h -o qtbase/src/corelib/kernel/qvariant.h
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qvariant.cpp -o qtbase/src/corelib/kernel/qvariant.cpp
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qqmlglobal_p.h -o qtdeclarative/src/qml/qml/qqmlglobal_p.h
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qqmlglobal.cpp -o qtdeclarative/src/qml/qml/qqmlglobal.cpp
           echo "Download completed  ..."
           
       - name: Configure Android Qt
@@ -333,10 +325,6 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qbackingstoredefaultcompositor.cpp -o qtbase/src/gui/painting/qbackingstoredefaultcompositor.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgmaterialshader.cpp -o qtdeclarative/src/quick/scenegraph/coreapi/qsgmaterialshader.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgrhishadereffectnode.cpp -o qtdeclarative/src/quick/scenegraph/qsgrhishadereffectnode.cpp
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qvariant.h -o qtbase/src/corelib/kernel/qvariant.h
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qvariant.cpp -o qtbase/src/corelib/kernel/qvariant.cpp
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qqmlglobal_p.h -o qtdeclarative/src/qml/qml/qqmlglobal_p.h
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qqmlglobal.cpp -o qtdeclarative/src/qml/qml/qqmlglobal.cpp
           echo "Download completed  ..."
 
       - name: Configure and build
@@ -484,10 +472,6 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qbackingstoredefaultcompositor.cpp -o qtbase/src/gui/painting/qbackingstoredefaultcompositor.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgmaterialshader.cpp -o qtdeclarative/src/quick/scenegraph/coreapi/qsgmaterialshader.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgrhishadereffectnode.cpp -o qtdeclarative/src/quick/scenegraph/qsgrhishadereffectnode.cpp
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qvariant.h -o qtbase/src/corelib/kernel/qvariant.h
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qvariant.cpp -o qtbase/src/corelib/kernel/qvariant.cpp
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qqmlglobal_p.h -o qtdeclarative/src/qml/qml/qqmlglobal_p.h
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qqmlglobal.cpp -o qtdeclarative/src/qml/qml/qqmlglobal.cpp
           echo "Download completed  ..."
       
       - name: Download prebuilt Qt Host
