@@ -208,6 +208,12 @@ void QSGMaterialShaderPrivate::prepare(QShader::Variant vertexShaderVariant)
     if (vertexShader && vertexShader->shaderVariant == vertexShaderVariant && shaderFileNames.empty()) [[likely]]
         return;
 
+    auto toSrbStage = [](QShader::Stage stage) constexpr -> QRhiShaderResourceBinding::StageFlags {
+        if (stage == QShader::VertexStage) return QRhiShaderResourceBinding::VertexStage;
+        if (stage == QShader::FragmentStage) return QRhiShaderResourceBinding::FragmentStage;
+        return {};
+    };
+
     ubufBinding = -1;
     ubufSize = 0;
     ubufStages = {};
