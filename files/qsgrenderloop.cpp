@@ -284,7 +284,7 @@ QSGGuiThreadRenderLoop::~QSGGuiThreadRenderLoop()
 void QSGGuiThreadRenderLoop::show(QQuickWindow *window)
 {
     auto [iterator, inserted] = m_windows.try_emplace(window);
-    iterator->timeBetweenRenders.start();
+    iterator->second.timeBetweenRenders.start();
     maybeUpdate(window);
 }
 
