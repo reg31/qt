@@ -1003,20 +1003,22 @@ void QSGRhiSupport::preparePipelineCache(QRhi *rhi, QQuickWindow *window)
             path = automaticPipelineCacheFileName(rhi);
     }
 
-    if (path.isEmpty()) [[unlikely]] return;
+    if (path.isEmpty()) [[unlikely]] 
+        return;
 
-    std::ifstream file(path.toStdString(), std::ios::binary | std::ios::ate);
-    if (!file) [[unlikely]] return;
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) [[unlikely]] 
+        return;
 
-    const auto size = file.tellg();
-    if (size <= 0) [[unlikely]] return;
+    const qint64 size = file.size();
+    if (size <= 0) [[unlikely]] 
+        return;
 
-    std::string buffer(static_cast<size_t>(size), '\0');
-    file.seekg(0);
+    QByteArray buffer(size, Qt::Uninitialized);
+    const qint64 bytesRead = file.read(buffer.data(), size);
     
-    if (file.read(buffer.data(), size)) [[likely]] {
-        rhi->setPipelineCacheData(QByteArray::fromRawData(buffer.data(), static_cast<int>(buffer.size())));
-    }
+    if (bytesRead == size) [[likely]]
+        rhi->setPipelineCacheData(std::move(buffer));
 }
 
 void QSGRhiSupport::finalizePipelineCache(QRhi *rhi, const QQuickGraphicsConfiguration &config)
