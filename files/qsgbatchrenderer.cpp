@@ -3951,6 +3951,25 @@ void Renderer::prepareRenderPass(RenderPassContext *ctx)
     m_resourceUpdates = nullptr;
 }
 
+void Renderer::beginRenderPass(RenderPassContext *)
+{
+    const QSGRenderTarget &rt(renderTarget());
+    rt.cb->beginPass(rt.rt, m_pstate.clearColor, m_pstate.dsClear, nullptr,
+                     // we cannot tell if the application will have
+                     // native rendering thrown in to this pass
+                     // (QQuickWindow::beginExternalCommands()), so
+                     // we have no choice but to set the flag always
+                     // (thus triggering using secondary command
+                     // buffers with Vulkan)
+                     QRhiCommandBuffer::ExternalContent
+                     // We do not use GPU compute at all at the moment, this means we can
+                     // get a small performance gain with OpenGL by declaring this.
+                     | QRhiCommandBuffer::DoNotTrackResourcesForCompute);
+
+    if (m_renderPassRecordingCallbacks.start)
+        m_renderPassRecordingCallbacks.start(m_renderPassRecordingCallbacks.userData);
+}
+
 void Renderer::recordRenderPass(RenderPassContext *ctx)
 {
     if (!ctx->valid) [[unlikely]]
