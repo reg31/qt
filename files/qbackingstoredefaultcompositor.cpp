@@ -356,7 +356,7 @@ QPlatformBackingStore::FlushResult QBackingStoreDefaultCompositor::flush(QPlatfo
     if (m_texture) {
         QMatrix4x4 target = targetTransform(QRectF(devWinRect), devWinRect, invY);
         QMatrix3x3 source = sourceTransform(scaledRect(toBottomLeftRect(scaledRect({QPoint(), window->size()}, sourceDevicePixelRatio).translated(scaledOffset(offset, sFactor)), m_texture->pixelSize().height()), 1.0), m_texture->pixelSize(), (tFlags & QPlatformBackingStore::TextureFlip) ? SourceTransformOrigin::TopLeft : SourceTransformOrigin::BottomLeft);
-        updateUniforms(&m_widgetQuadData, uBatch, target, source, (tFlags & QPlatformBackingStore::TextureSwizzle) ? (std::endian::native == std::endian::little ? SwizzleBGR : SwizzleRGB) : NoSwizzle);
+        updateUniforms(&m_widgetQuadData, uBatch, target, source, (tFlags & QPlatformBackingStore::TextureSwizzle) ? (std::endian::native == std::endian::little ? 1 : 2) : 0);
         if ((window->size().width() * sourceDevicePixelRatio) > devWinRect.width()) updatePerQuadData(&m_widgetQuadData, m_texture.get(), nullptr, NeedsLinearFiltering);
     }
 
@@ -366,7 +366,7 @@ QPlatformBackingStore::FlushResult QBackingStoreDefaultCompositor::flush(QPlatfo
         if (prepareDrawForRenderToTextureWidget(textures, i, window, devWinRect, offset, invY, invS, &target, &source)) {
             if (!m_textureQuadData[i].isValid()) m_textureQuadData[i] = createPerQuadData(textures->texture(i), textures->textureExtra(i));
             else updatePerQuadData(&m_textureQuadData[i], textures->texture(i), textures->textureExtra(i));
-            updateUniforms(&m_textureQuadData[i], uBatch, target, source, NoSwizzle);
+            updateUniforms(&m_textureQuadData[i], uBatch, target, source, 0);
         } else m_textureQuadData[i].reset();
     }
 
