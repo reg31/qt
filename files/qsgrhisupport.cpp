@@ -994,32 +994,51 @@ static inline QString pipelineCacheLockFileName(const QString &name)
 
 void QSGRhiSupport::preparePipelineCache(QRhi *rhi, QQuickWindow *window)
 {
-    auto *wd = QQuickWindowPrivate::get(window);
-    auto path = wd->graphicsConfig.pipelineCacheLoadFile();
+    QQuickWindowPrivate *wd = QQuickWindowPrivate::get(window);
 
-    if (path.isEmpty() && wd->graphicsConfig.isAutomaticPipelineCacheEnabled()) [[likely]] {
-        const auto wflags = window->flags();
-        if (!(wflags & (Qt::ToolTip | Qt::SplashScreen))) [[likely]]
-            path = automaticPipelineCacheFileName(rhi);
+    QString pipelineCacheLoad = wd->graphicsConfig.pipelineCacheLoadFile();
+    bool isAutomatic = false;
+    if (pipelineCacheLoad.isEmpty() && wd->graphicsConfig.isAutomaticPipelineCacheEnabled()) [[likely]] {
+        if (!isAutomaticPipelineCacheLoadSkippedForWindow(window->flags())) [[likely]] {
+            pipelineCacheLoad = automaticPipelineCacheFileName(rhi);
+            isAutomatic = true;
+        }
     }
 
-    if (path.isEmpty()) [[unlikely]] 
+    if (pipelineCacheLoad.isEmpty()) [[unlikely]]
         return;
 
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly)) [[unlikely]] 
+#if !QT_CONFIG(temporaryfile)
+    QLockFile lock(pipelineCacheLockFileName(pipelineCacheLoad));
+    if (!lock.lock()) {
+        qWarning("Could not create pipeline cache lock file '%s'",
+                 qPrintable(lock.fileName()));
+        return;
+    }
+#endif
+
+    QFile f(pipelineCacheLoad);
+    if (!f.open(QIODevice::ReadOnly)) [[unlikely]] {
+        if (!isAutomatic) {
+            qWarning("Could not open pipeline cache source file '%s'",
+                     qPrintable(pipelineCacheLoad));
+        }
+        return;
+    }
+
+    const qint64 size = f.size();
+    if (size <= 0) [[unlikely]]
         return;
 
-    const qint64 size = file.size();
-    if (size <= 0) [[unlikely]] 
-        return;
-
-    QByteArray buffer(size, Qt::Uninitialized);
-    const qint64 bytesRead = file.read(buffer.data(), size);
-    
-    if (bytesRead == size) [[likely]]
-        rhi->setPipelineCacheData(std::move(buffer));
+    QByteArray buf(size, Qt::Uninitialized);
+    const qint64 bytesRead = f.read(buf.data(), size);
+    if (bytesRead == size) [[likely]] {
+        qCDebug(QSG_LOG_INFO, "Attempting to seed pipeline cache for QRhi %p from '%s'",
+                rhi, qPrintable(pipelineCacheLoad));
+        rhi->setPipelineCacheData(buf);
+    }
 }
+
 
 void QSGRhiSupport::finalizePipelineCache(QRhi *rhi, const QQuickGraphicsConfiguration &config)
 {
