@@ -3708,7 +3708,7 @@ void Renderer::renderInline()
     recordRenderPass(&m_mainRenderPassContext);
 }
 
-
+void Renderer::prepareRenderPass(RenderPassContext *ctx)
 {
     if (ctx->valid) [[unlikely]]
         qWarning("prepareRenderPass() called with an already prepared render pass context");
