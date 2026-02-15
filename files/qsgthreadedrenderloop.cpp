@@ -665,7 +665,7 @@ void QSGRenderThread::syncAndRender()
         animatorDriver->advance();
     }
 
-    const bool canRender = cd->renderer & cd->hasActiveSwapchain;
+    const bool canRender = cd->renderer && cd->hasActiveSwapchain;
     if (canRender) [[likely]] {
         if (!(currentUpdate & SyncRequest)) [[unlikely]]
             rhi->makeThreadLocalNativeContextCurrent();
