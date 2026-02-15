@@ -241,16 +241,6 @@ static QRhiGraphicsPipeline *createGraphicsPipeline(QRhi *rhi, QRhiShaderResourc
 
 static const int UBUF_SIZE = 120;
 
-void QBackingStoreDefaultCompositor::updateUniforms(PerQuadData *d, QRhiResourceUpdateBatch *resourceUpdates, const QMatrix4x4 &target, const QMatrix3x3 &source, UpdateUniformOptions options)
-{
-    resourceUpdates->updateDynamicBuffer(d->ubuf, 0, 64, target.constData());
-    updateMatrix3x3(resourceUpdates, d->ubuf, source);
-    float opacity = 1.0f;
-    resourceUpdates->updateDynamicBuffer(d->ubuf, 112, 4, &opacity);
-    qint32 textureSwizzle = options;
-    resourceUpdates->updateDynamicBuffer(d->ubuf, 116, 4, &textureSwizzle);
-}
-
 QBackingStoreDefaultCompositor::PerQuadData QBackingStoreDefaultCompositor::createPerQuadData(QRhiTexture *texture, QRhiTexture *textureExtra)
 {
     PerQuadData d;
@@ -350,23 +340,46 @@ QPlatformBackingStore::FlushResult QBackingStoreDefaultCompositor::flush(QPlatfo
 
     ensureResources(uBatch, swapchain->renderPassDescriptor());
     const bool invY = !rhi->isYUpInNDC(), invS = !rhi->isYUpInFramebuffer();
-    const qreal dpr = window->devicePixelRatio();
-    const QRect devWinRect(QPoint(0, 0), window->size() * dpr);
+    const float dpr = (float)window->devicePixelRatio();
+    const QSize sz = window->size();
+    const float iW = 2.0f / (sz.width() * dpr), iH = 2.0f / (sz.height() * dpr);
+    const float ySign = invY ? -1.0f : 1.0f;
+    const bool linear = (sz.width() * sourceDevicePixelRatio) > (sz.width() * dpr);
 
+    auto computeUbo = [&](const QRectF &tRect, const QRectF &sRect, const QSize &texSz, bool flipS, int swz) {
+        GPUData d = { {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1}, {0}, 1.0f, swz };
+        const float tw = (float)tRect.width(), th = (float)tRect.height();
+        d.mat4[0] = tw * iW * 0.5f;
+        d.mat4[5] = ySign * th * iH * 0.5f;
+        d.mat4[12] = (float)tRect.x() * iW + d.mat4[0] - 1.0f;
+        d.mat4[13] = invY ? ((float)tRect.y() * iH + th * iH * 0.5f - 1.0f) : (1.0f - (float)tRect.y() * iH - th * iH * 0.5f);
+        const float isW = 1.0f / texSz.width(), isH = 1.0f / texSz.height();
+        d.mat3[0] = (float)sRect.width() * isW;
+        d.mat3[5] = (float)sRect.height() * isH;
+        d.mat3[8] = (float)sRect.x() * isW;
+        d.mat3[9] = (float)sRect.y() * isH;
+        if (!flipS) { d.mat3[5] = -d.mat3[5]; d.mat3[9] = 1.0f - d.mat3[9]; }
+        return d;
+    };
+
+    int swz = (tFlags & QPlatformBackingStore::TextureSwizzle) ? (std::endian::native == std::endian::little ? 1 : 2) : 0;
     if (m_texture) {
-        QMatrix4x4 target = targetTransform(QRectF(devWinRect), devWinRect, invY);
-        QMatrix3x3 source = sourceTransform(scaledRect(toBottomLeftRect(scaledRect({QPoint(), window->size()}, sourceDevicePixelRatio).translated(scaledOffset(offset, sFactor)), m_texture->pixelSize().height()), 1.0), m_texture->pixelSize(), (tFlags & QPlatformBackingStore::TextureFlip) ? SourceTransformOrigin::TopLeft : SourceTransformOrigin::BottomLeft);
-        updateUniforms(&m_widgetQuadData, uBatch, target, source, (tFlags & QPlatformBackingStore::TextureSwizzle) ? (std::endian::native == std::endian::little ? 1 : 2) : 0);
-        if ((window->size().width() * sourceDevicePixelRatio) > devWinRect.width()) updatePerQuadData(&m_widgetQuadData, m_texture.get(), nullptr, NeedsLinearFiltering);
+        GPUData d = computeUbo({0, 0, sz.width() * dpr, sz.height() * dpr}, toBottomLeftRect(scaledRect({QPoint(), sz}, sourceDevicePixelRatio).translated(scaledOffset(offset, sFactor)), m_texture->pixelSize().height()), m_texture->pixelSize(), tFlags & QPlatformBackingStore::TextureFlip, swz);
+        uBatch->updateDynamicBuffer(m_widgetQuadData.ubuf, 0, sizeof(GPUData), &d);
+        if (linear) updatePerQuadData(&m_widgetQuadData, m_texture.get(), nullptr, NeedsLinearFiltering);
     }
 
     m_textureQuadData.resize(nT);
     for (int i = 0; i < nT; ++i) {
-        QMatrix4x4 target; QMatrix3x3 source;
-        if (prepareDrawForRenderToTextureWidget(textures, i, window, devWinRect, offset, invY, invS, &target, &source)) {
-            if (!m_textureQuadData[i].isValid()) m_textureQuadData[i] = createPerQuadData(textures->texture(i), textures->textureExtra(i));
-            else updatePerQuadData(&m_textureQuadData[i], textures->texture(i), textures->textureExtra(i));
-            updateUniforms(&m_textureQuadData[i], uBatch, target, source, 0);
+        const QRect cr = textures->clipRect(i);
+        if (cr.isEmpty()) { m_textureQuadData[i].reset(); continue; }
+        QRect gm = textures->geometry(i); gm.translate(-offset);
+        if (auto *t = textures->texture(i)) {
+            if (!m_textureQuadData[i].isValid()) m_textureQuadData[i] = createPerQuadData(t, textures->textureExtra(i));
+            else updatePerQuadData(&m_textureQuadData[i], t, textures->textureExtra(i));
+            GPUData d = computeUbo(scaledRect(gm & cr.translated(gm.topLeft()), dpr), scaledRect(toBottomLeftRect(cr, gm.height()), dpr), scaledRect(gm, dpr).size(), (textures->flags(i).testFlag(QPlatformTextureList::MirrorVertically) != invS), 0);
+            uBatch->updateDynamicBuffer(m_textureQuadData[i].ubuf, 0, sizeof(GPUData), &d);
+            if (linear) updatePerQuadData(&m_textureQuadData[i], t, textures->textureExtra(i), NeedsLinearFiltering);
         } else m_textureQuadData[i].reset();
     }
 
