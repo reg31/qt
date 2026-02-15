@@ -107,6 +107,9 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qbackingstoredefaultcompositor.cpp -o qtbase/src/gui/painting/qbackingstoredefaultcompositor.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgmaterialshader.cpp -o qtdeclarative/src/quick/scenegraph/coreapi/qsgmaterialshader.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgrhishadereffectnode.cpp -o qtdeclarative/src/quick/scenegraph/qsgrhishadereffectnode.cpp
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgrenderloop.cpp -o qtdeclarative/src/quick/scenegraph/qsgrenderloop.cpp
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgthreadedrenderloop.cpp -o qtdeclarative/src/quick/scenegraph/qsgthreadedrenderloop.cpp
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgrhisupport.cpp -o qtdeclarative/src/quick/scenegraph/qsgrhisupport.cpp
           echo "Download completed  ..."
           
       - name: Configure
@@ -225,6 +228,9 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qbackingstoredefaultcompositor.cpp -o qtbase/src/gui/painting/qbackingstoredefaultcompositor.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgmaterialshader.cpp -o qtdeclarative/src/quick/scenegraph/coreapi/qsgmaterialshader.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgrhishadereffectnode.cpp -o qtdeclarative/src/quick/scenegraph/qsgrhishadereffectnode.cpp
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgrenderloop.cpp -o qtdeclarative/src/quick/scenegraph/qsgrenderloop.cpp
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgthreadedrenderloop.cpp -o qtdeclarative/src/quick/scenegraph/qsgthreadedrenderloop.cpp
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgrhisupport.cpp -o qtdeclarative/src/quick/scenegraph/qsgrhisupport.cpp
           echo "Download completed  ..."
           
       - name: Configure Android Qt
@@ -325,6 +331,9 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qbackingstoredefaultcompositor.cpp -o qtbase/src/gui/painting/qbackingstoredefaultcompositor.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgmaterialshader.cpp -o qtdeclarative/src/quick/scenegraph/coreapi/qsgmaterialshader.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgrhishadereffectnode.cpp -o qtdeclarative/src/quick/scenegraph/qsgrhishadereffectnode.cpp
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgrenderloop.cpp -o qtdeclarative/src/quick/scenegraph/qsgrenderloop.cpp
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgthreadedrenderloop.cpp -o qtdeclarative/src/quick/scenegraph/qsgthreadedrenderloop.cpp
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgrhisupport.cpp -o qtdeclarative/src/quick/scenegraph/qsgrhisupport.cpp
           echo "Download completed  ..."
 
       - name: Configure and build
@@ -472,6 +481,9 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qbackingstoredefaultcompositor.cpp -o qtbase/src/gui/painting/qbackingstoredefaultcompositor.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgmaterialshader.cpp -o qtdeclarative/src/quick/scenegraph/coreapi/qsgmaterialshader.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgrhishadereffectnode.cpp -o qtdeclarative/src/quick/scenegraph/qsgrhishadereffectnode.cpp
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgrenderloop.cpp -o qtdeclarative/src/quick/scenegraph/qsgrenderloop.cpp
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgthreadedrenderloop.cpp -o qtdeclarative/src/quick/scenegraph/qsgthreadedrenderloop.cpp
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgrhisupport.cpp -o qtdeclarative/src/quick/scenegraph/qsgrhisupport.cpp
           echo "Download completed  ..."
       
       - name: Download prebuilt Qt Host
