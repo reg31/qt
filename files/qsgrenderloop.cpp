@@ -539,6 +539,7 @@ bool QSGGuiThreadRenderLoop::ensureRhi(QQuickWindow *window, WindowData &data)
     return ok;
 }
 
+
 void QSGGuiThreadRenderLoop::renderWindow(QQuickWindow *window)
 {
     auto winDataIt = m_windows.find(window);
