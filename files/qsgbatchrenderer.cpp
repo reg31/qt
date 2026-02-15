@@ -3771,13 +3771,11 @@ void Renderer::prepareRenderPass(RenderPassContext *ctx)
     }
     if (Q_UNLIKELY(debug_render())) ctx->timeRenderLists = ctx->timer.restart();
 
-    const auto opaque = std::span(m_opaqueBatches.data(), m_opaqueBatches.size());
-    for (auto *b : opaque)
+    for (auto *b : m_opaqueBatches)
         b->cleanupRemovedElements();
-    const auto alpha = std::span(m_alphaBatches.data(), m_alphaBatches.size());
-    for (auto *b : alpha)
+    for (auto *b : m_alphaBatches)
         b->cleanupRemovedElements();
-    
+
     deleteRemovedElements();
 
     cleanupBatches(&m_opaqueBatches);
@@ -3811,6 +3809,9 @@ void Renderer::prepareRenderPass(RenderPassContext *ctx)
         if (Q_UNLIKELY(debug_render())) ctx->timePrepareOpaque = ctx->timePrepareAlpha = ctx->timer.restart();
     }
 
+    const auto opaque = std::span(m_opaqueBatches.data(), m_opaqueBatches.size());
+    const auto alpha = std::span(m_alphaBatches.data(), m_alphaBatches.size());
+
     if (m_rebuild != 0) {
         if (opaque.size() > 1)
             std::sort(opaque.begin(), opaque.end(), qsg_sort_batch_decreasing_order);
@@ -3832,7 +3833,7 @@ void Renderer::prepareRenderPass(RenderPassContext *ctx)
 
     if (Q_UNLIKELY(debug_upload())) qDebug("Uploading Opaque Batches:");
     for (auto *b : opaque) {
-        if (!b->needsUpload) [[unlikely]]
+        if (!b->needsUpload)
             continue;
         
         bool batchVisible = false;
@@ -3844,16 +3845,14 @@ void Renderer::prepareRenderPass(RenderPassContext *ctx)
                 break;
             }
         }
-        if (!batchVisible) [[unlikely]]
-            continue;
-            
-        uploadBatch(b);
+        if (batchVisible) [[likely]]
+            uploadBatch(b);
     }
     if (Q_UNLIKELY(debug_render())) ctx->timeUploadOpaque = ctx->timer.restart();
 
     if (Q_UNLIKELY(debug_upload())) qDebug("Uploading Alpha Batches:");
     for (auto *b : alpha) {
-        if (!b->needsUpload) [[unlikely]]
+        if (!b->needsUpload)
             continue;
         
         if (b->isRenderNode) [[unlikely]] {
@@ -3870,10 +3869,8 @@ void Renderer::prepareRenderPass(RenderPassContext *ctx)
                 break;
             }
         }
-        if (!batchVisible) [[unlikely]]
-            continue;
-            
-        uploadBatch(b);
+        if (batchVisible) [[likely]]
+            uploadBatch(b);
     }
     if (Q_UNLIKELY(debug_render())) ctx->timeUploadAlpha = ctx->timer.restart();
 
@@ -3922,6 +3919,18 @@ void Renderer::prepareRenderPass(RenderPassContext *ctx)
     if (Q_LIKELY(renderOpaque)) {
         ctx->opaqueRenderBatches.reserve(opaque.size());
         for (auto *b : opaque) {
+            bool batchVisible = false;
+            for (Element *e = b->first; e; e = e->nextInBatch) {
+                const Rect &bounds = e->bounds;
+                if (!(bounds.br.x < vLeft || bounds.tl.x > vRight ||
+                      bounds.br.y < vTop || bounds.tl.y > vBottom)) {
+                    batchVisible = true;
+                    break;
+                }
+            }
+            if (!batchVisible) [[unlikely]]
+                continue;
+
             PreparedRenderBatch renderBatch;
             bool ok;
             if (b->merged) [[likely]]
@@ -3945,6 +3954,20 @@ void Renderer::prepareRenderPass(RenderPassContext *ctx)
     if (Q_LIKELY(renderAlpha)) {
         ctx->alphaRenderBatches.reserve(alpha.size());
         for (auto *b : alpha) {
+            if (!b->isRenderNode) {
+                bool batchVisible = false;
+                for (Element *e = b->first; e; e = e->nextInBatch) {
+                    const Rect &bounds = e->bounds;
+                    if (!(bounds.br.x < vLeft || bounds.tl.x > vRight ||
+                          bounds.br.y < vTop || bounds.tl.y > vBottom)) {
+                        batchVisible = true;
+                        break;
+                    }
+                }
+                if (!batchVisible) [[unlikely]]
+                    continue;
+            }
+
             PreparedRenderBatch renderBatch;
             bool ok;
             if (b->merged) [[likely]]
@@ -3970,25 +3993,6 @@ void Renderer::prepareRenderPass(RenderPassContext *ctx)
 
     renderTarget().cb->resourceUpdate(m_resourceUpdates);
     m_resourceUpdates = nullptr;
-}
-
-void Renderer::beginRenderPass(RenderPassContext *)
-{
-    const QSGRenderTarget &rt(renderTarget());
-    rt.cb->beginPass(rt.rt, m_pstate.clearColor, m_pstate.dsClear, nullptr,
-                     // we cannot tell if the application will have
-                     // native rendering thrown in to this pass
-                     // (QQuickWindow::beginExternalCommands()), so
-                     // we have no choice but to set the flag always
-                     // (thus triggering using secondary command
-                     // buffers with Vulkan)
-                     QRhiCommandBuffer::ExternalContent
-                     // We do not use GPU compute at all at the moment, this means we can
-                     // get a small performance gain with OpenGL by declaring this.
-                     | QRhiCommandBuffer::DoNotTrackResourcesForCompute);
-
-    if (m_renderPassRecordingCallbacks.start)
-        m_renderPassRecordingCallbacks.start(m_renderPassRecordingCallbacks.userData);
 }
 
 void Renderer::recordRenderPass(RenderPassContext *ctx)
