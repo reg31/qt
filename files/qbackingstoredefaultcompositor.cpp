@@ -182,34 +182,10 @@ static inline QRect toBottomLeftRect(const QRect &topLeftRect, int windowHeight)
                  topLeftRect.width(), topLeftRect.height());
 }
 
-static bool prepareDrawForRenderToTextureWidget(const QPlatformTextureList *textures, int idx, QWindow *window, const QRect &deviceWindowRect, const QPoint &offset, bool invertTargetY, bool invertSource, QMatrix4x4 *target, QMatrix3x3 *source)
-{
-    const QRect clipRect = textures->clipRect(idx);
-    if (clipRect.isEmpty()) return false;
-    QRect rectInWindow = textures->geometry(idx);
-    rectInWindow.translate(-offset);
-    const QRect clippedRectInWindow = rectInWindow & clipRect.translated(rectInWindow.topLeft());
-    const QRect srcRect = toBottomLeftRect(clipRect, rectInWindow.height());
-    const qreal dpr = window->devicePixelRatio();
-    *target = targetTransform(scaledRect(clippedRectInWindow, dpr), deviceWindowRect, invertTargetY);
-    *source = sourceTransform(scaledRect(srcRect, dpr), scaledRect(rectInWindow, dpr).size(), invertSource ? SourceTransformOrigin::TopLeft : SourceTransformOrigin::BottomLeft);
-    return true;
-}
-
 static QShader getShader(const QString &name)
 {
     QFile f(name);
     return f.open(QIODevice::ReadOnly) ? QShader::fromSerialized(f.readAll()) : QShader();
-}
-
-static void updateMatrix3x3(QRhiResourceUpdateBatch *resourceUpdates, QRhiBuffer *ubuf, const QMatrix3x3 &m)
-{
-    float f[12];
-    const float *src = static_cast<const float *>(m.constData());
-    memcpy(f, src, 3 * sizeof(float));
-    memcpy(f + 4, src + 3, 3 * sizeof(float));
-    memcpy(f + 8, src + 6, 3 * sizeof(float));
-    resourceUpdates->updateDynamicBuffer(ubuf, 64, 48, f);
 }
 
 static QRhiGraphicsPipeline *createGraphicsPipeline(QRhi *rhi, QRhiShaderResourceBindings *srb, QRhiRenderPassDescriptor *rpDesc, int blendMode)
