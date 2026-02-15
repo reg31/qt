@@ -601,23 +601,21 @@ void QSGRenderThread::syncAndRender()
     Q_TRACE_SCOPE(QSG_syncAndRender);
     auto *cd = QQuickWindowPrivate::get(window);
     const uint currentUpdate = std::exchange(pendingUpdate, 0);
-    const bool syncRequested = currentUpdate & SyncRequest;
-    const bool exposeRequested = (currentUpdate & ExposeRequest) == ExposeRequest;
 
     if (cd->swapchain && windowSize.isValid()) [[likely]] {
         cd->swapchain->setProxyData(scProxyData);
         const auto effectiveOutputSize = cd->swapchain->surfacePixelSize();
         
         if (effectiveOutputSize.isEmpty()) [[unlikely]] {
-            if (syncRequested) {
-                std::scoped_lock lock(mutex);
+            if (currentUpdate & SyncRequest) [[likely]] {
+                std::lock_guard lock(mutex);
                 waitCondition.wakeOne();
             }
             return;
         }
 
         const auto currentPixelSize = cd->swapchain->currentPixelSize();
-        if (currentPixelSize != effectiveOutputSize || cd->swapchainJustBecameRenderable) [[unlikely]] {
+        if ((currentPixelSize != effectiveOutputSize) | cd->swapchainJustBecameRenderable) [[unlikely]] {
             cd->hasActiveSwapchain = cd->swapchain->createOrResize();
             
             if (!cd->hasActiveSwapchain) [[unlikely]] {
@@ -625,18 +623,16 @@ void QSGRenderThread::syncAndRender()
                 const bool shouldRetrySwRast = !swRastFallbackDueToSwapchainFailure && 
                                                QSGRhiSupport::instance()->attemptReinitWithSwRastUponFail();
                 
-                if (deviceLost) [[unlikely]] {
+                if (deviceLost) [[unlikely]]
                     handleDeviceLoss();
-                } else if (shouldRetrySwRast) [[unlikely]] {
-                    swRastFallbackDueToSwapchainFailure = true;
-                    teardownGraphics();
-                }
+                else if (shouldRetrySwRast) [[unlikely]]
+                    swRastFallbackDueToSwapchainFailure = true, teardownGraphics();
                 
                 QCoreApplication::postEvent(window, 
                     new QEvent(static_cast<QEvent::Type>(QQuickWindowPrivate::FullUpdateRequest)));
                 
-                if (syncRequested) {
-                    std::scoped_lock lock(mutex);
+                if (currentUpdate & SyncRequest) [[likely]] {
+                    std::lock_guard lock(mutex);
                     waitCondition.wakeOne();
                 }
                 return;
@@ -652,8 +648,8 @@ void QSGRenderThread::syncAndRender()
         if (frameResult != QRhi::FrameOpSuccess) [[unlikely]] {
             if (frameResult == QRhi::FrameOpDeviceLost) [[unlikely]]
                 handleDeviceLoss();
-            if (syncRequested) {
-                std::scoped_lock lock(mutex);
+            if (currentUpdate & SyncRequest) [[likely]] {
+                std::lock_guard lock(mutex);
                 waitCondition.wakeOne();
             }
             emit window->afterFrameEnd();
@@ -661,23 +657,22 @@ void QSGRenderThread::syncAndRender()
         }
     }
 
-    if (syncRequested) [[likely]] 
-        sync(exposeRequested);
+    if (currentUpdate & SyncRequest) [[likely]] 
+        sync((currentUpdate & ExposeRequest) == ExposeRequest);
 
     if (animatorDriver->isRunning()) [[unlikely]] {
-        std::scoped_lock lock(cd->animationController->mutex());
+        std::lock_guard lock(cd->animationController->mutex());
         animatorDriver->advance();
     }
 
-    const bool canRender = cd->renderer && cd->hasActiveSwapchain;
+    const bool canRender = cd->renderer & cd->hasActiveSwapchain;
     if (canRender) [[likely]] {
-        if (!syncRequested) [[unlikely]]
+        if (!(currentUpdate & SyncRequest)) [[unlikely]]
             rhi->makeThreadLocalNativeContextCurrent();
         
         cd->renderSceneGraph();
         
-        const auto endResult = rhi->endFrame(cd->swapchain);
-        if (endResult != QRhi::FrameOpSuccess) [[unlikely]]
+        if (rhi->endFrame(cd->swapchain) != QRhi::FrameOpSuccess) [[unlikely]]
             handleDeviceLoss();
         
         cd->fireFrameSwapped();
@@ -688,8 +683,8 @@ void QSGRenderThread::syncAndRender()
     if (cd->hasActiveSwapchain) [[likely]]
         emit window->afterFrameEnd();
 
-    if (exposeRequested) [[unlikely]] {
-        std::scoped_lock lock(mutex);
+    if (currentUpdate & ExposeRequest) [[unlikely]] {
+        std::lock_guard lock(mutex);
         waitCondition.wakeOne();
     }
 }
@@ -698,8 +693,6 @@ void QSGRenderThread::postEvent(QEvent *e)
 {
     eventQueue.addEvent(e);
 }
-
-
 
 void QSGRenderThread::processEvents()
 {
@@ -727,7 +720,8 @@ void QSGRenderThread::processEventsAndWaitForMore()
 void QSGRenderThread::ensureRhi()
 {
     if (!rhi) [[unlikely]] {
-        if (rhiDoomed) [[unlikely]] return;
+        if (rhiDoomed) [[unlikely]] 
+            return;
         
         auto [newRhi, own] = QSGRhiSupport::instance()->createRhi(
             window, offscreenSurface, swRastFallbackDueToSwapchainFailure);
