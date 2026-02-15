@@ -3729,13 +3729,19 @@ void Renderer::prepareRenderPass(RenderPassContext *ctx)
 
     if (Q_UNLIKELY(debug_render() || debug_build())) {
         QByteArray type("rebuild:");
-        if (m_rebuild == 0) type += " none";
-        else if (m_rebuild == FullRebuild) type += " full";
+        if (m_rebuild == 0)
+            type += " none";
+        if (m_rebuild == FullRebuild)
+            type += " full";
         else {
-            if (m_rebuild & BuildRenderLists) type += " renderlists";
-            else if (m_rebuild & BuildRenderListsForTaggedRoots) type += " partial";
-            else if (m_rebuild & BuildBatches) type += " batches";
+            if (m_rebuild & BuildRenderLists)
+                type += " renderlists";
+            else if (m_rebuild & BuildRenderListsForTaggedRoots)
+                type += " partial";
+            else if (m_rebuild & BuildBatches)
+                type += " batches";
         }
+
         qDebug() << "Renderer::render()" << this << type;
         ctx->timer.start();
     }
@@ -3765,11 +3771,11 @@ void Renderer::prepareRenderPass(RenderPassContext *ctx)
     }
     if (Q_UNLIKELY(debug_render())) ctx->timeRenderLists = ctx->timer.restart();
 
-    for (auto *b : m_opaqueBatches)
-        b->cleanupRemovedElements();
-    for (auto *b : m_alphaBatches)
-        b->cleanupRemovedElements();
-    
+    for (int i = 0; i < m_opaqueBatches.size(); ++i)
+        m_opaqueBatches.at(i)->cleanupRemovedElements();
+    for (int i = 0; i < m_alphaBatches.size(); ++i)
+        m_alphaBatches.at(i)->cleanupRemovedElements();
+
     deleteRemovedElements();
 
     cleanupBatches(&m_opaqueBatches);
@@ -3858,7 +3864,6 @@ void Renderer::prepareRenderPass(RenderPassContext *ctx)
     ctx->opaqueRenderBatches.clear();
     if (Q_LIKELY(renderOpaque)) {
         ctx->opaqueRenderBatches.reserve(opaque.size());
-        
         for (auto *b : opaque) {
             bool batchVisible = false;
             for (Element *e = b->first; e; e = e->nextInBatch) {
@@ -3886,7 +3891,6 @@ void Renderer::prepareRenderPass(RenderPassContext *ctx)
                 ctx->opaqueRenderBatches.append(renderBatch);
         }
     }
-    
     if (Q_UNLIKELY(debug_render())) ctx->timeUploadOpaque = ctx->timer.restart();
 
     m_gstate.blending = true;
@@ -3900,7 +3904,6 @@ void Renderer::prepareRenderPass(RenderPassContext *ctx)
     ctx->alphaRenderBatches.clear();
     if (Q_LIKELY(renderAlpha)) {
         ctx->alphaRenderBatches.reserve(alpha.size());
-        
         for (auto *b : alpha) {
             if (!b->isRenderNode) {
                 bool batchVisible = false;
@@ -3932,14 +3935,7 @@ void Renderer::prepareRenderPass(RenderPassContext *ctx)
                 ctx->alphaRenderBatches.append(renderBatch);
         }
     }
-    
     if (Q_UNLIKELY(debug_render())) ctx->timeUploadAlpha = ctx->timer.restart();
-
-    if (Q_UNLIKELY(debug_render())) {
-        qDebug().nospace() << "Rendering:" << Qt::endl
-                           << " -> Opaque: " << qsg_countNodesInBatches(m_opaqueBatches) << " nodes..." << Qt::endl
-                           << " -> Alpha: " << qsg_countNodesInBatches(m_alphaBatches) << " nodes...";
-    }
 
     m_rebuild = 0;
 
