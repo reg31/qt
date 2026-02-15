@@ -51,16 +51,8 @@ Q_TRACE_POINT(qtquick, QSG_render_exit)
 Q_TRACE_POINT(qtquick, QSG_swap_entry)
 Q_TRACE_POINT(qtquick, QSG_swap_exit)
 
-
-/*
-     - Uses one QRhi per window. (and so each window has its own QOpenGLContext or ID3D11Device(Context) etc.)
-     - Animations are advanced using the standard timer (no custom animation
-       driver is installed), so QML animations run as expected even when vsync
-       throttling is broken.
- */
-
 DEFINE_BOOL_CONFIG_OPTION(qmlNoThreadedRenderer, QML_BAD_GUI_RENDER_LOOP);
-DEFINE_BOOL_CONFIG_OPTION(qmlForceThreadedRenderer, QML_FORCE_THREADED_RENDERER); // Might trigger graphics driver threading bugs, use at own risk
+DEFINE_BOOL_CONFIG_OPTION(qmlForceThreadedRenderer, QML_FORCE_THREADED_RENDERER);
 
 QSGRenderLoop *QSGRenderLoop::s_instance = nullptr;
 
@@ -70,7 +62,7 @@ QSGRenderLoop::~QSGRenderLoop()
 
 void QSGRenderLoop::cleanup()
 {
-    if (!s_instance)
+    if (!s_instance) [[unlikely]]
         return;
     for (QQuickWindow *w : s_instance->windows()) {
         QQuickWindowPrivate *wd = QQuickWindowPrivate::get(w);
@@ -98,7 +90,7 @@ void QSGRenderLoop::postJob(QQuickWindow *window, QRunnable *job)
 #ifdef ENABLE_DEFAULT_BACKEND
     Q_ASSERT(window);
     QQuickWindowPrivate *cd = QQuickWindowPrivate::get(window);
-    if (cd->rhi)
+    if (cd->rhi) [[likely]]
         cd->rhi->makeThreadLocalNativeContextCurrent();
     job->run();
 #else
@@ -126,7 +118,7 @@ public:
     QImage grab(QQuickWindow *window) override;
 
     void maybeUpdate(QQuickWindow *window) override;
-    void update(QQuickWindow *window) override { maybeUpdate(window); } // identical for this implementation.
+    void update(QQuickWindow *window) override { maybeUpdate(window); }
     void handleUpdateRequest(QQuickWindow *) override;
 
     void releaseResources(QQuickWindow *) override;
@@ -199,22 +191,11 @@ QSGRenderLoop *QSGRenderLoop::instance()
                 break;
 
             case QRhi::D3D11:
-                // The threaded loop's model may not be suitable for DXGI
-                // due to the possibility of having the main thread (with
-                // the Windows message pump) blocked while issuing a
-                // Present on the render thread. However, according to the
-                // docs this can be a problem for fullscreen swapchains
-                // only. So leave threaded enabled by default for now and
-                // revisit later if there are problems.
                 break;
 
             default:
                 break;
             }
-
-            // The environment variables can always override. This is good
-            // because in some situations it makes perfect sense to try out a
-            // render loop that is otherwise disabled by default.
 
             if (qmlNoThreadedRenderer())
                 loopType = BasicRenderLoop;
@@ -234,22 +215,18 @@ QSGRenderLoop *QSGRenderLoop::instance()
             }
 
             switch (loopType) {
-#if QT_CONFIG(thread)
             case ThreadedRenderLoop:
                 qCDebug(QSG_LOG_INFO, "threaded render loop");
                 s_instance = new QSGThreadedRenderLoop();
                 break;
-#endif
             default:
-                qCDebug(QSG_LOG_INFO, "basic render loop");
+                qCDebug(QSG_LOG_INFO, "QSG: basic render loop");
                 s_instance = new QSGGuiThreadRenderLoop();
                 break;
             }
         }
 #endif
-        qAddPostRoutine(QSGRenderLoop::cleanup);
     }
-
     return s_instance;
 }
 
@@ -261,34 +238,26 @@ void QSGRenderLoop::setInstance(QSGRenderLoop *instance)
 
 void QSGRenderLoop::handleContextCreationFailure(QQuickWindow *window)
 {
-    // Must always be called on the gui thread.
-
-    // Guard for recursion; relevant due to the MessageBox() on Windows.
     static QSet<QQuickWindow *> recurseGuard;
-    if (recurseGuard.contains(window))
+    if (!recurseGuard.insert(window).second) [[unlikely]]
         return;
-
-    recurseGuard.insert(window);
 
     QString translatedMessage;
     QString untranslatedMessage;
     QQuickWindowPrivate::rhiCreationFailureMessage(QSGRhiSupport::instance()->rhiBackendName(),
                                                    &translatedMessage,
                                                    &untranslatedMessage);
-    // If there is a slot connected to the error signal, emit it and leave it to
-    // the application to do something with the message. If nothing is connected,
-    // show a message on our own and terminate.
     const bool signalEmitted =
         QQuickWindowPrivate::get(window)->emitError(QQuickWindow::ContextNotAvailable,
                                                     translatedMessage);
 #if defined(Q_OS_WIN)
-    if (!signalEmitted && !QLibraryInfo::isDebugBuild() && !GetConsoleWindow()) {
+    if (!signalEmitted && !QLibraryInfo::isDebugBuild() && !GetConsoleWindow()) [[unlikely]] {
         MessageBox(0, (LPCTSTR) translatedMessage.utf16(),
                    (LPCTSTR)(QCoreApplication::applicationName().utf16()),
                    MB_OK | MB_ICONERROR);
     }
-#endif // Q_OS_WIN
-    if (!signalEmitted)
+#endif
+    if (!signalEmitted) [[unlikely]]
         qFatal("%s", qPrintable(untranslatedMessage));
 
     recurseGuard.remove(window);
@@ -324,7 +293,7 @@ void QSGGuiThreadRenderLoop::hide(QQuickWindow *window)
     QQuickWindowPrivate *cd = QQuickWindowPrivate::get(window);
     cd->fireAboutToStop();
     auto it = m_windows.find(window);
-    if (it != m_windows.end())
+    if (it != m_windows.end()) [[likely]]
         it->updatePending = false;
 }
 
@@ -332,27 +301,24 @@ void QSGGuiThreadRenderLoop::windowDestroyed(QQuickWindow *window)
 {
     hide(window);
 
-    WindowData data = m_windows.value(window, {});
-    m_windows.remove(window);
+    auto it = m_windows.find(window);
+    if (it == m_windows.end()) [[unlikely]]
+        return;
 
-    QQuickWindowPrivate *d = QQuickWindowPrivate::get(window);
+    WindowData data = std::move(*it);
+    m_windows.erase(it);
 
-    if (data.rhi) {
-        // Direct OpenGL calls in user code need a current context, like
-        // when rendering; ensure this (no-op when not running on GL).
-        // Also works when there is no handle() anymore.
+    auto *d = QQuickWindowPrivate::get(window);
+
+    if (data.rhi) [[likely]]
         data.rhi->makeThreadLocalNativeContextCurrent();
-    }
 
-    if (d->swapchain) {
-        if (window->handle()) {
-            // We get here when exiting via QCoreApplication::quit() instead of
-            // through QWindow::close().
+    if (d->swapchain) [[likely]] {
+        if (window->handle()) [[likely]]
             releaseSwapchain(window);
-        } else {
+        else [[unlikely]]
             qWarning("QSGGuiThreadRenderLoop cleanup with QQuickWindow %p swapchain %p still alive, this should not happen.",
                      window, d->swapchain);
-        }
     }
 
     d->cleanupNodesOnShutdown();
@@ -361,19 +327,18 @@ void QSGGuiThreadRenderLoop::windowDestroyed(QQuickWindow *window)
     QSGRhiShaderEffectNode::resetMaterialTypeCache(window);
 #endif
 
-    if (data.rc) {
+    if (data.rc) [[likely]] {
         data.rc->invalidate();
         delete data.rc;
     }
 
-    if (data.ownRhi)
+    if (data.ownRhi) [[likely]]
         QSGRhiSupport::instance()->destroyRhi(data.rhi, d->graphicsConfig);
 
     d->rhi = nullptr;
-
     d->animationController.reset();
 
-    if (m_windows.isEmpty()) {
+    if (m_windows.isEmpty()) [[unlikely]] {
         delete offscreenSurface;
         offscreenSurface = nullptr;
     }
@@ -381,16 +346,22 @@ void QSGGuiThreadRenderLoop::windowDestroyed(QQuickWindow *window)
 
 void QSGGuiThreadRenderLoop::teardownGraphics()
 {
-    for (auto it = m_windows.begin(), itEnd = m_windows.end(); it != itEnd; ++it) {
-        if (it->rhi) {
-            QQuickWindowPrivate::get(it.key())->cleanupNodesOnShutdown();
-            if (it->rc)
-                it->rc->invalidate();
-            releaseSwapchain(it.key());
-            if (it->ownRhi)
-                QSGRhiSupport::instance()->destroyRhi(it->rhi, {});
-            it->rhi = nullptr;
-        }
+    for (auto it = m_windows.begin(); it != m_windows.end(); ++it) {
+        if (!it->rhi) [[unlikely]]
+            continue;
+
+        auto *wd = QQuickWindowPrivate::get(it.key());
+        wd->cleanupNodesOnShutdown();
+        
+        if (it->rc) [[likely]]
+            it->rc->invalidate();
+        
+        releaseSwapchain(it.key());
+        
+        if (it->ownRhi) [[likely]]
+            QSGRhiSupport::instance()->destroyRhi(it->rhi, {});
+        
+        it->rhi = nullptr;
     }
 }
 
@@ -398,310 +369,213 @@ void QSGGuiThreadRenderLoop::handleDeviceLoss()
 {
     qWarning("Graphics device lost, cleaning up scenegraph and releasing RHIs");
 
-    for (auto it = m_windows.begin(), itEnd = m_windows.end(); it != itEnd; ++it) {
-        if (!it->rhi || !it->rhi->isDeviceLost())
+    for (auto it = m_windows.begin(); it != m_windows.end(); ++it) {
+        if (!it->rhi) [[unlikely]]
             continue;
 
-        QQuickWindowPrivate::get(it.key())->cleanupNodesOnShutdown();
+        if (!it->rhi->isDeviceLost()) [[likely]]
+            continue;
 
-        if (it->rc)
+        auto *wd = QQuickWindowPrivate::get(it.key());
+        wd->cleanupNodesOnShutdown();
+
+        if (it->rc) [[likely]]
             it->rc->invalidate();
 
         releaseSwapchain(it.key());
         it->rhiDeviceLost = true;
 
-        if (it->ownRhi)
+        if (it->ownRhi) [[likely]]
             QSGRhiSupport::instance()->destroyRhi(it->rhi, {});
+        
         it->rhi = nullptr;
     }
 }
 
 void QSGGuiThreadRenderLoop::releaseSwapchain(QQuickWindow *window)
 {
-    QQuickWindowPrivate *wd = QQuickWindowPrivate::get(window);
-    delete wd->rpDescForSwapchain;
-    wd->rpDescForSwapchain = nullptr;
-    delete wd->swapchain;
-    wd->swapchain = nullptr;
-    delete wd->depthStencilForSwapchain;
-    wd->depthStencilForSwapchain = nullptr;
-    wd->hasActiveSwapchain = wd->hasRenderableSwapchain = wd->swapchainJustBecameRenderable = false;
+    auto *wd = QQuickWindowPrivate::get(window);
+    
+    delete std::exchange(wd->rpDescForSwapchain, nullptr);
+    delete std::exchange(wd->swapchain, nullptr);
+    delete std::exchange(wd->depthStencilForSwapchain, nullptr);
+    
+    wd->hasActiveSwapchain = false;
+    wd->hasRenderableSwapchain = false;
+    wd->swapchainJustBecameRenderable = false;
 }
 
 bool QSGGuiThreadRenderLoop::eventFilter(QObject *watched, QEvent *event)
 {
-    switch (event->type()) {
-    case QEvent::PlatformSurface:
-        // this is the proper time to tear down the swapchain (while the native window and surface are still around)
-        if (static_cast<QPlatformSurfaceEvent *>(event)->surfaceEventType() == QPlatformSurfaceEvent::SurfaceAboutToBeDestroyed) {
-            QQuickWindow *w = qobject_cast<QQuickWindow *>(watched);
-            if (w)
-                releaseSwapchain(w);
-            // keep this filter on the window - needed for uncommon but valid
-            // sequences of calls like window->destroy(); window->show();
-        }
-        break;
-    default:
-        break;
-    }
+    if (event->type() != QEvent::PlatformSurface) [[likely]]
+        return QObject::eventFilter(watched, event);
+
+    const auto surfaceEvent = static_cast<QPlatformSurfaceEvent *>(event);
+    if (surfaceEvent->surfaceEventType() != QPlatformSurfaceEvent::SurfaceAboutToBeDestroyed) [[likely]]
+        return QObject::eventFilter(watched, event);
+
+    if (auto *w = qobject_cast<QQuickWindow *>(watched)) [[likely]]
+        releaseSwapchain(w);
+
     return QObject::eventFilter(watched, event);
 }
 
 bool QSGGuiThreadRenderLoop::ensureRhi(QQuickWindow *window, WindowData &data)
 {
-    QQuickWindowPrivate *cd = QQuickWindowPrivate::get(window);
-    QSGRhiSupport *rhiSupport = QSGRhiSupport::instance();
-    bool ok = data.rhi != nullptr;
+    auto *cd = QQuickWindowPrivate::get(window);
+    auto *rhiSupport = QSGRhiSupport::instance();
 
     if (!data.rhi) [[unlikely]] {
-        if (data.rhiDoomed) [[unlikely]]
+        if (data.rhiDoomed) [[unlikely]] 
             return false;
 
         if (!offscreenSurface) [[unlikely]]
             offscreenSurface = rhiSupport->maybeCreateOffscreenSurface(window);
 
-        const bool forcePreferSwRenderer = swRastFallbackDueToSwapchainFailure;
-        QSGRhiSupport::RhiCreateResult rhiResult = rhiSupport->createRhi(window, offscreenSurface, forcePreferSwRenderer);
-        data.rhi = rhiResult.rhi;
-        data.ownRhi = rhiResult.own;
+        auto [rhi, own] = rhiSupport->createRhi(window, offscreenSurface, swRastFallbackDueToSwapchainFailure);
+        data.rhi = rhi;
+        data.ownRhi = own;
 
         if (data.rhi) [[likely]] {
             data.rhiDeviceLost = false;
-
-            ok = true;
             data.rhi->makeThreadLocalNativeContextCurrent();
-
             data.sampleCount = rhiSupport->chooseSampleCountForWindowWithRhi(window, data.rhi);
-
             cd->rhi = data.rhi;
 
-            QSGDefaultRenderContext::InitParams rcParams;
-            rcParams.rhi = data.rhi;
-            rcParams.sampleCount = data.sampleCount;
-            rcParams.initialSurfacePixelSize = window->size() * window->effectiveDevicePixelRatio();
-            rcParams.maybeSurface = window;
+            QSGDefaultRenderContext::InitParams rcParams{
+                .rhi = data.rhi,
+                .sampleCount = data.sampleCount,
+                .initialSurfacePixelSize = window->size() * window->effectiveDevicePixelRatio(),
+                .maybeSurface = window
+            };
             cd->context->initialize(&rcParams);
         } else {
             if (!data.rhiDeviceLost) [[likely]] {
                 data.rhiDoomed = true;
                 handleContextCreationFailure(window);
             }
+            return false;
         }
     }
 
     if (data.rhi && !cd->swapchain) [[unlikely]] {
         cd->rhi = data.rhi;
-
         rhiSupport->prepareWindowForRhi(window);
 
-        QRhiSwapChain::Flags flags = QRhiSwapChain::UsedAsTransferSource;
-        const QSurfaceFormat requestedFormat = window->requestedFormat();
-
-        const bool alpha = requestedFormat.alphaBufferSize() > 0;
-        if (alpha)
-            flags |= QRhiSwapChain::SurfaceHasPreMulAlpha;
-
-        if (requestedFormat.swapInterval() == 0) {
-            qCDebug(QSG_LOG_INFO, "Swap interval is 0, attempting to disable vsync when presenting.");
-            flags |= QRhiSwapChain::NoVSync;
-        }
+        const auto fmt = window->requestedFormat();
+        const auto alphaSize = fmt.alphaBufferSize();
+        const auto swapInterval = fmt.swapInterval();
+        
+        QRhiSwapChain::Flags flags = QRhiSwapChain::UsedAsTransferSource
+            | ((alphaSize > 0) * QRhiSwapChain::SurfaceHasPreMulAlpha)
+            | ((swapInterval == 0) * QRhiSwapChain::NoVSync);
 
         cd->swapchain = data.rhi->newSwapChain();
-        static bool depthBufferEnabled = qEnvironmentVariableIsEmpty("QSG_NO_DEPTH_BUFFER");
-        if (depthBufferEnabled) [[likely]] {
-            cd->depthStencilForSwapchain = data.rhi->newRenderBuffer(QRhiRenderBuffer::DepthStencil,
-                                                                     QSize(),
-                                                                     data.sampleCount,
-                                                                     QRhiRenderBuffer::UsedWithSwapChainOnly);
+        static const bool depthEnabled = qEnvironmentVariableIsEmpty("QSG_NO_DEPTH_BUFFER");
+        if (depthEnabled) [[likely]] {
+            cd->depthStencilForSwapchain = data.rhi->newRenderBuffer(
+                QRhiRenderBuffer::DepthStencil, {}, data.sampleCount, 
+                QRhiRenderBuffer::UsedWithSwapChainOnly);
             cd->swapchain->setDepthStencil(cd->depthStencilForSwapchain);
         }
         cd->swapchain->setWindow(window);
         rhiSupport->applySwapChainFormat(cd->swapchain, window);
-        qCDebug(QSG_LOG_INFO, "MSAA sample count for the swapchain is %d. Alpha channel requested = %s",
-                data.sampleCount, alpha ? "yes" : "no");
         cd->swapchain->setSampleCount(data.sampleCount);
         cd->swapchain->setFlags(flags);
         cd->rpDescForSwapchain = cd->swapchain->newCompatibleRenderPassDescriptor();
         cd->swapchain->setRenderPassDescriptor(cd->rpDescForSwapchain);
-
         window->installEventFilter(this);
     }
 
     if (!data.rc) [[unlikely]] {
-        QSGRenderContext *rc = cd->context;
-        pendingRenderContexts.remove(rc);
-        data.rc = rc;
-        if (!data.rc) [[unlikely]]
-            qWarning("No QSGRenderContext for window %p, this should not happen", window);
+        data.rc = cd->context;
+        pendingRenderContexts.remove(data.rc);
     }
 
-    return ok;
+    return data.rhi != nullptr;
 }
-
 
 void QSGGuiThreadRenderLoop::renderWindow(QQuickWindow *window)
 {
     auto winDataIt = m_windows.find(window);
-    if (winDataIt == m_windows.end()) [[unlikely]]
+    if (winDataIt == m_windows.end()) [[unlikely]] 
         return;
 
-    WindowData &data = *winDataIt;
+    WindowData &data = winDataIt.value();
     const bool alsoSwap = std::exchange(data.updatePending, false);
 
     auto *cd = QQuickWindowPrivate::get(window);
-    if (!cd->isRenderable() || !cd->updatesEnabled) [[unlikely]]
+    if (!cd->isRenderable() || !cd->updatesEnabled) [[unlikely]] 
         return;
 
-    if (!ensureRhi(window, data)) [[unlikely]]
+    if (!ensureRhi(window, data)) [[unlikely]] 
         return;
 
     cd->deliveryAgentPrivate()->flushFrameSynchronousEvents(window);
-    if (!m_windows.contains(window)) [[unlikely]]
+    if (!m_windows.contains(window)) [[unlikely]] 
         return;
 
-    QSize effectiveOutputSize;
-    if (cd->swapchain) [[likely]] {
-        effectiveOutputSize = cd->swapchain->surfacePixelSize();
-        if (effectiveOutputSize.isEmpty()) [[unlikely]]
-            return;
-    }
+    if (!cd->swapchain) [[unlikely]] 
+        return;
+
+    QSize effectiveOutputSize = cd->swapchain->surfacePixelSize();
+    if (effectiveOutputSize.isEmpty()) [[unlikely]] 
+        return;
 
     Q_TRACE_SCOPE(QSG_renderWindow);
-    QElapsedTimer renderTimer;
-    qint64 renderTime = 0, syncTime = 0, polishTime = 0;
     
-    const bool profileFrames = QSG_LOG_TIME_RENDERLOOP().isDebugEnabled();
-    if (profileFrames) [[unlikely]]
-        renderTimer.start();
-    
-    Q_TRACE(QSG_polishItems_entry);
-    Q_QUICK_SG_PROFILE_START(QQuickProfiler::SceneGraphPolishFrame);
-
     m_inPolish = true;
     cd->polishItems();
     m_inPolish = false;
 
-    if (profileFrames) [[unlikely]]
-        polishTime = renderTimer.nsecsElapsed();
-
-    Q_TRACE(QSG_polishItems_exit);
-    Q_QUICK_SG_PROFILE_SWITCH(QQuickProfiler::SceneGraphPolishFrame,
-                              QQuickProfiler::SceneGraphRenderLoopFrame,
-                              QQuickProfiler::SceneGraphPolishPolish);
-    Q_TRACE(QSG_sync_entry);
-
     emit window->afterAnimating();
 
-    if (cd->swapchain) [[likely]] {
-        Q_ASSERT(!effectiveOutputSize.isEmpty());
-        const auto previousOutputSize = cd->swapchain->currentPixelSize();
-        
-        if (previousOutputSize != effectiveOutputSize || cd->swapchainJustBecameRenderable) [[unlikely]] {
-            if (cd->swapchainJustBecameRenderable)
-                qCDebug(QSG_LOG_RENDERLOOP, "just became exposed");
-
-            cd->hasActiveSwapchain = cd->swapchain->createOrResize();
-            if (!cd->hasActiveSwapchain) [[unlikely]] {
-                if (data.rhi->isDeviceLost()) [[unlikely]] {
-                    handleDeviceLoss();
-                    return;
-                } else if (previousOutputSize.isEmpty() && !swRastFallbackDueToSwapchainFailure && 
-                          QSGRhiSupport::instance()->attemptReinitWithSwRastUponFail()) {
-                    qWarning("Failed to create swapchain."
-                             " Retrying by requesting a software rasterizer, if applicable for the 3D API implementation.");
-                    swRastFallbackDueToSwapchainFailure = true;
-                    teardownGraphics();
-                    return;
-                }
+    const auto currentSize = cd->swapchain->currentPixelSize();
+    if (currentSize != effectiveOutputSize || cd->swapchainJustBecameRenderable) [[unlikely]] {
+        cd->hasActiveSwapchain = cd->swapchain->createOrResize();
+        if (!cd->hasActiveSwapchain) [[unlikely]] {
+            if (data.rhi->isDeviceLost()) [[unlikely]] { 
+                handleDeviceLoss(); 
+                return; 
             }
-
-            cd->swapchainJustBecameRenderable = false;
-            cd->hasRenderableSwapchain = cd->hasActiveSwapchain;
-
-            if (cd->hasActiveSwapchain) [[likely]]
-                qCDebug(QSG_LOG_RENDERLOOP) << "rhi swapchain size" << cd->swapchain->currentPixelSize();
-            else
-                qWarning("Failed to build or resize swapchain");
+            else if (QSGRhiSupport::instance()->attemptReinitWithSwRastUponFail()) {
+                swRastFallbackDueToSwapchainFailure = true;
+                teardownGraphics();
+                return;
+            }
         }
+        cd->swapchainJustBecameRenderable = false;
+        cd->hasRenderableSwapchain = cd->hasActiveSwapchain;
+    }
 
-        emit window->beforeFrameBegin();
-
-        Q_ASSERT(data.rhi == cd->rhi);
-        const auto frameResult = data.rhi->beginFrame(cd->swapchain);
-        if (frameResult != QRhi::FrameOpSuccess) [[unlikely]] {
-            if (frameResult == QRhi::FrameOpDeviceLost) [[unlikely]]
-                handleDeviceLoss();
-            else if (frameResult == QRhi::FrameOpError) [[unlikely]]
-                qWarning("Failed to start frame");
-            emit window->afterFrameEnd();
-            return;
-        }
+    emit window->beforeFrameBegin();
+    
+    if (data.rhi->beginFrame(cd->swapchain) != QRhi::FrameOpSuccess) [[unlikely]] {
+        if (data.rhi->isDeviceLost()) [[unlikely]]
+            handleDeviceLoss();
+        emit window->afterFrameEnd();
+        return;
     }
 
     data.rhi->makeThreadLocalNativeContextCurrent();
-
     cd->syncSceneGraph();
     data.rc->endSync();
-
-    if (profileFrames) [[unlikely]]
-        syncTime = renderTimer.nsecsElapsed();
-
-    Q_TRACE(QSG_sync_exit);
-    Q_QUICK_SG_PROFILE_RECORD(QQuickProfiler::SceneGraphRenderLoopFrame,
-                              QQuickProfiler::SceneGraphRenderLoopSync);
-    Q_TRACE(QSG_render_entry);
-
     cd->renderSceneGraph();
-
-    if (profileFrames) [[unlikely]]
-        renderTime = renderTimer.nsecsElapsed();
     
-    Q_TRACE(QSG_render_exit);
-    Q_QUICK_SG_PROFILE_RECORD(QQuickProfiler::SceneGraphRenderLoopFrame,
-                              QQuickProfiler::SceneGraphRenderLoopRender);
-    Q_TRACE(QSG_swap_entry);
-
     const bool needsPresent = alsoSwap && window->isVisible();
-    double lastCompletedGpuTime = 0;
+    QRhi::EndFrameFlags flags = needsPresent ? QRhi::None : QRhi::SkipPresent;
     
-    if (cd->swapchain) [[likely]] {
-        QRhi::EndFrameFlags flags;
-        if (!needsPresent)
-            flags |= QRhi::SkipPresent;
-            
-        const auto endResult = data.rhi->endFrame(cd->swapchain, flags);
-        if (endResult != QRhi::FrameOpSuccess) [[unlikely]] {
-            if (endResult == QRhi::FrameOpDeviceLost) [[unlikely]]
-                handleDeviceLoss();
-            else if (endResult == QRhi::FrameOpError) [[unlikely]]
-                qWarning("Failed to end frame");
-        } else [[likely]] {
-            lastCompletedGpuTime = cd->swapchain->currentFrameCommandBuffer()->lastCompletedGpuTime();
-        }
+    if (data.rhi->endFrame(cd->swapchain, flags) != QRhi::FrameOpSuccess) [[unlikely]] {
+        if (data.rhi->isDeviceLost()) [[unlikely]]
+            handleDeviceLoss();
     }
     
     if (needsPresent) [[likely]]
         cd->fireFrameSwapped();
 
     emit window->afterFrameEnd();
-
-    if (profileFrames) [[unlikely]] {
-        const qint64 swapTime = renderTimer.nsecsElapsed();
-        qCDebug(QSG_LOG_TIME_RENDERLOOP,
-                "[window %p][gui thread] syncAndRender: frame rendered in %dms, polish=%d, sync=%d, render=%d, swap=%d, perWindowFrameDelta=%d",
-                window, int(swapTime / 1000000),
-                int(polishTime / 1000000),
-                int((syncTime - polishTime) / 1000000),
-                int((renderTime - syncTime) / 1000000),
-                int((swapTime - renderTime) / 1000000),
-                int(data.timeBetweenRenders.restart()));
-        if (!qFuzzyIsNull(lastCompletedGpuTime) && cd->graphicsConfig.timestampsEnabled()) {
-            qCDebug(QSG_LOG_TIME_RENDERLOOP, "[window %p][gui thread] syncAndRender: last retrieved GPU frame time was %.4f ms",
-                    window, lastCompletedGpuTime * 1000.0);
-        }
-    }
-
-    if (data.updatePending) [[unlikely]]
+    
+    if (data.updatePending) [[unlikely]] 
         maybeUpdate(window);
 }
 
@@ -731,25 +605,27 @@ void QSGGuiThreadRenderLoop::exposureChanged(QQuickWindow *window)
 QImage QSGGuiThreadRenderLoop::grab(QQuickWindow *window)
 {
     auto winDataIt = m_windows.find(window);
-    if (winDataIt == m_windows.end())
+    if (winDataIt == m_windows.end()) [[unlikely]]
         return QImage();
 
-    if (!ensureRhi(window, *winDataIt))
+    if (!ensureRhi(window, *winDataIt)) [[unlikely]]
         return QImage();
 
-    QQuickWindowPrivate *cd = QQuickWindowPrivate::get(window);
+    auto *cd = QQuickWindowPrivate::get(window);
     m_inPolish = true;
     cd->polishItems();
     m_inPolish = false;
 
-    // The assumption is that the swapchain is usable since on expose we do a
-    // renderWindow() so one cannot get to grab() without having done at least
-    // one on-screen frame.
-    cd->rhi->beginFrame(cd->swapchain);
-    cd->rhi->makeThreadLocalNativeContextCurrent(); // for custom GL rendering before/during/after sync
+    if (cd->rhi->beginFrame(cd->swapchain) != QRhi::FrameOpSuccess) [[unlikely]]
+        return QImage();
+
+    cd->rhi->makeThreadLocalNativeContextCurrent();
     cd->syncSceneGraph();
     cd->renderSceneGraph();
-    QImage image = QSGRhiSupport::instance()->grabAndBlockInCurrentFrame(cd->rhi, cd->swapchain->currentFrameCommandBuffer());
+    
+    QImage image = QSGRhiSupport::instance()->grabAndBlockInCurrentFrame(
+        cd->rhi, cd->swapchain->currentFrameCommandBuffer());
+    
     cd->rhi->endFrame(cd->swapchain, QRhi::SkipPresent);
 
     image.setDevicePixelRatio(window->effectiveDevicePixelRatio());
@@ -788,10 +664,9 @@ QSGRenderContext *QSGGuiThreadRenderLoop::createRenderContext(QSGContext *sg) co
 
 void QSGGuiThreadRenderLoop::releaseResources(QQuickWindow *w)
 {
-    // No full invalidation of the rendercontext, just clear some caches.
     QQuickWindowPrivate *d = QQuickWindowPrivate::get(w);
     emit d->context->releaseCachedResourcesRequested();
-    if (d->renderer)
+    if (d->renderer) [[likely]]
         d->renderer->releaseCachedResources();
 #if QT_CONFIG(quick_shadereffect)
     QSGRhiShaderEffectNode::garbageCollectMaterialTypeCache(w);
@@ -803,7 +678,7 @@ void QSGGuiThreadRenderLoop::handleUpdateRequest(QQuickWindow *window)
     renderWindow(window);
 }
 
-#endif // ENABLE_DEFAULT_BACKEND
+#endif
 
 QT_END_NAMESPACE
 
