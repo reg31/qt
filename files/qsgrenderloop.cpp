@@ -450,65 +450,76 @@ bool QSGGuiThreadRenderLoop::eventFilter(QObject *watched, QEvent *event)
 
 bool QSGGuiThreadRenderLoop::ensureRhi(QQuickWindow *window, WindowData &data)
 {
-    auto *cd = QQuickWindowPrivate::get(window);
-    auto *rhiSupport = QSGRhiSupport::instance();
+    QQuickWindowPrivate *cd = QQuickWindowPrivate::get(window);
+    QSGRhiSupport *rhiSupport = QSGRhiSupport::instance();
+    bool ok = data.rhi != nullptr;
 
     if (!data.rhi) [[unlikely]] {
-        if (data.rhiDoomed) [[unlikely]] 
+        if (data.rhiDoomed) [[unlikely]]
             return false;
 
         if (!offscreenSurface) [[unlikely]]
             offscreenSurface = rhiSupport->maybeCreateOffscreenSurface(window);
 
-        auto [rhi, own] = rhiSupport->createRhi(window, offscreenSurface, swRastFallbackDueToSwapchainFailure);
-        data.rhi = rhi;
-        data.ownRhi = own;
+        const bool forcePreferSwRenderer = swRastFallbackDueToSwapchainFailure;
+        QSGRhiSupport::RhiCreateResult rhiResult = rhiSupport->createRhi(window, offscreenSurface, forcePreferSwRenderer);
+        data.rhi = rhiResult.rhi;
+        data.ownRhi = rhiResult.own;
 
-        if (!data.rhi) [[unlikely]] {
+        if (data.rhi) [[likely]] {
+            data.rhiDeviceLost = false;
+
+            ok = true;
+            data.rhi->makeThreadLocalNativeContextCurrent();
+
+            data.sampleCount = rhiSupport->chooseSampleCountForWindowWithRhi(window, data.rhi);
+
+            cd->rhi = data.rhi;
+
+            QSGDefaultRenderContext::InitParams rcParams;
+            rcParams.rhi = data.rhi;
+            rcParams.sampleCount = data.sampleCount;
+            rcParams.initialSurfacePixelSize = window->size() * window->effectiveDevicePixelRatio();
+            rcParams.maybeSurface = window;
+            cd->context->initialize(&rcParams);
+        } else {
             if (!data.rhiDeviceLost) [[likely]] {
                 data.rhiDoomed = true;
                 handleContextCreationFailure(window);
             }
-            return false;
         }
-
-        data.rhiDeviceLost = false;
-        data.rhi->makeThreadLocalNativeContextCurrent();
-        data.sampleCount = rhiSupport->chooseSampleCountForWindowWithRhi(window, data.rhi);
-        cd->rhi = data.rhi;
-
-        QSGDefaultRenderContext::InitParams rcParams{
-            .rhi = data.rhi,
-            .sampleCount = data.sampleCount,
-            .initialSurfacePixelSize = window->size() * window->effectiveDevicePixelRatio(),
-            .maybeSurface = window
-        };
-        cd->context->initialize(&rcParams);
     }
 
     if (data.rhi && !cd->swapchain) [[unlikely]] {
         cd->rhi = data.rhi;
+
         rhiSupport->prepareWindowForRhi(window);
 
-        const auto requestedFormat = window->requestedFormat();
-        const auto alphaSize = requestedFormat.alphaBufferSize();
-        const auto swapInterval = requestedFormat.swapInterval();
-        
         QRhiSwapChain::Flags flags = QRhiSwapChain::UsedAsTransferSource;
-        if (alphaSize > 0) flags |= QRhiSwapChain::SurfaceHasPreMulAlpha;
-        if (swapInterval == 0) flags |= QRhiSwapChain::NoVSync;
+        const QSurfaceFormat requestedFormat = window->requestedFormat();
+
+        const bool alpha = requestedFormat.alphaBufferSize() > 0;
+        if (alpha)
+            flags |= QRhiSwapChain::SurfaceHasPreMulAlpha;
+
+        if (requestedFormat.swapInterval() == 0) {
+            qCDebug(QSG_LOG_INFO, "Swap interval is 0, attempting to disable vsync when presenting.");
+            flags |= QRhiSwapChain::NoVSync;
+        }
 
         cd->swapchain = data.rhi->newSwapChain();
-        static const bool depthBufferEnabled = qEnvironmentVariableIsEmpty("QSG_NO_DEPTH_BUFFER");
+        static bool depthBufferEnabled = qEnvironmentVariableIsEmpty("QSG_NO_DEPTH_BUFFER");
         if (depthBufferEnabled) [[likely]] {
-            cd->depthStencilForSwapchain = data.rhi->newRenderBuffer(
-                QRhiRenderBuffer::DepthStencil, {}, data.sampleCount, 
-                QRhiRenderBuffer::UsedWithSwapChainOnly);
+            cd->depthStencilForSwapchain = data.rhi->newRenderBuffer(QRhiRenderBuffer::DepthStencil,
+                                                                     QSize(),
+                                                                     data.sampleCount,
+                                                                     QRhiRenderBuffer::UsedWithSwapChainOnly);
             cd->swapchain->setDepthStencil(cd->depthStencilForSwapchain);
         }
-        
         cd->swapchain->setWindow(window);
         rhiSupport->applySwapChainFormat(cd->swapchain, window);
+        qCDebug(QSG_LOG_INFO, "MSAA sample count for the swapchain is %d. Alpha channel requested = %s",
+                data.sampleCount, alpha ? "yes" : "no");
         cd->swapchain->setSampleCount(data.sampleCount);
         cd->swapchain->setFlags(flags);
         cd->rpDescForSwapchain = cd->swapchain->newCompatibleRenderPassDescriptor();
@@ -518,11 +529,14 @@ bool QSGGuiThreadRenderLoop::ensureRhi(QQuickWindow *window, WindowData &data)
     }
 
     if (!data.rc) [[unlikely]] {
-        data.rc = cd->context;
-        pendingRenderContexts.remove(data.rc);
+        QSGRenderContext *rc = cd->context;
+        pendingRenderContexts.remove(rc);
+        data.rc = rc;
+        if (!data.rc) [[unlikely]]
+            qWarning("No QSGRenderContext for window %p, this should not happen", window);
     }
 
-    return data.rhi != nullptr;
+    return ok;
 }
 
 void QSGGuiThreadRenderLoop::renderWindow(QQuickWindow *window)
