@@ -450,10 +450,42 @@ bool QSGGuiThreadRenderLoop::eventFilter(QObject *watched, QEvent *event)
 
 bool QSGGuiThreadRenderLoop::ensureRhi(QQuickWindow *window, WindowData &data)
 {
-    if (data.rhi) [[likely]] {
-        if (cd->swapchain) [[likely]]
-            goto fast_path_rc_check;
-            
+    auto *cd = QQuickWindowPrivate::get(window);
+    auto *rhiSupport = QSGRhiSupport::instance();
+
+    if (!data.rhi) [[unlikely]] {
+        if (data.rhiDoomed) [[unlikely]] 
+            return false;
+
+        if (!offscreenSurface) [[unlikely]]
+            offscreenSurface = rhiSupport->maybeCreateOffscreenSurface(window);
+
+        auto [rhi, own] = rhiSupport->createRhi(window, offscreenSurface, swRastFallbackDueToSwapchainFailure);
+        data.rhi = rhi;
+        data.ownRhi = own;
+
+        if (!data.rhi) [[unlikely]] {
+            if (!data.rhiDeviceLost) [[likely]] {
+                data.rhiDoomed = true;
+                handleContextCreationFailure(window);
+            }
+            return false;
+        }
+
+        data.rhiDeviceLost = false;
+        data.rhi->makeThreadLocalNativeContextCurrent();
+        data.sampleCount = rhiSupport->chooseSampleCountForWindowWithRhi(window, data.rhi);
+        cd->rhi = data.rhi;
+
+        cd->context->initialize(&QSGDefaultRenderContext::InitParams{
+            .rhi = data.rhi,
+            .sampleCount = data.sampleCount,
+            .initialSurfacePixelSize = window->size() * window->effectiveDevicePixelRatio(),
+            .maybeSurface = window
+        });
+    }
+
+    if (data.rhi && !cd->swapchain) [[unlikely]] {
         cd->rhi = data.rhi;
         rhiSupport->prepareWindowForRhi(window);
 
@@ -480,50 +512,16 @@ bool QSGGuiThreadRenderLoop::ensureRhi(QQuickWindow *window, WindowData &data)
         cd->swapchain->setFlags(flags);
         cd->rpDescForSwapchain = cd->swapchain->newCompatibleRenderPassDescriptor();
         cd->swapchain->setRenderPassDescriptor(cd->rpDescForSwapchain);
+
         window->installEventFilter(this);
-
-    fast_path_rc_check:
-        if (!data.rc) [[unlikely]] {
-            data.rc = cd->context;
-            pendingRenderContexts.remove(data.rc);
-        }
-        return true;
     }
 
-    if (data.rhiDoomed) [[unlikely]] 
-        return false;
-
-    auto *cd = QQuickWindowPrivate::get(window);
-    auto *rhiSupport = QSGRhiSupport::instance();
-    
-    if (!offscreenSurface) [[unlikely]]
-        offscreenSurface = rhiSupport->maybeCreateOffscreenSurface(window);
-
-    auto [rhi, own] = rhiSupport->createRhi(window, offscreenSurface, swRastFallbackDueToSwapchainFailure);
-    data.rhi = rhi;
-    data.ownRhi = own;
-
-    if (!data.rhi) [[unlikely]] {
-        if (!data.rhiDeviceLost) [[likely]] {
-            data.rhiDoomed = true;
-            handleContextCreationFailure(window);
-        }
-        return false;
+    if (!data.rc) [[unlikely]] {
+        data.rc = cd->context;
+        pendingRenderContexts.remove(data.rc);
     }
 
-    data.rhiDeviceLost = false;
-    data.rhi->makeThreadLocalNativeContextCurrent();
-    data.sampleCount = rhiSupport->chooseSampleCountForWindowWithRhi(window, data.rhi);
-    cd->rhi = data.rhi;
-
-    cd->context->initialize(&QSGDefaultRenderContext::InitParams{
-        .rhi = data.rhi,
-        .sampleCount = data.sampleCount,
-        .initialSurfacePixelSize = window->size() * window->effectiveDevicePixelRatio(),
-        .maybeSurface = window
-    });
-
-    return true;
+    return data.rhi != nullptr;
 }
 
 void QSGGuiThreadRenderLoop::renderWindow(QQuickWindow *window)
