@@ -641,3 +641,6 @@ void QSGRenderThread::run() {
 }
 
 QT_END_NAMESPACE
+
+#include "qsgrenderloop.moc"
+#include "moc_qsgrenderloop_p.cpp"
