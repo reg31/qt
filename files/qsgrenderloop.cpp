@@ -477,12 +477,13 @@ bool QSGGuiThreadRenderLoop::ensureRhi(QQuickWindow *window, WindowData &data)
         data.sampleCount = rhiSupport->chooseSampleCountForWindowWithRhi(window, data.rhi);
         cd->rhi = data.rhi;
 
-        cd->context->initialize(&QSGDefaultRenderContext::InitParams{
+        QSGDefaultRenderContext::InitParams rcParams{
             .rhi = data.rhi,
             .sampleCount = data.sampleCount,
             .initialSurfacePixelSize = window->size() * window->effectiveDevicePixelRatio(),
             .maybeSurface = window
-        });
+        };
+        cd->context->initialize(&rcParams);
     }
 
     if (data.rhi && !cd->swapchain) [[unlikely]] {
@@ -493,7 +494,7 @@ bool QSGGuiThreadRenderLoop::ensureRhi(QQuickWindow *window, WindowData &data)
         const auto alphaSize = requestedFormat.alphaBufferSize();
         const auto swapInterval = requestedFormat.swapInterval();
         
-        auto flags = QRhiSwapChain::UsedAsTransferSource;
+        QRhiSwapChain::Flags flags = QRhiSwapChain::UsedAsTransferSource;
         if (alphaSize > 0) flags |= QRhiSwapChain::SurfaceHasPreMulAlpha;
         if (swapInterval == 0) flags |= QRhiSwapChain::NoVSync;
 
