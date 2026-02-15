@@ -313,10 +313,9 @@ QSGGuiThreadRenderLoop::~QSGGuiThreadRenderLoop()
 
 void QSGGuiThreadRenderLoop::show(QQuickWindow *window)
 {
-    if (!m_windows.contains(window))
-        m_windows.insert(window, {});
-
-    m_windows[window].timeBetweenRenders.start();
+    auto [it, inserted] = m_windows.try_emplace(window, WindowData{});
+    if (inserted) [[likely]]
+        it->timeBetweenRenders.start();
     maybeUpdate(window);
 }
 
@@ -543,44 +542,38 @@ bool QSGGuiThreadRenderLoop::ensureRhi(QQuickWindow *window, WindowData &data)
 void QSGGuiThreadRenderLoop::renderWindow(QQuickWindow *window)
 {
     auto winDataIt = m_windows.find(window);
-    if (winDataIt == m_windows.end())
+    if (winDataIt == m_windows.end()) [[unlikely]]
         return;
 
-    WindowData &data(*winDataIt);
-    bool alsoSwap = data.updatePending;
-    data.updatePending = false;
+    WindowData &data = *winDataIt;
+    const bool alsoSwap = std::exchange(data.updatePending, false);
 
-    QQuickWindowPrivate *cd = QQuickWindowPrivate::get(window);
-    if (!cd->isRenderable())
+    auto *cd = QQuickWindowPrivate::get(window);
+    if (!cd->isRenderable() || !cd->updatesEnabled) [[unlikely]]
         return;
 
-    if (!cd->updatesEnabled)
-        return;
-
-    if (!ensureRhi(window, data))
+    if (!ensureRhi(window, data)) [[unlikely]]
         return;
 
     cd->deliveryAgentPrivate()->flushFrameSynchronousEvents(window);
-    // Event delivery/processing triggered the window to be deleted or stop rendering.
-    if (!m_windows.contains(window))
+    if (!m_windows.contains(window)) [[unlikely]]
         return;
 
-    QSize effectiveOutputSize; // always prefer what the surface tells us, not the QWindow
-    if (cd->swapchain) {
+    QSize effectiveOutputSize;
+    if (cd->swapchain) [[likely]] {
         effectiveOutputSize = cd->swapchain->surfacePixelSize();
-        // An update request could still be delivered right before we get an
-        // unexpose. With Vulkan on Windows for example attempting to render
-        // leads to failures at this stage since the surface size is already 0.
-        if (effectiveOutputSize.isEmpty())
+        if (effectiveOutputSize.isEmpty()) [[unlikely]]
             return;
     }
 
     Q_TRACE_SCOPE(QSG_renderWindow);
     QElapsedTimer renderTimer;
     qint64 renderTime = 0, syncTime = 0, polishTime = 0;
+    
     const bool profileFrames = QSG_LOG_TIME_RENDERLOOP().isDebugEnabled();
-    if (profileFrames)
+    if (profileFrames) [[unlikely]]
         renderTimer.start();
+    
     Q_TRACE(QSG_polishItems_entry);
     Q_QUICK_SG_PROFILE_START(QQuickProfiler::SceneGraphPolishFrame);
 
@@ -588,7 +581,7 @@ void QSGGuiThreadRenderLoop::renderWindow(QQuickWindow *window)
     cd->polishItems();
     m_inPolish = false;
 
-    if (profileFrames)
+    if (profileFrames) [[unlikely]]
         polishTime = renderTimer.nsecsElapsed();
 
     Q_TRACE(QSG_polishItems_exit);
@@ -599,24 +592,21 @@ void QSGGuiThreadRenderLoop::renderWindow(QQuickWindow *window)
 
     emit window->afterAnimating();
 
-    // Begin the frame before syncing -> sync is where we may invoke
-    // updatePaintNode() on the items and they may want to do resource updates.
-    // Also relevant for applications that connect to the before/afterSynchronizing
-    // signals and want to do graphics stuff already there.
-    if (cd->swapchain) {
+    if (cd->swapchain) [[likely]] {
         Q_ASSERT(!effectiveOutputSize.isEmpty());
-        QSGRhiSupport *rhiSupport = QSGRhiSupport::instance();
-        const QSize previousOutputSize = cd->swapchain->currentPixelSize();
-        if (previousOutputSize != effectiveOutputSize || cd->swapchainJustBecameRenderable) {
+        const auto previousOutputSize = cd->swapchain->currentPixelSize();
+        
+        if (previousOutputSize != effectiveOutputSize || cd->swapchainJustBecameRenderable) [[unlikely]] {
             if (cd->swapchainJustBecameRenderable)
                 qCDebug(QSG_LOG_RENDERLOOP, "just became exposed");
 
             cd->hasActiveSwapchain = cd->swapchain->createOrResize();
-            if (!cd->hasActiveSwapchain) {
-                if (data.rhi->isDeviceLost()) {
+            if (!cd->hasActiveSwapchain) [[unlikely]] {
+                if (data.rhi->isDeviceLost()) [[unlikely]] {
                     handleDeviceLoss();
                     return;
-                } else if (previousOutputSize.isEmpty() && !swRastFallbackDueToSwapchainFailure && rhiSupport->attemptReinitWithSwRastUponFail()) {
+                } else if (previousOutputSize.isEmpty() && !swRastFallbackDueToSwapchainFailure && 
+                          QSGRhiSupport::instance()->attemptReinitWithSwRastUponFail()) {
                     qWarning("Failed to create swapchain."
                              " Retrying by requesting a software rasterizer, if applicable for the 3D API implementation.");
                     swRastFallbackDueToSwapchainFailure = true;
@@ -628,42 +618,32 @@ void QSGGuiThreadRenderLoop::renderWindow(QQuickWindow *window)
             cd->swapchainJustBecameRenderable = false;
             cd->hasRenderableSwapchain = cd->hasActiveSwapchain;
 
-            if (cd->hasActiveSwapchain) {
-                // surface size atomicity: now that buildOrResize() succeeded,
-                // query the size that was used in there by the swapchain, and
-                // that is the size we will use while preparing the next frame.
-                effectiveOutputSize = cd->swapchain->currentPixelSize();
-                qCDebug(QSG_LOG_RENDERLOOP) << "rhi swapchain size" << effectiveOutputSize;
-            } else {
+            if (cd->hasActiveSwapchain) [[likely]]
+                qCDebug(QSG_LOG_RENDERLOOP) << "rhi swapchain size" << cd->swapchain->currentPixelSize();
+            else
                 qWarning("Failed to build or resize swapchain");
-            }
         }
 
         emit window->beforeFrameBegin();
 
         Q_ASSERT(data.rhi == cd->rhi);
-        QRhi::FrameOpResult frameResult = data.rhi->beginFrame(cd->swapchain);
-        if (frameResult != QRhi::FrameOpSuccess) {
-            if (frameResult == QRhi::FrameOpDeviceLost)
+        const auto frameResult = data.rhi->beginFrame(cd->swapchain);
+        if (frameResult != QRhi::FrameOpSuccess) [[unlikely]] {
+            if (frameResult == QRhi::FrameOpDeviceLost) [[unlikely]]
                 handleDeviceLoss();
-            else if (frameResult == QRhi::FrameOpError)
+            else if (frameResult == QRhi::FrameOpError) [[unlikely]]
                 qWarning("Failed to start frame");
-            // out of date is not worth warning about - it may happen even during resizing on some platforms
             emit window->afterFrameEnd();
             return;
         }
     }
 
-    // Enable external OpenGL rendering connected to one of the
-    // QQuickWindow signals (beforeSynchronizing, beforeRendering,
-    // etc.) to function like it did on the direct OpenGL path,
-    // i.e. ensure there is a context current, just in case.
     data.rhi->makeThreadLocalNativeContextCurrent();
 
     cd->syncSceneGraph();
     data.rc->endSync();
 
-    if (profileFrames)
+    if (profileFrames) [[unlikely]]
         syncTime = renderTimer.nsecsElapsed();
 
     Q_TRACE(QSG_sync_exit);
@@ -673,8 +653,9 @@ void QSGGuiThreadRenderLoop::renderWindow(QQuickWindow *window)
 
     cd->renderSceneGraph();
 
-    if (profileFrames)
+    if (profileFrames) [[unlikely]]
         renderTime = renderTimer.nsecsElapsed();
+    
     Q_TRACE(QSG_render_exit);
     Q_QUICK_SG_PROFILE_RECORD(QQuickProfiler::SceneGraphRenderLoopFrame,
                               QQuickProfiler::SceneGraphRenderLoopRender);
@@ -682,38 +663,33 @@ void QSGGuiThreadRenderLoop::renderWindow(QQuickWindow *window)
 
     const bool needsPresent = alsoSwap && window->isVisible();
     double lastCompletedGpuTime = 0;
-    if (cd->swapchain) {
+    
+    if (cd->swapchain) [[likely]] {
         QRhi::EndFrameFlags flags;
         if (!needsPresent)
             flags |= QRhi::SkipPresent;
-        QRhi::FrameOpResult frameResult = data.rhi->endFrame(cd->swapchain, flags);
-        if (frameResult != QRhi::FrameOpSuccess) {
-            if (frameResult == QRhi::FrameOpDeviceLost)
+            
+        const auto endResult = data.rhi->endFrame(cd->swapchain, flags);
+        if (endResult != QRhi::FrameOpSuccess) [[unlikely]] {
+            if (endResult == QRhi::FrameOpDeviceLost) [[unlikely]]
                 handleDeviceLoss();
-            else if (frameResult == QRhi::FrameOpError)
+            else if (endResult == QRhi::FrameOpError) [[unlikely]]
                 qWarning("Failed to end frame");
-        } else {
+        } else [[likely]] {
             lastCompletedGpuTime = cd->swapchain->currentFrameCommandBuffer()->lastCompletedGpuTime();
         }
     }
-    if (needsPresent)
+    
+    if (needsPresent) [[likely]]
         cd->fireFrameSwapped();
 
     emit window->afterFrameEnd();
 
-    qint64 swapTime = 0;
-    if (profileFrames)
-        swapTime = renderTimer.nsecsElapsed();
-
-    Q_TRACE(QSG_swap_exit);
-    Q_QUICK_SG_PROFILE_END(QQuickProfiler::SceneGraphRenderLoopFrame,
-                           QQuickProfiler::SceneGraphRenderLoopSwap);
-
-    if (profileFrames) {
+    if (profileFrames) [[unlikely]] {
+        const qint64 swapTime = renderTimer.nsecsElapsed();
         qCDebug(QSG_LOG_TIME_RENDERLOOP,
                 "[window %p][gui thread] syncAndRender: frame rendered in %dms, polish=%d, sync=%d, render=%d, swap=%d, perWindowFrameDelta=%d",
-                window,
-                int(swapTime / 1000000),
+                window, int(swapTime / 1000000),
                 int(polishTime / 1000000),
                 int((syncTime - polishTime) / 1000000),
                 int((renderTime - syncTime) / 1000000),
@@ -721,39 +697,30 @@ void QSGGuiThreadRenderLoop::renderWindow(QQuickWindow *window)
                 int(data.timeBetweenRenders.restart()));
         if (!qFuzzyIsNull(lastCompletedGpuTime) && cd->graphicsConfig.timestampsEnabled()) {
             qCDebug(QSG_LOG_TIME_RENDERLOOP, "[window %p][gui thread] syncAndRender: last retrieved GPU frame time was %.4f ms",
-                    window,
-                    lastCompletedGpuTime * 1000.0);
+                    window, lastCompletedGpuTime * 1000.0);
         }
     }
 
-    // Might have been set during syncSceneGraph()
-    if (data.updatePending)
+    if (data.updatePending) [[unlikely]]
         maybeUpdate(window);
 }
 
 void QSGGuiThreadRenderLoop::exposureChanged(QQuickWindow *window)
 {
-    QQuickWindowPrivate *wd = QQuickWindowPrivate::get(window);
+    auto *wd = QQuickWindowPrivate::get(window);
 
-    // This is tricker than used to be. We want to detect having an empty
-    // surface size (which may be the case even when window->size() is
-    // non-empty, on some platforms with some graphics APIs!) as well as the
-    // case when the window just became "newly exposed" (e.g. after a
-    // minimize-restore on Windows, or when switching between fully obscured -
-    // not fully obscured on macOS)
-
-    if (!window->isExposed() || (wd->hasActiveSwapchain && wd->swapchain->surfacePixelSize().isEmpty()))
+    if (!window->isExposed() || (wd->hasActiveSwapchain && wd->swapchain->surfacePixelSize().isEmpty())) [[unlikely]]
         wd->hasRenderableSwapchain = false;
 
     if (window->isExposed() && !wd->hasRenderableSwapchain && wd->hasActiveSwapchain
-            && !wd->swapchain->surfacePixelSize().isEmpty())
+            && !wd->swapchain->surfacePixelSize().isEmpty()) [[likely]]
     {
         wd->hasRenderableSwapchain = true;
         wd->swapchainJustBecameRenderable = true;
     }
 
     auto winDataIt = m_windows.find(window);
-    if (winDataIt != m_windows.end()) {
+    if (winDataIt != m_windows.end()) [[likely]] {
         if (window->isExposed() && (!winDataIt->rhi || !wd->hasActiveSwapchain || wd->hasRenderableSwapchain)) {
             winDataIt->updatePending = true;
             renderWindow(window);
@@ -792,20 +759,16 @@ QImage QSGGuiThreadRenderLoop::grab(QQuickWindow *window)
 void QSGGuiThreadRenderLoop::maybeUpdate(QQuickWindow *window)
 {
     auto winDataIt = m_windows.find(window);
-    if (winDataIt == m_windows.end())
+    if (winDataIt == m_windows.end()) [[unlikely]]
         return;
 
-    QQuickWindowPrivate *cd = QQuickWindowPrivate::get(window);
-    if (!cd->isRenderable())
+    auto *cd = QQuickWindowPrivate::get(window);
+    if (!cd->isRenderable()) [[unlikely]]
         return;
 
     winDataIt->updatePending = true;
 
-    // An updatePolish() implementation may call update() to get the QQuickItem
-    // dirtied. That's fine but it also leads to calling this function.
-    // Requesting another update is a waste then since the updatePolish() call
-    // will be followed up with a round of sync and render.
-    if (m_inPolish)
+    if (m_inPolish) [[unlikely]]
         return;
 
     window->requestUpdate();
