@@ -3871,12 +3871,19 @@ void Renderer::prepareRenderPass(RenderPassContext *ctx)
         if (Q_UNLIKELY(debug_upload())) qDebug("Uploading Opaque Batches:");
 
         for (auto *b : opaque) {
-            if (const Element *e = b->first) [[likely]] {
+            bool batchVisible = false;
+            
+            for (Element *e = b->first; e; e = e->nextInBatch) {
                 const Rect &bounds = e->bounds;
-                if (bounds.br.x < vLeft || bounds.tl.x > vRight ||
-                    bounds.br.y < vTop || bounds.tl.y > vBottom) [[unlikely]]
-                    continue;
+                if (!(bounds.br.x < vLeft || bounds.tl.x > vRight ||
+                      bounds.br.y < vTop || bounds.tl.y > vBottom)) {
+                    batchVisible = true;
+                    break;
+                }
             }
+            
+            if (!batchVisible) [[unlikely]]
+                continue;
 
             visibleOpaqueBatches.append(b);
 
@@ -3894,14 +3901,25 @@ void Renderer::prepareRenderPass(RenderPassContext *ctx)
         if (Q_UNLIKELY(debug_upload())) qDebug("Uploading Alpha Batches:");
 
         for (auto *b : alpha) {
-            if (!b->isRenderNode) [[likely]] {
-                if (const Element *e = b->first) [[likely]] {
-                    const Rect &bounds = e->bounds;
-                    if (bounds.br.x < vLeft || bounds.tl.x > vRight ||
-                        bounds.br.y < vTop || bounds.tl.y > vBottom) [[unlikely]]
-                        continue;
+            if (b->isRenderNode) [[unlikely]] {
+                visibleAlphaBatches.append(b);
+                if (b->needsUpload) uploadBatch(b);
+                continue;
+            }
+            
+            bool batchVisible = false;
+            
+            for (Element *e = b->first; e; e = e->nextInBatch) {
+                const Rect &bounds = e->bounds;
+                if (!(bounds.br.x < vLeft || bounds.tl.x > vRight ||
+                      bounds.br.y < vTop || bounds.tl.y > vBottom)) {
+                    batchVisible = true;
+                    break;
                 }
             }
+            
+            if (!batchVisible) [[unlikely]]
+                continue;
 
             visibleAlphaBatches.append(b);
 
