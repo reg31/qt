@@ -3710,55 +3710,136 @@ void Renderer::renderInline()
 
 void Renderer::prepareRenderPass(RenderPassContext *ctx)
 {
+    if (ctx->valid) [[unlikely]]
+        qWarning("prepareRenderPass() called with an already prepared render pass context");
+
     ctx->valid = true;
+
+    if (Q_UNLIKELY(debug_dump())) {
+        qDebug("\n");
+        QSGNodeDumper::dump(rootNode());
+    }
+
+    ctx->timeRenderLists = 0;
+    ctx->timePrepareOpaque = 0;
+    ctx->timePrepareAlpha = 0;
+    ctx->timeSorting = 0;
+    ctx->timeUploadOpaque = 0;
+    ctx->timeUploadAlpha = 0;
+
+    if (Q_UNLIKELY(debug_render() || debug_build())) {
+        QByteArray type("rebuild:");
+        if (m_rebuild == 0)
+            type += " none";
+        if (m_rebuild == FullRebuild)
+            type += " full";
+        else {
+            if (m_rebuild & BuildRenderLists)
+                type += " renderlists";
+            else if (m_rebuild & BuildRenderListsForTaggedRoots)
+                type += " partial";
+            else if (m_rebuild & BuildBatches)
+                type += " batches";
+        }
+
+        qDebug() << "Renderer::render()" << this << type;
+        ctx->timer.start();
+    }
+
     m_resourceUpdates = m_rhi->nextResourceUpdateBatch();
 
     if (m_rebuild & (BuildRenderLists | BuildRenderListsForTaggedRoots)) {
-        if (m_rebuild & BuildRenderLists) buildRenderListsFromScratch();
-        else buildRenderListsForTaggedRoots();
+        bool complete = (m_rebuild & BuildRenderLists) != 0;
+        if (complete)
+            buildRenderListsFromScratch();
+        else
+            buildRenderListsForTaggedRoots();
         m_rebuild |= BuildBatches;
-    }
 
-    {
-        const auto opaque = std::span(m_opaqueBatches.data(), m_opaqueBatches.size());
-        for (auto *b : opaque) b->cleanupRemovedElements();
-        
-        const auto alpha = std::span(m_alphaBatches.data(), m_alphaBatches.size());
-        for (auto *b : alpha) b->cleanupRemovedElements();
+        if (Q_UNLIKELY(debug_build())) {
+            qDebug("Opaque render lists %s:", (complete ? "(complete)" : "(partial)"));
+            for (int i=0; i<m_opaqueRenderList.size(); ++i) {
+                Element *e = m_opaqueRenderList.at(i);
+                qDebug() << " - element:" << e << " batch:" << e->batch << " node:" << e->node << " order:" << e->order;
+            }
+            qDebug("Alpha render list %s:", complete ? "(complete)" : "(partial)");
+            for (int i=0; i<m_alphaRenderList.size(); ++i) {
+                Element *e = m_alphaRenderList.at(i);
+                qDebug() << " - element:" << e << " batch:" << e->batch << " node:" << e->node << " order:" << e->order;
+            }
+        }
     }
-    
+    if (Q_UNLIKELY(debug_render())) ctx->timeRenderLists = ctx->timer.restart();
+
+    const auto opaque = std::span(m_opaqueBatches.data(), m_opaqueBatches.size());
+    for (auto *b : opaque)
+        b->cleanupRemovedElements();
+    const auto alpha = std::span(m_alphaBatches.data(), m_alphaBatches.size());
+    for (auto *b : alpha)
+        b->cleanupRemovedElements();
     deleteRemovedElements();
+
     cleanupBatches(&m_opaqueBatches);
     cleanupBatches(&m_alphaBatches);
 
     if (m_rebuild & BuildBatches) {
         prepareOpaqueBatches();
+        if (Q_UNLIKELY(debug_render())) ctx->timePrepareOpaque = ctx->timer.restart();
         prepareAlphaBatches();
+        if (Q_UNLIKELY(debug_render())) ctx->timePrepareAlpha = ctx->timer.restart();
+
+        if (Q_UNLIKELY(debug_build())) {
+            qDebug("Opaque Batches:");
+            for (int i=0; i<m_opaqueBatches.size(); ++i) {
+                Batch *b = m_opaqueBatches.at(i);
+                qDebug() << " - Batch " << i << b << (b->needsUpload ? "upload" : "") << " root:" << b->root;
+                for (Element *e = b->first; e; e = e->nextInBatch) {
+                    qDebug() << "   - element:" << e << " node:" << e->node << e->order;
+                }
+            }
+            qDebug("Alpha Batches:");
+            for (int i=0; i<m_alphaBatches.size(); ++i) {
+                Batch *b = m_alphaBatches.at(i);
+                qDebug() << " - Batch " << i << b << (b->needsUpload ? "upload" : "") << " root:" << b->root;
+                for (Element *e = b->first; e; e = e->nextInBatch) {
+                    qDebug() << "   - element:" << e << e->bounds << " node:" << e->node << " order:" << e->order;
+                }
+            }
+        }
+    } else {
+        if (Q_UNLIKELY(debug_render())) ctx->timePrepareOpaque = ctx->timePrepareAlpha = ctx->timer.restart();
     }
-    
+
+
     deleteRemovedElements();
 
-    const auto opaque = std::span(m_opaqueBatches.data(), m_opaqueBatches.size());
-    const auto alpha = std::span(m_alphaBatches.data(), m_alphaBatches.size());
-
-    if (m_rebuild) {
+    if (m_rebuild != 0) {
         if (opaque.size() > 1)
             std::sort(opaque.begin(), opaque.end(), qsg_sort_batch_decreasing_order);
+
         if (alpha.size() > 1)
             std::sort(alpha.begin(), alpha.end(), qsg_sort_batch_increasing_order);
-        m_zRange = m_nextRenderOrder ? 1.0f / m_nextRenderOrder : 0.0f;
+
+        m_zRange = m_nextRenderOrder != 0
+                 ? 1.0 / (m_nextRenderOrder)
+                 : 0;
     }
+
+    if (Q_UNLIKELY(debug_render())) ctx->timeSorting = ctx->timer.restart();
 
     m_vertexUploadPool.reset();
     m_indexUploadPool.reset();
 
-    const QRect vRect = viewportRect();
-    const float vLeft = vRect.left();
-    const float vTop = vRect.top();
-    const float vRight = vRect.right();
-    const float vBottom = vRect.bottom();
+    const QRect viewport = viewportRect();
+    const float vLeft = viewport.left();
+    const float vTop = viewport.top();
+    const float vRight = viewport.right();
+    const float vBottom = viewport.bottom();
 
+    if (Q_UNLIKELY(debug_upload())) qDebug("Uploading Opaque Batches:");
     for (auto *b : opaque) {
+        if (!b->needsUpload) [[unlikely]]
+            continue;
         if (const Element *e = b->first) [[likely]] {
             const QRectF &bounds = e->bounds;
             if (bounds.right() < vLeft || bounds.left() > vRight ||
@@ -3767,8 +3848,12 @@ void Renderer::prepareRenderPass(RenderPassContext *ctx)
         }
         uploadBatch(b);
     }
+    if (Q_UNLIKELY(debug_render())) ctx->timeUploadOpaque = ctx->timer.restart();
 
+    if (Q_UNLIKELY(debug_upload())) qDebug("Uploading Alpha Batches:");
     for (auto *b : alpha) {
+        if (!b->needsUpload) [[unlikely]]
+            continue;
         if (const Element *e = b->first) [[likely]] {
             const QRectF &bounds = e->bounds;
             if (bounds.right() < vLeft || bounds.left() > vRight ||
@@ -3777,19 +3862,26 @@ void Renderer::prepareRenderPass(RenderPassContext *ctx)
         }
         uploadBatch(b);
     }
+    if (Q_UNLIKELY(debug_render())) ctx->timeUploadAlpha = ctx->timer.restart();
 
-    m_current_opacity = 1.0f;
+    if (Q_UNLIKELY(debug_render())) {
+        qDebug().nospace() << "Rendering:" << Qt::endl
+                           << " -> Opaque: " << qsg_countNodesInBatches(m_opaqueBatches) << " nodes in " << m_opaqueBatches.size() << " batches..." << Qt::endl
+                           << " -> Alpha: " << qsg_countNodesInBatches(m_alphaBatches) << " nodes in " << m_alphaBatches.size() << " batches...";
+    }
+
+    m_current_opacity = 1;
     m_currentMaterial = nullptr;
     m_currentShader = nullptr;
     m_currentProgram = nullptr;
     m_currentClipState.reset();
 
-    const QRect devRect = deviceRect();
-    m_pstate.viewport = QRhiViewport(
-        vRect.x(), devRect.bottom() - vRect.bottom(), 
-        vRect.width(), vRect.height(), 
-        VIEWPORT_MIN_DEPTH, VIEWPORT_MAX_DEPTH
-    );
+    bool renderOpaque = !debug_noopaque();
+    bool renderAlpha = !debug_noalpha();
+
+    m_pstate.viewport =
+            QRhiViewport(viewport.x(), deviceRect().bottom() - viewport.bottom(), viewport.width(),
+                         viewport.height(), VIEWPORT_MIN_DEPTH, VIEWPORT_MAX_DEPTH);
     m_pstate.clearColor = clearColor();
     m_pstate.dsClear = QRhiDepthStencilClearValue(1.0f, 0);
     m_pstate.viewportSet = false;
@@ -3800,16 +3892,21 @@ void Renderer::prepareRenderPass(RenderPassContext *ctx)
     m_gstate.depthWrite = depthBuf;
     m_gstate.depthFunc = QRhiGraphicsPipeline::Less;
     m_gstate.blending = false;
+
     m_gstate.cullMode = QRhiGraphicsPipeline::None;
     m_gstate.polygonMode = QRhiGraphicsPipeline::Fill;
-    m_gstate.colorWrite = QRhiGraphicsPipeline::RGBA;
+    m_gstate.colorWrite = QRhiGraphicsPipeline::R
+            | QRhiGraphicsPipeline::G
+            | QRhiGraphicsPipeline::B
+            | QRhiGraphicsPipeline::A;
     m_gstate.usesScissor = false;
     m_gstate.stencilTest = false;
+
     m_gstate.sampleCount = renderTarget().rt->sampleCount();
     m_gstate.multiViewCount = renderTarget().multiViewCount;
 
     ctx->opaqueRenderBatches.clear();
-    if (!debug_noopaque()) [[likely]] {
+    if (Q_LIKELY(renderOpaque)) {
         ctx->opaqueRenderBatches.reserve(opaque.size());
         for (auto *b : opaque) {
             if (const Element *e = b->first) [[likely]] {
@@ -3818,22 +3915,28 @@ void Renderer::prepareRenderPass(RenderPassContext *ctx)
                     bounds.bottom() < vTop || bounds.top() > vBottom) [[unlikely]]
                     continue;
             }
-            PreparedRenderBatch rb;
-            const bool ok = b->merged 
-                ? prepareRenderMergedBatch(b, &rb) 
-                : prepareRenderUnmergedBatch(b, &rb);
+            PreparedRenderBatch renderBatch;
+            bool ok;
+            if (b->merged) [[likely]]
+                ok = prepareRenderMergedBatch(b, &renderBatch);
+            else
+                ok = prepareRenderUnmergedBatch(b, &renderBatch);
             if (ok) [[likely]]
-                ctx->opaqueRenderBatches.append(rb);
+                ctx->opaqueRenderBatches.append(renderBatch);
         }
     }
 
     m_gstate.blending = true;
+
     m_gstate.depthWrite = false;
-    if (m_renderMode == QSGRendererInterface::RenderMode3D) [[unlikely]]
+
+    if (m_renderMode == QSGRendererInterface::RenderMode3D) [[unlikely]] {
+        Q_ASSERT(m_opaqueBatches.isEmpty());
         m_gstate.depthTest = true;
+    }
 
     ctx->alphaRenderBatches.clear();
-    if (!debug_noalpha()) [[likely]] {
+    if (Q_LIKELY(renderAlpha)) {
         ctx->alphaRenderBatches.reserve(alpha.size());
         for (auto *b : alpha) {
             if (!b->isRenderNode) [[likely]] {
@@ -3844,24 +3947,29 @@ void Renderer::prepareRenderPass(RenderPassContext *ctx)
                         continue;
                 }
             }
-            PreparedRenderBatch rb;
+            PreparedRenderBatch renderBatch;
             bool ok;
-            if (b->isRenderNode) [[unlikely]]
-                ok = prepareRhiRenderNode(b, &rb);
-            else if (b->merged) [[likely]]
-                ok = prepareRenderMergedBatch(b, &rb);
+            if (b->merged) [[likely]]
+                ok = prepareRenderMergedBatch(b, &renderBatch);
+            else if (b->isRenderNode) [[unlikely]]
+                ok = prepareRhiRenderNode(b, &renderBatch);
             else
-                ok = prepareRenderUnmergedBatch(b, &rb);
-            
+                ok = prepareRenderUnmergedBatch(b, &renderBatch);
             if (ok) [[likely]]
-                ctx->alphaRenderBatches.append(rb);
+                ctx->alphaRenderBatches.append(renderBatch);
         }
     }
 
     m_rebuild = 0;
+
+#if defined(QSGBATCHRENDERER_INVALIDATE_WEDGED_NODES)
+    m_renderOrderRebuildLower = -1;
+    m_renderOrderRebuildUpper = -1;
+#endif
+
     if (m_visualizer->mode() != Visualizer::VisualizeNothing) [[unlikely]]
         m_visualizer->prepareVisualize();
-    
+
     renderTarget().cb->resourceUpdate(m_resourceUpdates);
     m_resourceUpdates = nullptr;
 }
@@ -3887,52 +3995,67 @@ void Renderer::beginRenderPass(RenderPassContext *)
 
 void Renderer::recordRenderPass(RenderPassContext *ctx)
 {
+    if (!ctx->valid) [[unlikely]]
+        qWarning("recordRenderPass() called without a prepared render pass context");
+
     ctx->valid = false;
+
     QRhiCommandBuffer *cb = renderTarget().cb;
-    cb->debugMarkBegin("Qt Quick scene render");
+    cb->debugMarkBegin(QByteArrayLiteral("Qt Quick scene render"));
 
     const auto opaqueBatches = std::span(ctx->opaqueRenderBatches.data(), ctx->opaqueRenderBatches.size());
-    
     if (!opaqueBatches.empty()) [[likely]] {
-        cb->debugMarkMsg("Qt Quick opaque batches");
-        for (auto &rb : opaqueBatches) {
-            if (rb.batch->merged) [[likely]]
-                renderMergedBatch(&rb);
+        if (!opaqueBatches.empty())
+            cb->debugMarkMsg(QByteArrayLiteral("Qt Quick opaque batches"));
+        for (auto &renderBatch : opaqueBatches) {
+            if (renderBatch.batch->merged) [[likely]]
+                renderMergedBatch(&renderBatch);
             else
-                renderUnmergedBatch(&rb);
+                renderUnmergedBatch(&renderBatch);
         }
     }
 
     const auto alphaBatches = std::span(ctx->alphaRenderBatches.data(), ctx->alphaRenderBatches.size());
-
     if (!alphaBatches.empty()) [[likely]] {
         if (m_renderMode == QSGRendererInterface::RenderMode3D) [[unlikely]]
-            cb->debugMarkMsg("Qt Quick 2D-in-3D batches");
+            cb->debugMarkMsg(QByteArrayLiteral("Qt Quick 2D-in-3D batches"));
         else
-            cb->debugMarkMsg("Qt Quick alpha batches");
+            cb->debugMarkMsg(QByteArrayLiteral("Qt Quick alpha batches"));
         
-        for (auto &rb : alphaBatches) {
-            if (rb.batch->merged) [[likely]]
-                renderMergedBatch(&rb);
-            else if (rb.batch->isRenderNode) [[unlikely]]
-                renderRhiRenderNode(rb.batch);
+        for (auto &renderBatch : alphaBatches) {
+            if (renderBatch.batch->merged) [[likely]]
+                renderMergedBatch(&renderBatch);
+            else if (renderBatch.batch->isRenderNode) [[unlikely]]
+                renderRhiRenderNode(renderBatch.batch);
             else
-                renderUnmergedBatch(&rb);
-        }
-
-        if (m_renderMode == QSGRendererInterface::RenderMode3D) [[unlikely]] {
-            cb->debugMarkMsg("Qt Quick 2D-in-3D depth post-pass");
-            for (auto &rb : alphaBatches) {
-                if (rb.batch->merged)
-                    renderMergedBatch(&rb, true);
-                else if (!rb.batch->isRenderNode)
-                    renderUnmergedBatch(&rb, true);
-            }
+                renderUnmergedBatch(&renderBatch);
         }
     }
 
-    if (m_currentShader) setActiveRhiShader(nullptr, nullptr);
+    if (m_renderMode == QSGRendererInterface::RenderMode3D) [[unlikely]] {
+        if (!alphaBatches.empty())
+            cb->debugMarkMsg(QByteArrayLiteral("Qt Quick 2D-in-3D depth post-pass"));
+        for (auto &renderBatch : alphaBatches) {
+            if (renderBatch.batch->merged)
+                renderMergedBatch(&renderBatch, true);
+            else if (!renderBatch.batch->isRenderNode)
+                renderUnmergedBatch(&renderBatch, true);
+        }
+    }
+
+    if (m_currentShader)
+        setActiveRhiShader(nullptr, nullptr);
+
     cb->debugMarkEnd();
+
+    if (Q_UNLIKELY(debug_render())) {
+        qDebug(" -> times: build: %d, prepare(opaque/alpha): %d/%d, sorting: %d, upload(opaque/alpha): %d/%d, record rendering: %d",
+               (int) ctx->timeRenderLists,
+               (int) ctx->timePrepareOpaque, (int) ctx->timePrepareAlpha,
+               (int) ctx->timeSorting,
+               (int) ctx->timeUploadOpaque, (int) ctx->timeUploadAlpha,
+               (int) ctx->timer.elapsed());
+    }
 }
 
 void Renderer::endRenderPass(RenderPassContext *)
