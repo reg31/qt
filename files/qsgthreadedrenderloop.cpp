@@ -580,6 +580,10 @@ void QSGRenderThread::syncAndRender()
         animatorDriver->advance();
         cd->animationController->unlock();
     }
+
+    if (syncRequested) [[likely]] {
+        sync(exposeRequested);
+    }
     
     bool gpuStarted = false;
     if (hasValidSwapChain) [[likely]] {
@@ -587,10 +591,6 @@ void QSGRenderThread::syncAndRender()
         const QSize effectiveOutputSize = cd->swapchain->surfacePixelSize();
         
         if (effectiveOutputSize.isEmpty()) [[unlikely]] {
-            if (syncRequested) {
-                QMutexLocker lock(&mutex);
-                waitCondition.wakeOne();
-            }
             return;
         }
 
@@ -608,10 +608,6 @@ void QSGRenderThread::syncAndRender()
                 }
                 
                 QCoreApplication::postEvent(window, new QEvent(QEvent::Type(QQuickWindowPrivate::FullUpdateRequest)));
-                if (syncRequested) {
-                    QMutexLocker lock(&mutex);
-                    waitCondition.wakeOne();
-                }
                 return;
             }
 
@@ -628,17 +624,9 @@ void QSGRenderThread::syncAndRender()
                 handleDeviceLoss();
             }
             QCoreApplication::postEvent(window, new QEvent(QEvent::Type(QQuickWindowPrivate::FullUpdateRequest)));
-            if (syncRequested) {
-                QMutexLocker lock(&mutex);
-                waitCondition.wakeOne();
-            }
             emit window->afterFrameEnd();
             return;
         }
-    }
-    
-    if (syncRequested) [[likely]] {
-        sync(exposeRequested);
     }
     
     if (gpuStarted && cd->renderer) [[likely]] {
