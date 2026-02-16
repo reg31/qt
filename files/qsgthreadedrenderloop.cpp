@@ -524,54 +524,25 @@ void QSGRenderThread::invalidateGraphics(QQuickWindow *window, bool inDestructor
  */
 void QSGRenderThread::sync(bool inExpose)
 {
-    qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "sync()");
-    mutex.lock();
+    QMutexLocker lock(&mutex);
 
-    Q_ASSERT_X(wm->m_lockedForSync, "QSGRenderThread::sync()", "sync triggered on bad terms as gui is not already locked...");
-
-    bool canSync = true;
-    if (rhi) {
-        if (windowSize.width() > 0 && windowSize.height() > 0) {
-            // With the rhi making the (OpenGL) context current serves only one
-            // purpose: to enable external OpenGL rendering connected to one of
-            // the QQuickWindow signals (beforeSynchronizing, beforeRendering,
-            // etc.) to function like it did on the direct OpenGL path. For our
-            // own rendering this call would not be necessary.
-            rhi->makeThreadLocalNativeContextCurrent();
-        } else {
-            // Zero size windows do not initialize a swapchain and
-            // rendercontext. So no sync or render can be done then.
-            canSync = false;
-        }
-    } else {
-        canSync = false;
-    }
-    if (canSync) {
-        QQuickWindowPrivate *d = QQuickWindowPrivate::get(window);
-        // If the scene graph was touched since the last sync() make sure it sends the
-        // changed signal.
-        if (d->renderer)
+    bool canSync = (rhi && windowSize.width() > 0 && windowSize.height() > 0);
+    
+    if (canSync) [[likely]] {
+        rhi->makeThreadLocalNativeContextCurrent();
+        
+        auto *d = QQuickWindowPrivate::get(window);
+        if (d->renderer) [[likely]]
             d->renderer->clearChangedFlag();
+        
         d->syncSceneGraph();
         sgrc->endSync();
 
-        // Process deferred deletes now, directly after the sync as
-        // deleteLater on the GUI must now also have resulted in SG changes
-        // and the delete is a safe operation.
         QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
-    } else {
-        qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- window has bad size, sync aborted");
     }
 
-    // Two special cases: For grabs we do not care about blocking the gui
-    // (main) thread. When this is from an expose, we will keep locked until
-    // the frame is rendered (submitted), so in that case waking happens later
-    // in syncAndRender(). Otherwise, wake now and let the main thread go on
-    // while we render.
-    if (!inExpose) {
-        qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- sync complete, waking Gui");
+    if (!inExpose) [[likely]] {
         waitCondition.wakeOne();
-        mutex.unlock();
     }
 }
 
@@ -607,62 +578,51 @@ void QSGRenderThread::syncAndRender()
     Q_QUICK_SG_PROFILE_START(QQuickProfiler::SceneGraphRenderLoopFrame);
     Q_TRACE(QSG_sync_entry);
 
-    qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "syncAndRender()");
-
     if (profileFrames) [[unlikely]] {
         const qint64 elapsedSinceLastMs = m_threadTimeBetweenRenders.restart();
-        qCDebug(QSG_LOG_TIME_RENDERLOOP, "[window %p][render thread %p] syncAndRender: start, elapsed since last call: %d ms",
-                window,
-                QThread::currentThread(),
-                int(elapsedSinceLastMs));
     }
 
-    QQuickWindowPrivate *d = QQuickWindowPrivate::get(window);
-
+    auto *d = QQuickWindowPrivate::get(window);
     const bool syncRequested = (pendingUpdate & SyncRequest);
     const bool exposeRequested = (pendingUpdate & ExposeRequest) == ExposeRequest;
     pendingUpdate = 0;
 
-    QQuickWindowPrivate *cd = QQuickWindowPrivate::get(window);
-    QSGRhiSupport *rhiSupport = QSGRhiSupport::instance();
+    auto *cd = d;
     const bool hasValidSwapChain = (cd->swapchain && windowSize.width() > 0 && windowSize.height() > 0);
+    
     if (hasValidSwapChain) [[likely]] {
         cd->swapchain->setProxyData(scProxyData);
         const QSize effectiveOutputSize = cd->swapchain->surfacePixelSize();
+        
         if (effectiveOutputSize.isEmpty()) [[unlikely]] {
             if (syncRequested) [[likely]] {
-                mutex.lock();
+                QMutexLocker lock(&mutex);
                 waitCondition.wakeOne();
-                mutex.unlock();
             }
             return;
         }
 
         const QSize previousOutputSize = cd->swapchain->currentPixelSize();
         if (previousOutputSize != effectiveOutputSize || cd->swapchainJustBecameRenderable) [[unlikely]] {
-            if (cd->swapchainJustBecameRenderable)
-                qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "just became exposed");
-
             cd->hasActiveSwapchain = cd->swapchain->createOrResize();
+            
             if (!cd->hasActiveSwapchain) [[unlikely]] {
-                bool bailOut = false;
                 if (rhi->isDeviceLost()) {
                     handleDeviceLoss();
-                    bailOut = true;
-                } else if (previousOutputSize.isEmpty() && !swRastFallbackDueToSwapchainFailure && rhiSupport->attemptReinitWithSwRastUponFail()) {
-                    qWarning("Failed to create swapchain."
-                             " Retrying by requesting a software rasterizer, if applicable for the 3D API implementation.");
-                    swRastFallbackDueToSwapchainFailure = true;
-                    teardownGraphics();
-                    bailOut = true;
-                }
-                if (bailOut) {
                     QCoreApplication::postEvent(window, new QEvent(QEvent::Type(QQuickWindowPrivate::FullUpdateRequest)));
                     if (syncRequested) {
-                        qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- bailing out due to failed swapchain init, wake Gui");
-                        mutex.lock();
+                        QMutexLocker lock(&mutex);
                         waitCondition.wakeOne();
-                        mutex.unlock();
+                    }
+                    return;
+                } else if (previousOutputSize.isEmpty() && !swRastFallbackDueToSwapchainFailure && 
+                          QSGRhiSupport::instance()->attemptReinitWithSwRastUponFail()) {
+                    swRastFallbackDueToSwapchainFailure = true;
+                    teardownGraphics();
+                    QCoreApplication::postEvent(window, new QEvent(QEvent::Type(QQuickWindowPrivate::FullUpdateRequest)));
+                    if (syncRequested) {
+                        QMutexLocker lock(&mutex);
+                        waitCondition.wakeOne();
                     }
                     return;
                 }
@@ -670,29 +630,19 @@ void QSGRenderThread::syncAndRender()
 
             cd->swapchainJustBecameRenderable = false;
             cd->hasRenderableSwapchain = cd->hasActiveSwapchain;
-
-            if (!cd->hasActiveSwapchain) [[unlikely]]
-                qWarning("Failed to build or resize swapchain");
-            else
-                qCDebug(QSG_LOG_RENDERLOOP) << "rhi swapchain size" << cd->swapchain->currentPixelSize();
         }
 
         emit window->beforeFrameBegin();
 
-        Q_ASSERT(rhi == cd->rhi);
         QRhi::FrameOpResult frameResult = rhi->beginFrame(cd->swapchain);
         if (frameResult != QRhi::FrameOpSuccess) [[unlikely]] {
             if (frameResult == QRhi::FrameOpDeviceLost)
                 handleDeviceLoss();
-            else if (frameResult == QRhi::FrameOpError)
-                qWarning("Failed to start frame");
             if (frameResult == QRhi::FrameOpDeviceLost || frameResult == QRhi::FrameOpSwapChainOutOfDate)
                 QCoreApplication::postEvent(window, new QEvent(QEvent::Type(QQuickWindowPrivate::FullUpdateRequest)));
             if (syncRequested) {
-                qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- bailing out due to failed beginFrame, wake Gui");
-                mutex.lock();
+                QMutexLocker lock(&mutex);
                 waitCondition.wakeOne();
-                mutex.unlock();
             }
             emit window->afterFrameEnd();
             return;
@@ -700,9 +650,9 @@ void QSGRenderThread::syncAndRender()
     }
 
     if (syncRequested) [[likely]] {
-        qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- updatePending, doing sync");
         sync(exposeRequested);
     }
+    
 #ifndef QSG_NO_RENDER_TIMING
     if (profileFrames) [[unlikely]]
         syncTime = threadTimer.nsecsElapsed();
@@ -711,11 +661,7 @@ void QSGRenderThread::syncAndRender()
     Q_QUICK_SG_PROFILE_RECORD(QQuickProfiler::SceneGraphRenderLoopFrame,
                               QQuickProfiler::SceneGraphRenderLoopSync);
 
-    qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- rendering started");
-
     Q_TRACE(QSG_render_entry);
-
-    pendingUpdate = 0;
 
     if (animatorDriver->isRunning()) [[unlikely]] {
         d->animationController->lock();
@@ -724,9 +670,8 @@ void QSGRenderThread::syncAndRender()
     }
 
     const bool canRender = d->renderer && hasValidSwapChain;
-    double lastCompletedGpuTime = 0;
     if (canRender) [[likely]] {
-        if (!syncRequested)
+        if (!syncRequested) [[unlikely]]
             rhi->makeThreadLocalNativeContextCurrent();
 
         d->renderSceneGraph();
@@ -742,12 +687,8 @@ void QSGRenderThread::syncAndRender()
         if (frameResult != QRhi::FrameOpSuccess) [[unlikely]] {
             if (frameResult == QRhi::FrameOpDeviceLost)
                 handleDeviceLoss();
-            else if (frameResult == QRhi::FrameOpError)
-                qWarning("Failed to end frame");
             if (frameResult == QRhi::FrameOpDeviceLost || frameResult == QRhi::FrameOpSwapChainOutOfDate)
                 QCoreApplication::postEvent(window, new QEvent(QEvent::Type(QQuickWindowPrivate::FullUpdateRequest)));
-        } else {
-            lastCompletedGpuTime = cd->swapchain->currentFrameCommandBuffer()->lastCompletedGpuTime();
         }
         d->fireFrameSwapped();
     } else {
@@ -755,44 +696,27 @@ void QSGRenderThread::syncAndRender()
         Q_QUICK_SG_PROFILE_SKIP(QQuickProfiler::SceneGraphRenderLoopFrame,
                                 QQuickProfiler::SceneGraphRenderLoopSync, 1);
         Q_TRACE(QSG_swap_entry);
-        qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- window not ready, skipping render");
-        if (cd->swapchain && rhi->isRecordingFrame())
+        if (cd->swapchain && rhi->isRecordingFrame()) [[unlikely]]
             rhi->endFrame(cd->swapchain, QRhi::SkipPresent);
     }
 
-    qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- rendering done");
-
-   if (hasValidSwapChain)
+   if (hasValidSwapChain) [[likely]]
         emit window->afterFrameEnd();
 
-    if (exposeRequested) {
-        qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- wake Gui after expose");
+    if (exposeRequested) [[unlikely]] {
         waitCondition.wakeOne();
         mutex.unlock();
     }
 
     if (profileFrames) [[unlikely]] {
-        qCDebug(QSG_LOG_TIME_RENDERLOOP,
-                "[window %p][render thread %p] syncAndRender: frame rendered in %dms, sync=%d, render=%d, swap=%d",
-                window,
-                QThread::currentThread(),
-                int(threadTimer.elapsed()),
-                int((syncTime/1000000)),
-                int((renderTime - syncTime) / 1000000),
-                int((threadTimer.nsecsElapsed() - renderTime) / 1000000));
-        if (!qFuzzyIsNull(lastCompletedGpuTime) && cd->graphicsConfig.timestampsEnabled()) {
-            qCDebug(QSG_LOG_TIME_RENDERLOOP, "[window %p][render thread %p] syncAndRender: last retrieved GPU frame time was %.4f ms",
-                    window,
-                    QThread::currentThread(),
-                    lastCompletedGpuTime * 1000.0);
-        }
+        const double lastGpuTime = (canRender && cd->swapchain) ? 
+            cd->swapchain->currentFrameCommandBuffer()->lastCompletedGpuTime() : 0.0;
     }
 
     Q_TRACE(QSG_swap_exit);
     Q_QUICK_SG_PROFILE_END(QQuickProfiler::SceneGraphRenderLoopFrame,
                            QQuickProfiler::SceneGraphRenderLoopSwap);
 }
-
 
 void QSGRenderThread::postEvent(QEvent *e)
 {
