@@ -3106,4 +3106,3 @@ QDebug operator<<(QDebug debug, const QQuickDeliveryAgent *da)
 QT_END_NAMESPACE
 
 #include "moc_qquickdeliveryagent_p.cpp"
-#include "qquickdeliveryagent.moc"
