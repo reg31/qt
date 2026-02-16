@@ -821,64 +821,6 @@ void QSGRenderThread::processEventsAndWaitForMore()
     }
     qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "--- done processEventsAndWaitForMore()");
 }
-void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
-{
-    auto it = std::ranges::find_if(m_windows, [window](const Window &w) { return w.window == window; });
-    Window *w = nullptr;
-
-    if (it != m_windows.end()) [[likely]] {
-        w = &(*it);
-        if (!QQuickWindowPrivate::get(window)->updatesEnabled) [[unlikely]] return;
-    } else {
-        auto *wd = QQuickWindowPrivate::get(window);
-        auto *renderContext = wd->context;
-        pendingRenderContexts.remove(renderContext);
-        
-        m_windows.emplace_back();
-        w = &m_windows.back();
-        w->window = window;
-        w->actualWindowFormat = window->format();
-        w->thread = new QSGRenderThread(this, renderContext);
-        w->updateDuringSync = false;
-        w->forceRenderPass = true;
-        w->badVSync = false;
-        w->psTimeAccumulator = 0.0f;
-        w->psTimeSampleCount = 0;
-        w->timeBetweenPolishAndSyncs.start();
-    }
-
-    if (!w->window->handle()) [[unlikely]] window->create();
-
-    if (!w->thread->isRunning()) {
-        w->thread->window = window;
-        if (!w->thread->rhi) {
-            auto *rhiSupport = QSGRhiSupport::instance();
-            if (!w->thread->offscreenSurface) [[unlikely]]
-                w->thread->offscreenSurface = rhiSupport->maybeCreateOffscreenSurface(window);
-            w->thread->scProxyData = QRhi::updateSwapChainProxyData(rhiSupport->rhiBackend(), window);
-            window->installEventFilter(this);
-        }
-
-        if (auto *controller = QQuickWindowPrivate::get(w->window)->animationController.get(); 
-            controller->thread() != w->thread) [[unlikely]]
-            controller->moveToThread(w->thread);
-
-        w->thread->active = true;
-        if (w->thread->thread() == QThread::currentThread()) [[unlikely]] {
-            w->thread->sgrc->moveToThread(w->thread);
-            w->thread->moveToThread(w->thread);
-        }
-        w->thread->start();
-    } else {
-        QMutexLocker lock(&w->thread->mutex);
-        w->thread->postEvent(new WMWindowEvent(w->window, QEvent::Type(WM_Exposed)));
-        w->thread->waitCondition.wakeOne();
-    }
-
-    polishAndSync(w, true);
-    startOrStopAnimationTimer();
-}
-
 void QSGRenderThread::ensureRhi()
 {
     if (!rhi) [[unlikely]] {
@@ -1285,7 +1227,7 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
         }
         w->thread->start();
     } else {
-        std::scoped_lock lock(w->thread->mutex);
+        QMutexLocker lock(&w->thread->mutex);
         w->thread->postEvent(new WMWindowEvent(w->window, QEvent::Type(WM_Exposed)));
         w->thread->waitCondition.wakeOne();
     }
