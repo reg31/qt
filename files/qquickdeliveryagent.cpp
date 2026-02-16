@@ -2172,7 +2172,7 @@ QList<QQuickItem *> QQuickDeliveryAgentPrivate::eventTargets(QQuickItem *item, c
     QList<QQuickItem *> result;
     result.reserve(64);
 
-    auto walker = [&](auto self, QQuickItem *curr, QPointF lp) -> void {
+    auto walker = [&](auto self, QQuickItem *curr, QPointF lp, QPointF sp) -> void {
         auto *priv = QQuickItemPrivate::get(curr);
         
         const bool isRoot = (curr == rootItem);
@@ -2204,7 +2204,7 @@ QList<QQuickItem *> QQuickDeliveryAgentPrivate::eventTargets(QQuickItem *item, c
             if (child->isVisible() && !cp->culled && child->isEnabled() && !(cp->extra.isAllocated() && cp->extra->subsceneDeliveryAgent)) [[likely]] {
                 QTransform c2p;
                 cp->itemToParentTransform(&c2p);
-                self(self, child, c2p.inverted().map(lp));
+                self(self, child, c2p.inverted().map(lp), sp);
             }
         };
 
@@ -2213,7 +2213,7 @@ QList<QQuickItem *> QQuickDeliveryAgentPrivate::eventTargets(QQuickItem *item, c
         for (auto *child : std::ranges::subrange(children.begin(), itSplit) | std::views::reverse) processChild(child);
     };
 
-    walker(walker, item, localPos);
+    walker(walker, item, localPos, scenePos);
     return result;
 }
 
