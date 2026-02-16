@@ -535,9 +535,8 @@ void QSGRenderThread::sync(bool inExpose)
         sgrc->endSync();
     }
 
-    if (!inExpose) [[likely]] {
-        waitCondition.wakeOne();
-    }
+    Q_UNUSED(inExpose);
+    waitCondition.wakeOne();
 
     QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
 }
@@ -659,11 +658,6 @@ void QSGRenderThread::syncAndRender()
     
     if (hasValidSwapChain) [[likely]]
         emit window->afterFrameEnd();
-        
-    if (exposeRequested) [[unlikely]] {
-        waitCondition.wakeOne();
-        mutex.unlock();
-    }
 }
 
 
@@ -776,6 +770,7 @@ void QSGRenderThread::run()
 #ifdef Q_OS_DARWIN
         QMacAutoReleasePool frameReleasePool;
 #endif
+        bool rhiWasNull = !rhi;
         if (window) [[likely]] {
             ensureRhi();
             syncAndRender();
@@ -784,6 +779,9 @@ void QSGRenderThread::run()
                 QCoreApplication::postEvent(window, new QEvent(QEvent::Type(QQuickWindowPrivate::TriggerContextCreationFailure)));
             }
         }
+
+        if (rhiWasNull && rhi)
+            continue;
 
         processEvents();
         QCoreApplication::processEvents();
