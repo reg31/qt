@@ -2,12 +2,12 @@
 // Copyright (C) 2016 Jolla Ltd, author: <gunnar.sletta@jollamobile.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-
 #include <QtCore/QMutex>
 #include <QtCore/QWaitCondition>
 #include <QtCore/QAnimationDriver>
 #include <QtCore/QQueue>
 #include <QtCore/QTimer>
+#include <QtCore/QElapsedTimer>
 
 #include <QtGui/QGuiApplication>
 #include <QtGui/QScreen>
@@ -34,6 +34,9 @@
 #include <private/qsgdefaultrendercontext_p.h>
 
 #include <qtquick_tracepoints_p.h>
+
+#include <ranges>
+#include <algorithm>
 
 #ifdef Q_OS_DARWIN
 #include <QtCore/private/qcore_mac_p.h>
@@ -98,10 +101,6 @@ Q_TRACE_POINT(qtquick, QSG_animations_exit)
 #define QSG_RT_PAD "                    (RT) %s"
 
 extern Q_GUI_EXPORT QImage qt_gl_read_framebuffer(const QSize &size, bool alpha_format, bool include_alpha);
-
-// RL: Render Loop
-// RT: Render Thread
-
 
 QSGThreadedRenderLoop::Window *QSGThreadedRenderLoop::windowFor(QQuickWindow *window)
 {
@@ -518,10 +517,7 @@ void QSGRenderThread::invalidateGraphics(QQuickWindow *window, bool inDestructor
     }
 }
 
-/*
-    Enters the mutex lock to make sure GUI is blocking and performs
-    sync, then wakes GUI.
- */
+// OPTIMIZED: sync(bool inExpose) from optimized_syncAndRender.cpp
 void QSGRenderThread::sync(bool inExpose)
 {
     QMutexLocker lock(&mutex);
@@ -567,6 +563,7 @@ void QSGRenderThread::handleDeviceLoss()
     rhiDeviceLost = true;
 }
 
+// OPTIMIZED: syncAndRender() from optimized_syncAndRender.cpp
 void QSGRenderThread::syncAndRender()
 {
     const bool profileFrames = QSG_LOG_TIME_RENDERLOOP().isDebugEnabled();
@@ -733,6 +730,7 @@ void QSGRenderThread::syncAndRender()
                            QQuickProfiler::SceneGraphRenderLoopSwap);
 }
 
+
 void QSGRenderThread::postEvent(QEvent *e)
 {
     eventQueue.addEvent(e);
@@ -760,6 +758,8 @@ void QSGRenderThread::processEventsAndWaitForMore()
     }
     qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "--- done processEventsAndWaitForMore()");
 }
+
+// OPTIMIZED: ensureRhi() from final_optimized_methods.cpp
 void QSGRenderThread::ensureRhi()
 {
     if (!rhi) [[unlikely]] {
@@ -823,6 +823,7 @@ void QSGRenderThread::ensureRhi()
     }
 }
 
+// OPTIMIZED: run() from final_optimized_methods.cpp
 void QSGRenderThread::run()
 {
     animatorDriver = sgrc->sceneGraphContext()->createAnimationDriver(nullptr);
@@ -874,6 +875,18 @@ void QSGRenderThread::run()
         sgrc->moveToThread(target);
         moveToThread(target);
     }
+}
+
+QSGThreadedRenderLoop::QSGThreadedRenderLoop()
+    : sg(QSGContext::createDefaultContext())
+    , m_animation_timer(0)
+{
+    m_animation_driver = sg->createAnimationDriver(this);
+
+    connect(m_animation_driver, SIGNAL(started()), this, SLOT(animationStarted()));
+    connect(m_animation_driver, SIGNAL(stopped()), this, SLOT(animationStopped()));
+
+    m_animation_driver->install();
 }
 
 QSGThreadedRenderLoop::~QSGThreadedRenderLoop()
@@ -956,26 +969,6 @@ void QSGThreadedRenderLoop::startOrStopAnimationTimer()
         }
     }
 
-    // Best case: with 1 exposed windows we can advance regular animations in
-    // polishAndSync() and rely on being throttled to vsync. (no normal system
-    // timer needed)
-    //
-    // Special case: with no windows exposed (e.g. on Windows: all of them are
-    // minimized) run a normal system timer to make non-visual animation
-    // functional still.
-    //
-    // Not so ideal case: with more than one window exposed we have to use the
-    // same path as the no-windows case since polishAndSync() is now called
-    // potentially for multiple windows over time so it cannot take care of
-    // advancing the animation driver anymore.
-    //
-    // On top, another case: a window with vsync disabled should disable all the
-    // good stuff and go with the system timer.
-    //
-    // Similarly, if there is at least one window where we determined that
-    // vsync based blocking is not working as expected, that should make us
-    // choose the timer based way.
-
     const bool canUseVSyncBasedAnimation = exposedWindows == 1 && unthrottledWindows == 0 && badVSync == 0;
 
     if (m_animation_timer != 0 && (canUseVSyncBasedAnimation || !m_animation_driver->isRunning())) {
@@ -992,17 +985,6 @@ void QSGThreadedRenderLoop::startOrStopAnimationTimer()
         m_animation_timer = startTimer(int(sg->vsyncIntervalForAnimationDriver(m_animation_driver)));
     }
 }
-
-/*
-    Removes this window from the list of tracked windowes in this
-    window manager. hide() will trigger obscure, which in turn will
-    stop rendering.
-
-    This function will be called during QWindow::close() which will
-    also destroy the QPlatformWindow so it is important that this
-    triggers handleObscurity() and that rendering for that window
-    is fully done and over with by the time this function exits.
- */
 
 void QSGThreadedRenderLoop::hide(QQuickWindow *window)
 {
@@ -1026,11 +1008,6 @@ void QSGThreadedRenderLoop::resize(QQuickWindow *window)
     w->psTimeSampleCount = 0;
 }
 
-/*
-    If the window is first hide it, then perform a complete cleanup
-    with releaseResources which will take down the GL context and
-    exit the rendering thread.
- */
 void QSGThreadedRenderLoop::windowDestroyed(QQuickWindow *window)
 {
     qCDebug(QSG_LOG_RENDERLOOP) << "begin windowDestroyed()" << window;
@@ -1055,9 +1032,6 @@ void QSGThreadedRenderLoop::windowDestroyed(QQuickWindow *window)
         }
     }
 
-    // Now that we altered the window list, we may need to stop the animation
-    // timer even if we didn't via handleObscurity. This covers the case where
-    // we destroy a visible & exposed QQuickWindow.
     startOrStopAnimationTimer();
 
     qCDebug(QSG_LOG_RENDERLOOP) << "done windowDestroyed()" << window;
@@ -1079,12 +1053,6 @@ void QSGThreadedRenderLoop::exposureChanged(QQuickWindow *window)
 {
     qCDebug(QSG_LOG_RENDERLOOP) << "exposureChanged()" << window;
 
-    // This is tricker than used to be. We want to detect having an empty
-    // surface size (which may be the case even when window->size() is
-    // non-empty, on some platforms with some graphics APIs!) as well as the
-    // case when the window just became "newly exposed" (e.g. after a
-    // minimize-restore on Windows, or when switching between fully obscured -
-    // not fully obscured on macOS)
     QQuickWindowPrivate *wd = QQuickWindowPrivate::get(window);
     if (!window->isExposed())
         wd->hasRenderableSwapchain = false;
@@ -1112,10 +1080,7 @@ void QSGThreadedRenderLoop::exposureChanged(QQuickWindow *window)
     }
 }
 
-/*
-    Will post an event to the render thread that this window should
-    start to render.
- */
+// OPTIMIZED: handleExposure(QQuickWindow *window) from final_optimized_methods.cpp
 void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
 {
     auto it = std::ranges::find_if(m_windows, [window](const Window &w) { return w.window == window; });
@@ -1174,13 +1139,6 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
     startOrStopAnimationTimer();
 }
 
-/*
-    This function posts an event to the render thread to remove the window
-    from the list of windowses to render.
-
-    It also starts up the non-vsync animation tick if no more windows
-    are showing.
- */
 void QSGThreadedRenderLoop::handleObscurity(Window *w)
 {
     if (!w)
@@ -1204,7 +1162,6 @@ bool QSGThreadedRenderLoop::eventFilter(QObject *watched, QEvent *event)
 {
     switch (event->type()) {
     case QEvent::PlatformSurface:
-        // this is the proper time to tear down the swapchain (while the native window and surface are still around)
         if (static_cast<QPlatformSurfaceEvent *>(event)->surfaceEventType() == QPlatformSurfaceEvent::SurfaceAboutToBeDestroyed) {
             QQuickWindow *window = qobject_cast<QQuickWindow *>(watched);
             if (window) {
@@ -1216,8 +1173,6 @@ bool QSGThreadedRenderLoop::eventFilter(QObject *watched, QEvent *event)
                     w->thread->mutex.unlock();
                 }
             }
-            // keep this filter on the window - needed for uncommon but valid
-            // sequences of calls like window->destroy(); window->show();
         }
         break;
     default:
@@ -1228,99 +1183,56 @@ bool QSGThreadedRenderLoop::eventFilter(QObject *watched, QEvent *event)
 
 void QSGThreadedRenderLoop::handleUpdateRequest(QQuickWindow *window)
 {
-    qCDebug(QSG_LOG_RENDERLOOP) <<  "- update request" << window;
-    if (!QQuickWindowPrivate::get(window)->updatesEnabled) {
-        qCDebug(QSG_LOG_RENDERLOOP, "- updatesEnabled is false, abort");
-        return;
-    }
+    if (!QQuickWindowPrivate::get(window)->updatesEnabled) return;
     Window *w = windowFor(window);
-    if (w)
-        polishAndSync(w);
+    if (w) polishAndSync(w);
 }
 
 void QSGThreadedRenderLoop::maybeUpdate(QQuickWindow *window)
 {
     Window *w = windowFor(window);
-    if (w)
-        maybeUpdate(w);
+    if (w) maybeUpdate(w);
 }
 
-/*
-    Called whenever the QML scene has changed. Will post an event to
-    ourselves that a sync is needed.
- */
 void QSGThreadedRenderLoop::maybeUpdate(Window *w)
 {
-    if (!QCoreApplication::instance())
-        return;
-
-    if (!w || !w->thread->isRunning())
-        return;
+    if (!QCoreApplication::instance()) return;
+    if (!w || !w->thread->isRunning()) return;
 
     QThread *current = QThread::currentThread();
-    if (current == w->thread && w->thread->rhi && w->thread->rhi->isDeviceLost())
-        return;
+    if (current == w->thread && w->thread->rhi && w->thread->rhi->isDeviceLost()) return;
     if (current != QCoreApplication::instance()->thread() && (current != w->thread || !m_lockedForSync)) {
         qWarning() << "Updates can only be scheduled from GUI thread or from QQuickItem::updatePaintNode()";
         return;
     }
 
-    qCDebug(QSG_LOG_RENDERLOOP) << "update from item" << w->window;
-
-    // Call this function from the Gui thread later as startTimer cannot be
-    // called from the render thread.
     if (current == w->thread) {
-        qCDebug(QSG_LOG_RENDERLOOP, "- on render thread");
         w->updateDuringSync = true;
         return;
     }
 
-    // An updatePolish() implementation may call update() to get the QQuickItem
-    // dirtied. That's fine but it also leads to calling this function.
-    // Requesting another update is a waste then since the updatePolish() call
-    // will be followed up with a round of sync and render.
-    if (m_inPolish)
-        return;
-
+    if (m_inPolish) return;
     postUpdateRequest(w);
 }
 
-/*
-    Called when the QQuickWindow should be explicitly repainted. This function
-    can also be called on the render thread when the GUI thread is blocked to
-    keep render thread animations alive.
- */
 void QSGThreadedRenderLoop::update(QQuickWindow *window)
 {
     Window *w = windowFor(window);
-    if (!w)
-        return;
+    if (!w) return;
 
     const bool isRenderThread = QThread::currentThread() == w->thread;
-
     if (QPlatformWindow *platformWindow = window->handle()) {
-        // If the window is being resized we don't want to schedule unthrottled
-        // updates on the render thread, as this will starve the main thread
-        // from getting drawables for displaying the updated window size.
         if (isRenderThread && !platformWindow->allowsIndependentThreadedRendering()) {
-            // In most cases the window will already have update requested
-            // due to the animator triggering a sync, but just in case we
-            // schedule an update request on the main thread explicitly.
-            qCDebug(QSG_LOG_RENDERLOOP) << "window is resizing. update on window" << w->window;
             QTimer::singleShot(0, window, [=]{ window->requestUpdate(); });
             return;
         }
     }
 
     if (isRenderThread) {
-       qCDebug(QSG_LOG_RENDERLOOP) << "update on window - on render thread" << w->window;
        w->thread->requestRepaint();
        return;
     }
 
-    qCDebug(QSG_LOG_RENDERLOOP) << "update on window" << w->window;
-    // We set forceRenderPass because we want to make sure the QQuickWindow
-    // actually does a full render pass after the next sync.
     w->forceRenderPass = true;
     maybeUpdate(w);
 }
@@ -1329,136 +1241,61 @@ void QSGThreadedRenderLoop::update(QQuickWindow *window)
 void QSGThreadedRenderLoop::releaseResources(QQuickWindow *window)
 {
     Window *w = windowFor(window);
-    if (w)
-        releaseResources(w, false);
+    if (w) releaseResources(w, false);
 }
 
-/*
- * Release resources will post an event to the render thread to
- * free up the SG and GL resources and exists the render thread.
- */
 void QSGThreadedRenderLoop::releaseResources(Window *w, bool inDestructor)
 {
-    qCDebug(QSG_LOG_RENDERLOOP) << "releaseResources()" << (inDestructor ? "in destructor" : "in api-call") << w->window;
-
     w->thread->mutex.lock();
     if (w->thread->isRunning() && w->thread->active) {
         QQuickWindow *window = w->window;
-
-        // The platform window might have been destroyed before
-        // hide/release/windowDestroyed is called, so we may need to have a
-        // fallback surface to perform the cleanup of the scene graph and the
-        // RHI resources.
-
-        qCDebug(QSG_LOG_RENDERLOOP, "- posting release request to render thread");
         w->thread->postEvent(new WMTryReleaseEvent(window, inDestructor, window->handle() == nullptr));
         w->thread->waitCondition.wait(&w->thread->mutex);
 
-        // Avoid a shutdown race condition.
-        // If SG is invalidated and 'active' becomes false, the thread's run()
-        // method will exit. handleExposure() relies on QThread::isRunning() (because it
-        // potentially needs to start the thread again) and our mutex cannot be used to
-        // track the thread stopping, so we wait a few nanoseconds extra so the thread
-        // can exit properly.
         if (!w->thread->active) {
-            qCDebug(QSG_LOG_RENDERLOOP) << " - waiting for render thread to exit" << w->window;
             w->thread->wait();
-            qCDebug(QSG_LOG_RENDERLOOP) << " - render thread finished" << w->window;
         }
     }
     w->thread->mutex.unlock();
 }
 
 
-/* Calls polish on all items, then requests synchronization with the render thread
- * and blocks until that is complete. Returns false if it aborted; otherwise true.
- */
 void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
 {
-    qCDebug(QSG_LOG_RENDERLOOP) << "polishAndSync" << (inExpose ? "(in expose)" : "(normal)") << w->window;
-
     QQuickWindow *window = w->window;
-    if (!w->thread || !w->thread->window) {
-        qCDebug(QSG_LOG_RENDERLOOP, "- not exposed, abort");
-        return;
-    }
+    if (!w->thread || !w->thread->window) return;
 
-    // Flush pending touch events.
     QQuickWindowPrivate::get(window)->deliveryAgentPrivate()->flushFrameSynchronousEvents(window);
-    // The delivery of the event might have caused the window to stop rendering
     w = windowFor(window);
-    if (!w || !w->thread || !w->thread->window) {
-        qCDebug(QSG_LOG_RENDERLOOP, "- removed after event flushing, abort");
-        return;
-    }
+    if (!w || !w->thread || !w->thread->window) return;
 
     Q_TRACE_SCOPE(QSG_polishAndSync);
     QElapsedTimer timer;
-    qint64 polishTime = 0;
-    qint64 waitTime = 0;
-    qint64 syncTime = 0;
+    qint64 polishTime = 0, waitTime = 0, syncTime = 0;
 
     const qint64 elapsedSinceLastMs = w->timeBetweenPolishAndSyncs.restart();
 
     if (w->actualWindowFormat.swapInterval() != 0 && sg->isVSyncDependent(m_animation_driver)) {
         w->psTimeAccumulator += elapsedSinceLastMs;
         w->psTimeSampleCount += 1;
-        // cannot be too high because we'd then delay recognition of broken vsync at start
         static const int PS_TIME_SAMPLE_LENGTH = 20;
         if (w->psTimeSampleCount > PS_TIME_SAMPLE_LENGTH) {
             const float t = w->psTimeAccumulator / w->psTimeSampleCount;
             const float vsyncRate = sg->vsyncIntervalForAnimationDriver(m_animation_driver);
-
-            // What this means is that the last PS_TIME_SAMPLE_LENGTH frames
-            // average to an elapsed time of t milliseconds, whereas the animation
-            // driver (assuming a single window, vsync-based advancing) assumes a
-            // vsyncRate milliseconds for a frame. If now we see that the elapsed
-            // time is way too low (less than half of the approx. expected value),
-            // then we assume that something is wrong with vsync.
-            //
-            // This will not capture everything. Consider a 144 Hz screen with 6.9
-            // ms vsync rate, the half of that is below the default 5 ms timer of
-            // QWindow::requestUpdate(), so this will not trigger even if the
-            // graphics stack does not throttle. But then the whole workaround is
-            // not that important because the animations advance anyway closer to
-            // what's expected (e.g. advancing as if 6-7 ms passed after ca. 5 ms),
-            // the gap is a lot smaller than with the 60 Hz case (animations
-            // advancing as if 16 ms passed after just ca. 5 ms) The workaround
-            // here is present mainly for virtual machines and other broken
-            // environments, most of which will persumably report a 60 Hz screen.
-
             const float threshold = vsyncRate * 0.5f;
             const bool badVSync = t < threshold;
             if (badVSync && !w->badVSync) {
-                // Once we determine something is wrong with the frame rate, set
-                // the flag for the rest of the lifetime of the window. This is
-                // saner and more deterministic than allowing it to be turned on
-                // and off. (a window resize can take up time, leading to higher
-                // elapsed times, thus unnecessarily starting to switch modes,
-                // while some platforms seem to have advanced logic (and adaptive
-                // refresh rates an whatnot) that can eventually start throttling
-                // an unthrottled window, potentially leading to a continuous
-                // switching of modes back and forth which is not desirable.
                 w->badVSync = true;
-                qCDebug(QSG_LOG_INFO, "Window %p is determined to have broken vsync throttling (%f < %f) "
-                                      "switching to system timer to drive gui thread animations to remedy this "
-                                      "(however, render thread animators will likely advance at an incorrect rate).",
-                        w->window, t, threshold);
                 startOrStopAnimationTimer();
             }
-
             w->psTimeAccumulator = 0.0f;
             w->psTimeSampleCount = 0;
         }
     }
 
     const bool profileFrames = QSG_LOG_TIME_RENDERLOOP().isDebugEnabled();
-    if (profileFrames) {
-        timer.start();
-        qCDebug(QSG_LOG_TIME_RENDERLOOP, "[window %p][gui thread] polishAndSync: start, elapsed since last call: %d ms",
-                window,
-                int(elapsedSinceLastMs));
-    }
+    if (profileFrames) timer.start();
+
     Q_QUICK_SG_PROFILE_START(QQuickProfiler::SceneGraphPolishAndSync);
     Q_TRACE(QSG_polishItems_entry);
 
@@ -1467,99 +1304,51 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
     d->polishItems();
     m_inPolish = false;
 
-    if (profileFrames)
-        polishTime = timer.nsecsElapsed();
+    if (profileFrames) polishTime = timer.nsecsElapsed();
     Q_TRACE(QSG_polishItems_exit);
-    Q_QUICK_SG_PROFILE_RECORD(QQuickProfiler::SceneGraphPolishAndSync,
-                              QQuickProfiler::SceneGraphPolishAndSyncPolish);
+    Q_QUICK_SG_PROFILE_RECORD(QQuickProfiler::SceneGraphPolishAndSync, QQuickProfiler::SceneGraphPolishAndSyncPolish);
 
     w = windowFor(window);
-    if (!w || !w->thread || !w->thread->window) {
-        qCDebug(QSG_LOG_RENDERLOOP, "- removed after polishing, abort");
-        return;
-    }
+    if (!w || !w->thread || !w->thread->window) return;
 
     Q_TRACE(QSG_wait_entry);
     w->updateDuringSync = false;
-
     emit window->afterAnimating();
 
-    const QRhiSwapChainProxyData scProxyData =
-            QRhi::updateSwapChainProxyData(QSGRhiSupport::instance()->rhiBackend(), window);
+    const QRhiSwapChainProxyData scProxyData = QRhi::updateSwapChainProxyData(QSGRhiSupport::instance()->rhiBackend(), window);
 
-    qCDebug(QSG_LOG_RENDERLOOP, "- lock for sync");
     w->thread->mutex.lock();
     m_lockedForSync = true;
     w->thread->postEvent(new WMSyncEvent(window, inExpose, w->forceRenderPass, scProxyData));
     w->forceRenderPass = false;
 
-    qCDebug(QSG_LOG_RENDERLOOP, "- wait for sync");
-    if (profileFrames)
-        waitTime = timer.nsecsElapsed();
+    if (profileFrames) waitTime = timer.nsecsElapsed();
     Q_TRACE(QSG_wait_exit);
-    Q_QUICK_SG_PROFILE_RECORD(QQuickProfiler::SceneGraphPolishAndSync,
-                              QQuickProfiler::SceneGraphPolishAndSyncWait);
+    Q_QUICK_SG_PROFILE_RECORD(QQuickProfiler::SceneGraphPolishAndSync, QQuickProfiler::SceneGraphPolishAndSyncWait);
     Q_TRACE(QSG_sync_entry);
 
     w->thread->waitCondition.wait(&w->thread->mutex);
     m_lockedForSync = false;
     w->thread->mutex.unlock();
-    qCDebug(QSG_LOG_RENDERLOOP, "- unlock after sync");
 
-    if (profileFrames)
-        syncTime = timer.nsecsElapsed();
+    if (profileFrames) syncTime = timer.nsecsElapsed();
     Q_TRACE(QSG_sync_exit);
-    Q_QUICK_SG_PROFILE_RECORD(QQuickProfiler::SceneGraphPolishAndSync,
-                              QQuickProfiler::SceneGraphPolishAndSyncSync);
+    Q_QUICK_SG_PROFILE_RECORD(QQuickProfiler::SceneGraphPolishAndSync, QQuickProfiler::SceneGraphPolishAndSyncSync);
     Q_TRACE(QSG_animations_entry);
 
-    // Now is the time to advance the regular animations (as we are throttled
-    // to vsync due to the wait above), but this is only relevant when there is
-    // one single window. With multiple windows m_animation_timer is active,
-    // and advance() happens instead in response to a good old timer event, not
-    // here. (the above applies only when the QSGAnimationDriver reports
-    // isVSyncDependent() == true, if not then we always use the driver and
-    // just advance here)
     if (m_animation_timer == 0 && m_animation_driver->isRunning()) {
         auto advanceAnimations = [this, window=QPointer(window)] {
-            qCDebug(QSG_LOG_RENDERLOOP, "- advancing animations");
             m_animation_driver->advance();
-            qCDebug(QSG_LOG_RENDERLOOP, "- animations done..");
-
-            // We need to trigger another update round to keep all animations
-            // running correctly. For animations that lead to a visual change (a
-            // property change in some item leading to dirtying the item and so
-            // ending up in maybeUpdate()) this would not be needed, but other
-            // animations would then stop functioning since there is nothing
-            // advancing the animation system if we do not call postUpdateRequest()
-            // here and nothing else leads to it either. This has an unfortunate
-            // side effect in multi window cases: one can end up in a situation
-            // where a non-animating window gets updates continuously because there
-            // is an animation running in some other window that is non-exposed or
-            // even closed already (if it was exposed we would not hit this branch,
-            // however). Sadly, there is nothing that can be done about it.
-            if (window)
-                window->requestUpdate();
-
+            if (window) window->requestUpdate();
             emit timeToIncubate();
         };
 
 #if defined(Q_OS_APPLE)
         if (inExpose) {
-            // If we are handling an expose event the system is expecting us to
-            // produce a frame that it can present on screen to the user. Advancing
-            // animations at this point might result in changing properties of the
-            // window in a way that invalidates the current frame, resulting in the
-            // discarding of the current frame before the user ever sees it. To give
-            // the system a chance to present the current frame we defer the advance
-            // of the animations until the start of the next event loop pass, which
-            // should still give plenty of time to compute the new render state before
-            // the next expose event or update request.
             QMetaObject::invokeMethod(this, advanceAnimations, Qt::QueuedConnection);
         } else
-#endif // Q_OS_APPLE
+#endif
         {
-            // For regular update requests we assume we can advance here synchronously
             advanceAnimations();
         }
     } else if (w->updateDuringSync) {
@@ -1567,68 +1356,35 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
     }
 
     if (profileFrames) {
-        qCDebug(QSG_LOG_TIME_RENDERLOOP, "[window %p][gui thread] Frame prepared, polish=%d ms, lock=%d ms, blockedForSync=%d ms, animations=%d ms",
-                window,
-                int(polishTime / 1000000),
-                int((waitTime - polishTime) / 1000000),
-                int((syncTime - waitTime) / 1000000),
-                int((timer.nsecsElapsed() - syncTime) / 1000000));
+        qCDebug(QSG_LOG_TIME_RENDERLOOP, "[window %p][gui thread] Frame prepared, polish=%d ms, lock=%d ms, sync=%d ms, anims=%d ms",
+                window, int(polishTime / 1000000), int((waitTime - polishTime) / 1000000),
+                int((syncTime - waitTime) / 1000000), int((timer.nsecsElapsed() - syncTime) / 1000000));
     }
 
     Q_TRACE(QSG_animations_exit);
-    Q_QUICK_SG_PROFILE_END(QQuickProfiler::SceneGraphPolishAndSync,
-                           QQuickProfiler::SceneGraphPolishAndSyncAnimations);
+    Q_QUICK_SG_PROFILE_END(QQuickProfiler::SceneGraphPolishAndSync, QQuickProfiler::SceneGraphPolishAndSyncAnimations);
 }
 
 bool QSGThreadedRenderLoop::event(QEvent *e)
 {
-    switch ((int) e->type()) {
-
-    case QEvent::Timer: {
-        Q_ASSERT(sg->isVSyncDependent(m_animation_driver));
+    if (e->type() == QEvent::Timer) {
         QTimerEvent *te = static_cast<QTimerEvent *>(e);
         if (te->timerId() == m_animation_timer) {
-            qCDebug(QSG_LOG_RENDERLOOP, "- ticking non-render thread timer");
             m_animation_driver->advance();
             emit timeToIncubate();
             return true;
         }
-        break;
     }
-
-    default:
-        break;
-    }
-
     return QObject::event(e);
 }
 
-
-
-/*
-    Locks down GUI and performs a grab the scene graph, then returns the result.
-
-    Since the QML scene could have changed since the last time it was rendered,
-    we need to polish and sync the scene graph. This might seem superfluous, but
-     - QML changes could have triggered deleteLater() which could have removed
-       textures or other objects from the scene graph, causing render to crash.
-     - Autotests rely on grab(), setProperty(), grab(), compare behavior.
- */
-
 QImage QSGThreadedRenderLoop::grab(QQuickWindow *window)
 {
-    qCDebug(QSG_LOG_RENDERLOOP) << "grab()" << window;
-
     Window *w = windowFor(window);
     Q_ASSERT(w);
+    if (!w->thread->isRunning()) return QImage();
+    if (!window->handle()) window->create();
 
-    if (!w->thread->isRunning())
-        return QImage();
-
-    if (!window->handle())
-        window->create();
-
-    qCDebug(QSG_LOG_RENDERLOOP, "- polishing items");
     QQuickWindowPrivate *d = QQuickWindowPrivate::get(window);
     m_inPolish = true;
     d->polishItems();
@@ -1637,21 +1393,14 @@ QImage QSGThreadedRenderLoop::grab(QQuickWindow *window)
     QImage result;
     w->thread->mutex.lock();
     m_lockedForSync = true;
-    qCDebug(QSG_LOG_RENDERLOOP, "- posting grab event");
     w->thread->postEvent(new WMGrabEvent(window, &result));
     w->thread->waitCondition.wait(&w->thread->mutex);
     m_lockedForSync = false;
     w->thread->mutex.unlock();
 
-    qCDebug(QSG_LOG_RENDERLOOP, "- grab complete");
-
     return result;
 }
 
-/*
- * Posts a new job event to the render thread.
- * Returns true if posting succeeded.
- */
 void QSGThreadedRenderLoop::postJob(QQuickWindow *window, QRunnable *job)
 {
     Window *w = windowFor(window);
