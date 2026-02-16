@@ -579,7 +579,7 @@ void QSGRenderThread::syncAndRender()
     Q_TRACE(QSG_sync_entry);
 
     if (profileFrames) [[unlikely]] {
-        const qint64 elapsedSinceLastMs = m_threadTimeBetweenRenders.restart();
+        m_threadTimeBetweenRenders.restart();
     }
 
     auto *d = QQuickWindowPrivate::get(window);
@@ -670,6 +670,7 @@ void QSGRenderThread::syncAndRender()
     }
 
     const bool canRender = d->renderer && hasValidSwapChain;
+    double lastCompletedGpuTime = 0;
     if (canRender) [[likely]] {
         if (!syncRequested) [[unlikely]]
             rhi->makeThreadLocalNativeContextCurrent();
@@ -689,6 +690,8 @@ void QSGRenderThread::syncAndRender()
                 handleDeviceLoss();
             if (frameResult == QRhi::FrameOpDeviceLost || frameResult == QRhi::FrameOpSwapChainOutOfDate)
                 QCoreApplication::postEvent(window, new QEvent(QEvent::Type(QQuickWindowPrivate::FullUpdateRequest)));
+        } else {
+            lastCompletedGpuTime = cd->swapchain->currentFrameCommandBuffer()->lastCompletedGpuTime();
         }
         d->fireFrameSwapped();
     } else {
@@ -709,8 +712,20 @@ void QSGRenderThread::syncAndRender()
     }
 
     if (profileFrames) [[unlikely]] {
-        const double lastGpuTime = (canRender && cd->swapchain) ? 
-            cd->swapchain->currentFrameCommandBuffer()->lastCompletedGpuTime() : 0.0;
+        qCDebug(QSG_LOG_TIME_RENDERLOOP,
+                "[window %p][render thread %p] syncAndRender: frame rendered in %dms, sync=%d, render=%d, swap=%d",
+                window,
+                QThread::currentThread(),
+                int(threadTimer.elapsed()),
+                int((syncTime/1000000)),
+                int((renderTime - syncTime) / 1000000),
+                int((threadTimer.nsecsElapsed() - renderTime) / 1000000));
+        if (!qFuzzyIsNull(lastCompletedGpuTime) && cd->graphicsConfig.timestampsEnabled()) {
+            qCDebug(QSG_LOG_TIME_RENDERLOOP, "[window %p][render thread %p] syncAndRender: last retrieved GPU frame time was %.4f ms",
+                    window,
+                    QThread::currentThread(),
+                    lastCompletedGpuTime * 1000.0);
+        }
     }
 
     Q_TRACE(QSG_swap_exit);
@@ -818,9 +833,8 @@ void QSGRenderThread::run()
     m_threadTimeBetweenRenders.start();
 
     for (int frames = 0; active; ) [[likely]] {
-        std::optional<QMacAutoReleasePool> pool;
 #ifdef Q_OS_DARWIN
-        pool.emplace();
+        QMacAutoReleasePool frameReleasePool;
 #endif
         if (window) [[likely]] {
             ensureRhi();
