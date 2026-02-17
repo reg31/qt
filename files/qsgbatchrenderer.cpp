@@ -3807,6 +3807,12 @@ void Renderer::prepareRenderPass(RenderPassContext *ctx)
         }
     } else {
         if (Q_UNLIKELY(debug_render())) ctx->timePrepareOpaque = ctx->timePrepareAlpha = ctx->timer.restart();
+
+        if (Q_UNLIKELY(debug_render())) {
+            qDebug().nospace() << "Rendering:" << Qt::endl
+                           << " -> Opaque: " << qsg_countNodesInBatches(m_opaqueBatches) << " nodes in " << m_opaqueBatches.size() << " batches..." << Qt::endl
+                           << " -> Alpha: " << qsg_countNodesInBatches(m_alphaBatches) << " nodes in " << m_alphaBatches.size() << " batches...";
+        }
     }
 
     const auto opaque = std::span(m_opaqueBatches.data(), m_opaqueBatches.size());
