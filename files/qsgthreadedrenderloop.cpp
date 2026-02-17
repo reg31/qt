@@ -1049,7 +1049,6 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
 {
     auto it = std::ranges::find_if(m_windows, [window](const Window &w) { return w.window == window; });
     Window *w = nullptr;
-
     if (it != m_windows.end()) [[likely]] {
         w = &(*it);
         if (!QQuickWindowPrivate::get(window)->updatesEnabled) [[unlikely]] return;
@@ -1057,7 +1056,6 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
         auto *wd = QQuickWindowPrivate::get(window);
         auto *renderContext = wd->context;
         pendingRenderContexts.remove(renderContext);
-
         m_windows.emplace_back();
         w = &m_windows.back();
         w->window = window;
@@ -1070,33 +1068,26 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
         w->psTimeSampleCount = 0;
         w->timeBetweenPolishAndSyncs.start();
     }
-
     if (!w->window->handle()) [[unlikely]] window->create();
-
     if (!w->thread->isRunning()) {
         w->thread->window = window;
         if (!w->thread->rhi) {
             auto *rhiSupport = QSGRhiSupport::instance();
             if (!w->thread->offscreenSurface) [[unlikely]]
                 w->thread->offscreenSurface = rhiSupport->maybeCreateOffscreenSurface(window);
-
             w->thread->windowSize = window->size();
             w->thread->dpr = float(window->effectiveDevicePixelRatio());
             w->thread->scProxyData = QRhi::updateSwapChainProxyData(rhiSupport->rhiBackend(), window);
-
             window->installEventFilter(this);
         }
-
         if (auto *controller = QQuickWindowPrivate::get(w->window)->animationController.get();
             controller->thread() != w->thread) [[unlikely]]
             controller->moveToThread(w->thread);
-
         w->thread->active = true;
         if (w->thread->thread() == QThread::currentThread()) [[unlikely]] {
             w->thread->sgrc->moveToThread(w->thread);
             w->thread->moveToThread(w->thread);
         }
-
         w->thread->start();
         return;
     } else {
@@ -1104,10 +1095,10 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
         w->thread->postEvent(new WMWindowEvent(w->window, QEvent::Type(WM_Exposed)));
         w->thread->mutex.unlock();
     }
-
     polishAndSync(w, true);
     startOrStopAnimationTimer();
-    window->requestUpdate();
+    if (!m_animation_driver->isRunning()) [[unlikely]]
+        window->requestUpdate();
 }
 /*
     This function posts an event to the render thread to remove the window
