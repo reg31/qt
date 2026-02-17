@@ -1448,6 +1448,28 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
                            QQuickProfiler::SceneGraphPolishAndSyncAnimations);
 }
 
+bool QSGThreadedRenderLoop::event(QEvent *e)
+{
+    switch ((int) e->type()) {
+
+    case QEvent::Timer: {
+        Q_ASSERT(sg->isVSyncDependent(m_animation_driver));
+        QTimerEvent *te = static_cast<QTimerEvent *>(e);
+        if (te->timerId() == m_animation_timer) {
+            qCDebug(QSG_LOG_RENDERLOOP, "- ticking non-render thread timer");
+            m_animation_driver->advance();
+            emit timeToIncubate();
+            return true;
+        }
+        break;
+    }
+
+    default:
+        break;
+    }
+
+    return QObject::event(e);
+}
 
 /*
     Locks down GUI and performs a grab the scene graph, then returns the result.
