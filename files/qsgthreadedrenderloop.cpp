@@ -1310,84 +1310,150 @@ void QSGThreadedRenderLoop::releaseResources(Window *w, bool inDestructor)
  */
 void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
 {
-    if (!w || !w->thread || !w->thread->window) [[unlikely]]
-        return;
-    
+    qCDebug(QSG_LOG_RENDERLOOP) << "polishAndSync" << (inExpose ? "(in expose)" : "(normal)") << w->window;
+
     QQuickWindow *window = w->window;
-    
-    m_inPolish = true;
-    QQuickWindowPrivate::get(window)->polishItems();
-    m_inPolish = false;
-    
-    auto it = std::ranges::find_if(m_windows, [window](const Window &entry) {
-        return entry.window == window;
-    });
-    if (it == m_windows.end()) [[unlikely]]
+    if (!w->thread || !w->thread->window) {
+        qCDebug(QSG_LOG_RENDERLOOP, "- not exposed, abort");
         return;
-    
-    w = &(*it);
-    
+    }
+
+    QQuickWindowPrivate::get(window)->deliveryAgentPrivate()->flushFrameSynchronousEvents(window);
+    w = windowFor(window);
+    if (!w || !w->thread || !w->thread->window) {
+        qCDebug(QSG_LOG_RENDERLOOP, "- removed after event flushing, abort");
+        return;
+    }
+
+    Q_TRACE_SCOPE(QSG_polishAndSync);
+    QElapsedTimer timer;
+    qint64 polishTime = 0;
+    qint64 waitTime = 0;
+    qint64 syncTime = 0;
+
+    const qint64 elapsedSinceLastMs = w->timeBetweenPolishAndSyncs.restart();
+
+    if (w->actualWindowFormat.swapInterval() != 0 && sg->isVSyncDependent(m_animation_driver)) {
+        w->psTimeAccumulator += elapsedSinceLastMs;
+        w->psTimeSampleCount += 1;
+        static const int PS_TIME_SAMPLE_LENGTH = 20;
+        if (w->psTimeSampleCount > PS_TIME_SAMPLE_LENGTH) {
+            const float t = w->psTimeAccumulator / w->psTimeSampleCount;
+            const float vsyncRate = sg->vsyncIntervalForAnimationDriver(m_animation_driver);
+            const float threshold = vsyncRate * 0.5f;
+            const bool badVSync = t < threshold;
+            if (badVSync && !w->badVSync) {
+                w->badVSync = true;
+                qCDebug(QSG_LOG_INFO, "Window %p is determined to have broken vsync throttling (%f < %f) "
+                                      "switching to system timer to drive gui thread animations to remedy this "
+                                      "(however, render thread animators will likely advance at an incorrect rate).",
+                        w->window, t, threshold);
+                startOrStopAnimationTimer();
+            }
+            w->psTimeAccumulator = 0.0f;
+            w->psTimeSampleCount = 0;
+        }
+    }
+
+    const bool profileFrames = QSG_LOG_TIME_RENDERLOOP().isDebugEnabled();
+    if (profileFrames) {
+        timer.start();
+        qCDebug(QSG_LOG_TIME_RENDERLOOP, "[window %p][gui thread] polishAndSync: start, elapsed since last call: %d ms",
+                window,
+                int(elapsedSinceLastMs));
+    }
+    Q_QUICK_SG_PROFILE_START(QQuickProfiler::SceneGraphPolishAndSync);
+    Q_TRACE(QSG_polishItems_entry);
+
+    QQuickWindowPrivate *d = QQuickWindowPrivate::get(window);
+    m_inPolish = true;
+    d->polishItems();
+    m_inPolish = false;
+
+    if (profileFrames)
+        polishTime = timer.nsecsElapsed();
+    Q_TRACE(QSG_polishItems_exit);
+    Q_QUICK_SG_PROFILE_RECORD(QQuickProfiler::SceneGraphPolishAndSync,
+                              QQuickProfiler::SceneGraphPolishAndSyncPolish);
+
+    w = windowFor(window);
+    if (!w || !w->thread || !w->thread->window) {
+        qCDebug(QSG_LOG_RENDERLOOP, "- removed after polishing, abort");
+        return;
+    }
+
+    Q_TRACE(QSG_wait_entry);
     w->updateDuringSync = false;
+
     emit window->afterAnimating();
-    
-    const QRhiSwapChainProxyData scProxyData = 
-        QRhi::updateSwapChainProxyData(QSGRhiSupport::instance()->rhiBackend(), window);
-    
+
+    const QRhiSwapChainProxyData scProxyData =
+            QRhi::updateSwapChainProxyData(QSGRhiSupport::instance()->rhiBackend(), window);
+
+    qCDebug(QSG_LOG_RENDERLOOP, "- lock for sync");
+
     {
         QMutexLocker lock(&w->thread->mutex);
         m_lockedForSync = true;
-        
         w->thread->postEvent(new WMSyncEvent(window, inExpose, w->forceRenderPass, scProxyData));
         w->forceRenderPass = false;
+
+        qCDebug(QSG_LOG_RENDERLOOP, "- wait for sync");
+        if (profileFrames)
+            waitTime = timer.nsecsElapsed();
+        Q_TRACE(QSG_wait_exit);
+        Q_QUICK_SG_PROFILE_RECORD(QQuickProfiler::SceneGraphPolishAndSync,
+                                  QQuickProfiler::SceneGraphPolishAndSyncWait);
+        Q_TRACE(QSG_sync_entry);
+
         w->thread->waitCondition.wait(&w->thread->mutex);
-        
         m_lockedForSync = false;
     }
-    
-    if (m_animation_timer == 0 && m_animation_driver->isRunning()) [[likely]] {
+
+    qCDebug(QSG_LOG_RENDERLOOP, "- unlock after sync");
+
+    if (profileFrames)
+        syncTime = timer.nsecsElapsed();
+    Q_TRACE(QSG_sync_exit);
+    Q_QUICK_SG_PROFILE_RECORD(QQuickProfiler::SceneGraphPolishAndSync,
+                              QQuickProfiler::SceneGraphPolishAndSyncSync);
+    Q_TRACE(QSG_animations_entry);
+
+    if (m_animation_timer == 0 && m_animation_driver->isRunning()) {
+        auto advanceAnimations = [this, window = QPointer(window)] {
+            qCDebug(QSG_LOG_RENDERLOOP, "- advancing animations");
+            m_animation_driver->advance();
+            qCDebug(QSG_LOG_RENDERLOOP, "- animations done..");
+            if (window)
+                window->requestUpdate();
+            emit timeToIncubate();
+        };
+
 #if defined(Q_OS_APPLE)
-        if (inExpose) [[unlikely]] {
-            QMetaObject::invokeMethod(this, [this, win = QPointer(window)] {
-                if (win) {
-                    m_animation_driver->advance();
-                    win->requestUpdate();
-                    emit timeToIncubate();
-                }
-            }, Qt::QueuedConnection);
-            return;
-        }
+        if (inExpose) {
+            QMetaObject::invokeMethod(this, advanceAnimations, Qt::QueuedConnection);
+        } else
 #endif
-        m_animation_driver->advance();
-        window->requestUpdate();
-        emit timeToIncubate();
+        {
+            advanceAnimations();
+        }
     } else if (w->updateDuringSync) {
         postUpdateRequest(w);
     }
-}
 
-bool QSGThreadedRenderLoop::event(QEvent *e)
-{
-    switch ((int) e->type()) {
-
-    case QEvent::Timer: {
-        Q_ASSERT(sg->isVSyncDependent(m_animation_driver));
-        QTimerEvent *te = static_cast<QTimerEvent *>(e);
-        if (te->timerId() == m_animation_timer) {
-            qCDebug(QSG_LOG_RENDERLOOP, "- ticking non-render thread timer");
-            m_animation_driver->advance();
-            emit timeToIncubate();
-            return true;
-        }
-        break;
+    if (profileFrames) {
+        qCDebug(QSG_LOG_TIME_RENDERLOOP, "[window %p][gui thread] Frame prepared, polish=%d ms, lock=%d ms, blockedForSync=%d ms, animations=%d ms",
+                window,
+                int(polishTime / 1000000),
+                int((waitTime - polishTime) / 1000000),
+                int((syncTime - waitTime) / 1000000),
+                int((timer.nsecsElapsed() - syncTime) / 1000000));
     }
 
-    default:
-        break;
-    }
-
-    return QObject::event(e);
+    Q_TRACE(QSG_animations_exit);
+    Q_QUICK_SG_PROFILE_END(QQuickProfiler::SceneGraphPolishAndSync,
+                           QQuickProfiler::SceneGraphPolishAndSyncAnimations);
 }
-
 
 
 /*
