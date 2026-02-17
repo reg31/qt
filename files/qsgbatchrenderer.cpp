@@ -285,6 +285,7 @@ void ShaderManager::invalidated()
 {
     qDeleteAll(stockShaders);
     stockShaders.clear();
+    
     qDeleteAll(rewrittenShaders);
     rewrittenShaders.clear();
 
