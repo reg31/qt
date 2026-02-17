@@ -1095,11 +1095,12 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
         w->thread->postEvent(new WMWindowEvent(w->window, QEvent::Type(WM_Exposed)));
         w->thread->mutex.unlock();
     }
+   
     polishAndSync(w, true);
     startOrStopAnimationTimer();
-    if (!m_animation_driver->isRunning()) [[unlikely]]
-        window->requestUpdate();
+    window->requestUpdate();
 }
+
 /*
     This function posts an event to the render thread to remove the window
     from the list of windowses to render.
