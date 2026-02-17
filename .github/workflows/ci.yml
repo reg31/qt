@@ -103,7 +103,6 @@ jobs:
         run: |
           set -e
           echo "Downloading experimental changes  ..."
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qquickdeliveryagent.cpp -o qtdeclarative/src/quick/util/qquickdeliveryagent.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qbackingstoredefaultcompositor.cpp -o qtbase/src/gui/painting/qbackingstoredefaultcompositor.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgmaterialshader.cpp -o qtdeclarative/src/quick/scenegraph/coreapi/qsgmaterialshader.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgrhishadereffectnode.cpp -o qtdeclarative/src/quick/scenegraph/qsgrhishadereffectnode.cpp
@@ -225,7 +224,6 @@ jobs:
         run: |
           set -e
           echo "Downloading experimental changes  ..."
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qquickdeliveryagent.cpp -o qtdeclarative/src/quick/util/qquickdeliveryagent.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qbackingstoredefaultcompositor.cpp -o qtbase/src/gui/painting/qbackingstoredefaultcompositor.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgmaterialshader.cpp -o qtdeclarative/src/quick/scenegraph/coreapi/qsgmaterialshader.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgrhishadereffectnode.cpp -o qtdeclarative/src/quick/scenegraph/qsgrhishadereffectnode.cpp
@@ -329,7 +327,6 @@ jobs:
         run: |
           set -e
           echo "Downloading experimental changes  ..."
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qquickdeliveryagent.cpp -o qtdeclarative/src/quick/util/qquickdeliveryagent.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qbackingstoredefaultcompositor.cpp -o qtbase/src/gui/painting/qbackingstoredefaultcompositor.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgmaterialshader.cpp -o qtdeclarative/src/quick/scenegraph/coreapi/qsgmaterialshader.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgrhishadereffectnode.cpp -o qtdeclarative/src/quick/scenegraph/qsgrhishadereffectnode.cpp
@@ -480,7 +477,6 @@ jobs:
         run: |
           set -e
           echo "Downloading experimental changes  ..."
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qquickdeliveryagent.cpp -o qtdeclarative/src/quick/util/qquickdeliveryagent.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qbackingstoredefaultcompositor.cpp -o qtbase/src/gui/painting/qbackingstoredefaultcompositor.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgmaterialshader.cpp -o qtdeclarative/src/quick/scenegraph/coreapi/qsgmaterialshader.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgrhishadereffectnode.cpp -o qtdeclarative/src/quick/scenegraph/qsgrhishadereffectnode.cpp
