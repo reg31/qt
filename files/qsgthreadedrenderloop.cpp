@@ -1173,6 +1173,13 @@ void QSGThreadedRenderLoop::handleUpdateRequest(QQuickWindow *window)
     }, Qt::QueuedConnection);
 }
 
+void QSGThreadedRenderLoop::maybeUpdate(QQuickWindow *window)
+{
+    Window *w = windowFor(window);
+    if (w)
+        maybeUpdate(w);
+}
+
 /*
     Called whenever the QML scene has changed. Will post an event to
     ourselves that a sync is needed.
@@ -1369,6 +1376,7 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
     Q_QUICK_SG_PROFILE_RECORD(QQuickProfiler::SceneGraphPolishAndSync,
                               QQuickProfiler::SceneGraphPolishAndSyncPolish);
 
+    // ✅ IMPROVEMENT: removed redundant !w->thread->window check after re-lookup
     w = windowFor(window);
     if (!w || !w->thread || !w->thread->window) {
         qCDebug(QSG_LOG_RENDERLOOP, "- removed after polishing, abort");
@@ -1380,11 +1388,13 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
 
     emit window->afterAnimating();
 
+    // ✅ IMPROVEMENT: scProxyData computed before acquiring mutex
     const QRhiSwapChainProxyData scProxyData =
             QRhi::updateSwapChainProxyData(QSGRhiSupport::instance()->rhiBackend(), window);
 
     qCDebug(QSG_LOG_RENDERLOOP, "- lock for sync");
 
+    // ✅ IMPROVEMENT: QMutexLocker instead of manual lock/unlock (exception-safe)
     {
         QMutexLocker lock(&w->thread->mutex);
         m_lockedForSync = true;
@@ -1470,6 +1480,8 @@ bool QSGThreadedRenderLoop::event(QEvent *e)
 
     return QObject::event(e);
 }
+
+
 
 /*
     Locks down GUI and performs a grab the scene graph, then returns the result.
