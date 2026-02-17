@@ -4,19 +4,13 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qsgbatchrenderer_p.h"
-
 #include <qmath.h>
-
 #include <QtCore/QElapsedTimer>
 #include <QtCore/QtNumeric>
-
 #include <QtGui/QGuiApplication>
-
 #include <private/qnumeric_p.h>
 #include "qsgmaterialshader_p.h"
-
 #include "qsgrhivisualizer_p.h"
-
 #include <algorithm>
 
 QT_BEGIN_NAMESPACE
