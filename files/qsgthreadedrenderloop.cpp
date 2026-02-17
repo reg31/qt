@@ -521,9 +521,7 @@ void QSGRenderThread::invalidateGraphics(QQuickWindow *window, bool inDestructor
 
 void QSGRenderThread::sync(bool inExpose)
 {
-    QMutexLocker lock(&mutex);
     auto *d = QQuickWindowPrivate::get(window);
-
     bool canSync = (rhi && windowSize.width() > 0 && windowSize.height() > 0);
     
     if (canSync) [[likely]] {
@@ -532,12 +530,17 @@ void QSGRenderThread::sync(bool inExpose)
             d->renderer->clearChangedFlag();
         
         d->syncSceneGraph();
-        sgrc->endSync();
     }
 
-    Q_UNUSED(inExpose);
-    waitCondition.wakeOne();
+    {
+        QMutexLocker lock(&mutex);
+        waitCondition.wakeOne();
+    }
 
+    if (canSync) [[likely]]
+        sgrc->endSync();
+
+    Q_UNUSED(inExpose);
     QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
 }
 
@@ -754,22 +757,17 @@ void QSGRenderThread::run()
 
     m_threadTimeBetweenRenders.start();
 
+    if (window)
+        ensureRhi();
+
     while (active) [[likely]] {
 #ifdef Q_OS_DARWIN
         QMacAutoReleasePool frameReleasePool;
 #endif
-        bool rhiWasNull = !rhi;
         if (window) [[likely]] {
             ensureRhi();
             syncAndRender();
-            if (rhiDoomed && !guiNotifiedAboutRhiFailure) [[unlikely]] {
-                guiNotifiedAboutRhiFailure = true;
-                QCoreApplication::postEvent(window, new QEvent(QEvent::Type(QQuickWindowPrivate::TriggerContextCreationFailure)));
-            }
         }
-
-        if (rhiWasNull && rhi)
-            continue;
 
         processEvents();
         QCoreApplication::processEvents();
@@ -781,9 +779,8 @@ void QSGRenderThread::run()
         }
     }
 
-    if (rhi) [[likely]] {
+    if (rhi) [[likely]]
         rhi->makeThreadLocalNativeContextCurrent();
-    }
 
     delete animatorDriver;
     animatorDriver = nullptr;
@@ -1076,7 +1073,11 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
             auto *rhiSupport = QSGRhiSupport::instance();
             if (!w->thread->offscreenSurface) [[unlikely]]
                 w->thread->offscreenSurface = rhiSupport->maybeCreateOffscreenSurface(window);
+            
+            w->thread->windowSize = window->size();
+            w->thread->dpr = float(window->effectiveDevicePixelRatio());
             w->thread->scProxyData = QRhi::updateSwapChainProxyData(rhiSupport->rhiBackend(), window);
+            
             window->installEventFilter(this);
         }
 
@@ -1317,8 +1318,6 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
         return;
     
     w = &(*it);
-    if (!w->thread || !w->thread->window) [[unlikely]]
-        return;
     
     w->updateDuringSync = false;
     emit window->afterAnimating();
