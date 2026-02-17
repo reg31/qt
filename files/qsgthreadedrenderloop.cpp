@@ -1163,21 +1163,14 @@ bool QSGThreadedRenderLoop::eventFilter(QObject *watched, QEvent *event)
 
 void QSGThreadedRenderLoop::handleUpdateRequest(QQuickWindow *window)
 {
-    qCDebug(QSG_LOG_RENDERLOOP) <<  "- update request" << window;
-    if (!QQuickWindowPrivate::get(window)->updatesEnabled) {
-        qCDebug(QSG_LOG_RENDERLOOP, "- updatesEnabled is false, abort");
-        return;
-    }
-    Window *w = windowFor(window);
-    if (w)
-        polishAndSync(w);
-}
-
-void QSGThreadedRenderLoop::maybeUpdate(QQuickWindow *window)
-{
-    Window *w = windowFor(window);
-    if (w)
-        maybeUpdate(w);
+    QPointer<QQuickWindow> safeWindow = window;
+    QMetaObject::invokeMethod(this, [this, safeWindow]() {
+        if (!safeWindow) return;
+        if (!QQuickWindowPrivate::get(safeWindow)->updatesEnabled) return;
+        Window *w = windowFor(safeWindow);
+        if (w)
+            polishAndSync(w);
+    }, Qt::QueuedConnection);
 }
 
 /*
