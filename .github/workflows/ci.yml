@@ -18,8 +18,8 @@ env:
     -no-feature-undogroup -no-feature-ctf -no-feature-widgets -no-feature-imageformat_xbm -no-feature-sortfilterproxymodel -no-feature-filesystemwatcher    
     -no-feature-sql -no-feature-gssapi -no-feature-graphicsframecapture -DFEATURE_regularexpression=OFF -DFEATURE_no_direct_extern_access=ON
   EXTRA_FLAGS: -no-feature-qml-network -no-feature-qml-ssl -no-feature-quickcontrols2-fusion
-  QT_BASE_CHERRY_PICK: 524178 652062
-  QT_DECLARATIVE_CHERRY_PICK: 695153 699605 622692 663127
+  QT_BASE_CHERRY_PICK: 524178 713838 652062
+  QT_DECLARATIVE_CHERRY_PICK: 695153 699605 622692 663127 713049 712955
     
 on:
   workflow_dispatch:
