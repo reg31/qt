@@ -1013,110 +1013,100 @@ void QSGThreadedRenderLoop::releaseSwapchain(QQuickWindow *window)
 
 void QSGThreadedRenderLoop::exposureChanged(QQuickWindow *window)
 {
-    qCDebug(QSG_LOG_RENDERLOOP) << "exposureChanged()" << window;
-
-    // This is tricker than used to be. We want to detect having an empty
-    // surface size (which may be the case even when window->size() is
-    // non-empty, on some platforms with some graphics APIs!) as well as the
-    // case when the window just became "newly exposed" (e.g. after a
-    // minimize-restore on Windows, or when switching between fully obscured -
-    // not fully obscured on macOS)
-    QQuickWindowPrivate *wd = QQuickWindowPrivate::get(window);
-    if (!window->isExposed())
-        wd->hasRenderableSwapchain = false;
-
-    bool skipThisExpose = false;
-    if (window->isExposed() && wd->hasActiveSwapchain && wd->swapchain->surfacePixelSize().isEmpty()) {
-        wd->hasRenderableSwapchain = false;
-        skipThisExpose = true;
-    }
-
-    if (window->isExposed() && !wd->hasRenderableSwapchain && wd->hasActiveSwapchain
-            && !wd->swapchain->surfacePixelSize().isEmpty())
-    {
-        wd->hasRenderableSwapchain = true;
-        wd->swapchainJustBecameRenderable = true;
-    }
-
-    if (window->isExposed()) {
-        if (!skipThisExpose)
-            handleExposure(window);
-    } else {
-        Window *w = windowFor(window);
-        if (w)
-            handleObscurity(w);
-    }
-}
-
-void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
-{
     QPointer<QQuickWindow> safeWindow = window;
     QMetaObject::invokeMethod(this, [this, safeWindow]() {
         if (!safeWindow) return;
 
-        auto it = std::ranges::find_if(m_windows, [w = safeWindow.data()](const Window &entry) {
-            return entry.window == w;
-        });
-        Window *w = nullptr;
+        QQuickWindowPrivate *wd = QQuickWindowPrivate::get(safeWindow);
+        if (!safeWindow->isExposed())
+            wd->hasRenderableSwapchain = false;
 
-        if (it != m_windows.end()) [[likely]] {
-            w = &(*it);
-            if (!QQuickWindowPrivate::get(safeWindow)->updatesEnabled) [[unlikely]] return;
-        } else {
-            auto *wd = QQuickWindowPrivate::get(safeWindow);
-            auto *renderContext = wd->context;
-            pendingRenderContexts.remove(renderContext);
-
-            m_windows.emplace_back();
-            w = &m_windows.back();
-            w->window = safeWindow;
-            w->actualWindowFormat = safeWindow->format();
-            w->thread = new QSGRenderThread(this, renderContext);
-            w->updateDuringSync = false;
-            w->forceRenderPass = true;
-            w->badVSync = false;
-            w->psTimeAccumulator = 0.0f;
-            w->psTimeSampleCount = 0;
-            w->timeBetweenPolishAndSyncs.start();
+        bool skipThisExpose = false;
+        if (safeWindow->isExposed() && wd->hasActiveSwapchain && wd->swapchain->surfacePixelSize().isEmpty()) {
+            wd->hasRenderableSwapchain = false;
+            skipThisExpose = true;
         }
 
-        if (!w->window->handle()) [[unlikely]] safeWindow->create();
-
-        if (!w->thread->isRunning()) {
-            w->thread->window = safeWindow;
-            if (!w->thread->rhi) {
-                auto *rhiSupport = QSGRhiSupport::instance();
-                if (!w->thread->offscreenSurface) [[unlikely]]
-                    w->thread->offscreenSurface = rhiSupport->maybeCreateOffscreenSurface(safeWindow);
-
-                w->thread->windowSize = safeWindow->size();
-                w->thread->dpr = float(safeWindow->effectiveDevicePixelRatio());
-                w->thread->scProxyData = QRhi::updateSwapChainProxyData(rhiSupport->rhiBackend(), safeWindow);
-
-                safeWindow->installEventFilter(this);
-            }
-
-            if (auto *controller = QQuickWindowPrivate::get(w->window)->animationController.get();
-                controller->thread() != w->thread) [[unlikely]]
-                controller->moveToThread(w->thread);
-
-            w->thread->active = true;
-            if (w->thread->thread() == QThread::currentThread()) [[unlikely]] {
-                w->thread->sgrc->moveToThread(w->thread);
-                w->thread->moveToThread(w->thread);
-            }
-
-            w->thread->start();
-            return;
-        } else {
-            w->thread->mutex.lock();
-            w->thread->postEvent(new WMWindowEvent(w->window, QEvent::Type(WM_Exposed)));
-            w->thread->mutex.unlock();
+        if (safeWindow->isExposed() && !wd->hasRenderableSwapchain && wd->hasActiveSwapchain
+                && !wd->swapchain->surfacePixelSize().isEmpty())
+        {
+            wd->hasRenderableSwapchain = true;
+            wd->swapchainJustBecameRenderable = true;
         }
 
-        polishAndSync(w, true);
-        startOrStopAnimationTimer();
+        if (safeWindow->isExposed()) {
+            if (!skipThisExpose)
+                handleExposure(safeWindow);
+        } else {
+            Window *w = windowFor(safeWindow);
+            if (w)
+                handleObscurity(w);
+        }
     }, Qt::QueuedConnection);
+}
+
+void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
+{
+    auto it = std::ranges::find_if(m_windows, [window](const Window &w) { return w.window == window; });
+    Window *w = nullptr;
+
+    if (it != m_windows.end()) [[likely]] {
+        w = &(*it);
+        if (!QQuickWindowPrivate::get(window)->updatesEnabled) [[unlikely]] return;
+    } else {
+        auto *wd = QQuickWindowPrivate::get(window);
+        auto *renderContext = wd->context;
+        pendingRenderContexts.remove(renderContext);
+
+        m_windows.emplace_back();
+        w = &m_windows.back();
+        w->window = window;
+        w->actualWindowFormat = window->format();
+        w->thread = new QSGRenderThread(this, renderContext);
+        w->updateDuringSync = false;
+        w->forceRenderPass = true;
+        w->badVSync = false;
+        w->psTimeAccumulator = 0.0f;
+        w->psTimeSampleCount = 0;
+        w->timeBetweenPolishAndSyncs.start();
+    }
+
+    if (!w->window->handle()) [[unlikely]] window->create();
+
+    if (!w->thread->isRunning()) {
+        w->thread->window = window;
+        if (!w->thread->rhi) {
+            auto *rhiSupport = QSGRhiSupport::instance();
+            if (!w->thread->offscreenSurface) [[unlikely]]
+                w->thread->offscreenSurface = rhiSupport->maybeCreateOffscreenSurface(window);
+
+            w->thread->windowSize = window->size();
+            w->thread->dpr = float(window->effectiveDevicePixelRatio());
+            w->thread->scProxyData = QRhi::updateSwapChainProxyData(rhiSupport->rhiBackend(), window);
+
+            window->installEventFilter(this);
+        }
+
+        if (auto *controller = QQuickWindowPrivate::get(w->window)->animationController.get();
+            controller->thread() != w->thread) [[unlikely]]
+            controller->moveToThread(w->thread);
+
+        w->thread->active = true;
+        if (w->thread->thread() == QThread::currentThread()) [[unlikely]] {
+            w->thread->sgrc->moveToThread(w->thread);
+            w->thread->moveToThread(w->thread);
+        }
+
+        w->thread->start();
+        return;
+    } else {
+        w->thread->mutex.lock();
+        w->thread->postEvent(new WMWindowEvent(w->window, QEvent::Type(WM_Exposed)));
+        w->thread->mutex.unlock();
+    }
+
+    polishAndSync(w, true);
+    startOrStopAnimationTimer();
 }
 
 /*
