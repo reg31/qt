@@ -528,7 +528,6 @@ void QSGRenderThread::sync(bool inExpose)
         rhi->makeThreadLocalNativeContextCurrent();
         if (d->renderer) [[likely]]
             d->renderer->clearChangedFlag();
-        
         d->syncSceneGraph();
     }
 
@@ -757,20 +756,30 @@ void QSGRenderThread::run()
 
     m_threadTimeBetweenRenders.start();
 
-    if (window)
+    if (window) {
         ensureRhi();
+
+        QPointer<QQuickWindow> safeWindow = window;
+        QMetaObject::invokeMethod(wm, [this, safeWindow]() {
+            if (!safeWindow) return;
+            if (QSGThreadedRenderLoop::Window *w = wm->windowFor(safeWindow)) {
+                wm->polishAndSync(w, true);
+                wm->startOrStopAnimationTimer();
+            }
+        }, Qt::QueuedConnection);
+    }
 
     while (active) [[likely]] {
 #ifdef Q_OS_DARWIN
         QMacAutoReleasePool frameReleasePool;
 #endif
+        processEvents();
+        QCoreApplication::processEvents();
+
         if (window) [[likely]] {
             ensureRhi();
             syncAndRender();
         }
-
-        processEvents();
-        QCoreApplication::processEvents();
 
         if (active && (pendingUpdate == 0 || !window)) [[unlikely]] {
             sleeping = true;
@@ -1090,7 +1099,9 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
             w->thread->sgrc->moveToThread(w->thread);
             w->thread->moveToThread(w->thread);
         }
+        
         w->thread->start();
+        return;
     } else {
         w->thread->mutex.lock();
         w->thread->postEvent(new WMWindowEvent(w->window, QEvent::Type(WM_Exposed)));
