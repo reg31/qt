@@ -6,10 +6,10 @@
 #include <QtCore/QMutex>
 #include <QtCore/QWaitCondition>
 #include <QtCore/QAnimationDriver>
-#include <QtCore/QQueue>
 #include <QtCore/QTimer>
 #include <atomic>
 #include <variant>
+#include <deque>
 
 #include <QtGui/QGuiApplication>
 #include <QtGui/QScreen>
@@ -199,7 +199,7 @@ using QSGRenderThreadEvent = std::variant<
     WMReleaseSwapchainEvent
 >;
 
-class QSGRenderThreadEventQueue : public QQueue<QSGRenderThreadEvent>
+class QSGRenderThreadEventQueue
 {
 public:
     QSGRenderThreadEventQueue()
@@ -209,27 +209,29 @@ public:
 
     void addEvent(QSGRenderThreadEvent e) {
         mutex.lock();
-        enqueue(std::move(e));
+        m_queue.push_back(std::move(e));
         if (waiting)
             condition.wakeOne();
         mutex.unlock();
     }
 
-    QQueue<QSGRenderThreadEvent> drain() {
+    std::deque<QSGRenderThreadEvent> drain() {
         mutex.lock();
-        QQueue<QSGRenderThreadEvent> batch = std::move(*this);
+        std::deque<QSGRenderThreadEvent> batch;
+        std::swap(m_queue, batch);
         mutex.unlock();
         return batch;
     }
 
     QSGRenderThreadEvent takeEventOrWait() {
         mutex.lock();
-        while (isEmpty()) {
+        while (m_queue.empty()) {
             waiting = true;
             condition.wait(&mutex);
             waiting = false;
         }
-        QSGRenderThreadEvent e = dequeue();
+        QSGRenderThreadEvent e = std::move(m_queue.front());
+        m_queue.pop_front();
         mutex.unlock();
         return e;
     }
@@ -238,6 +240,7 @@ private:
     QMutex mutex;
     QWaitCondition condition;
     bool waiting;
+    std::deque<QSGRenderThreadEvent> m_queue;
 };
 
 
@@ -697,10 +700,8 @@ void QSGRenderThread::processEvents()
 {
     qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "--- begin processEvents()");
     auto batch = eventQueue.drain();
-    while (!batch.isEmpty()) {
-        QSGRenderThreadEvent e = batch.dequeue();
+    for (auto &e : batch)
         processEvent(e);
-    }
     qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "--- done processEvents()");
 }
 
