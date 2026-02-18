@@ -103,12 +103,12 @@ jobs:
         run: |
           set -e
           echo "Downloading experimental changes  ..."
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qbackingstoredefaultcompositor.cpp -o qtbase/src/gui/painting/qbackingstoredefaultcompositor.cpp
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgmaterialshader.cpp -o qtdeclarative/src/quick/scenegraph/coreapi/qsgmaterialshader.cpp
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgrhishadereffectnode.cpp -o qtdeclarative/src/quick/scenegraph/qsgrhishadereffectnode.cpp
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgrenderloop.cpp -o qtdeclarative/src/quick/scenegraph/qsgrenderloop.cpp
+          # curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qbackingstoredefaultcompositor.cpp -o qtbase/src/gui/painting/qbackingstoredefaultcompositor.cpp
+          # curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgmaterialshader.cpp -o qtdeclarative/src/quick/scenegraph/coreapi/qsgmaterialshader.cpp
+          # curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgrhishadereffectnode.cpp -o qtdeclarative/src/quick/scenegraph/qsgrhishadereffectnode.cpp
+          # curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgrenderloop.cpp -o qtdeclarative/src/quick/scenegraph/qsgrenderloop.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgthreadedrenderloop.cpp -o qtdeclarative/src/quick/scenegraph/qsgthreadedrenderloop.cpp
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgrhisupport.cpp -o qtdeclarative/src/quick/scenegraph/qsgrhisupport.cpp
+          # curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgrhisupport.cpp -o qtdeclarative/src/quick/scenegraph/qsgrhisupport.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgbatchrenderer.cpp -o qtdeclarative/src/quick/scenegraph/coreapi/qsgbatchrenderer.cpp
           echo "Download completed  ..."
           
