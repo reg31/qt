@@ -1124,20 +1124,11 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
         w->thread->start();
         return;
     } else {
-        QMutexLocker lock(&w->thread->mutex);
+        QMutexLocker locker(&w->thread->mutex);
         w->thread->postEvent(WMExposedEvent(w->window));
     }
     polishAndSync(w, true);
     startOrStopAnimationTimer();
-    QPointer<QQuickWindow> safeWindow = window;
-    QMetaObject::invokeMethod(this, [this, safeWindow]() {
-        if (!safeWindow) return;
-        Window *w = windowFor(safeWindow);
-        if (w && w->thread && w->thread->window) {
-            w->forceRenderPass = true;
-            polishAndSync(w, true);
-        }
-    }, Qt::QueuedConnection);
 }
 
 /*
