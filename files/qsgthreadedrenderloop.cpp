@@ -1097,7 +1097,7 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
     }
     polishAndSync(w, true);
     startOrStopAnimationTimer();
-    Pointer<QQuickWindow> safeWindow = window;
+    QPointer<QQuickWindow> safeWindow = window;
     QMetaObject::invokeMethod(this, [safeWindow]() {
         if (safeWindow && safeWindow->isExposed())
             safeWindow->requestUpdate();
