@@ -11,9 +11,6 @@
 #include <QQmlFile>
 
 #include <QtGui/qquaternion.h>
-
-#include <QFile>
-#include <QFileSelector>
 #include <QMutexLocker>
 
 #include <QFileInfo>
@@ -942,9 +939,8 @@ void QSGRhiGuiThreadShaderEffectManager::prepareShaderCode(ShaderInfo::Type type
 
     static std::flat_map<QString, CacheEntry> reflectCache;
     static std::shared_mutex reflectMutex;
-    static QFileSelector selector;
 
-    const QString fn = selector.select(QQmlFile::urlToLocalFileOrQrc(src));
+    const QString fn = m_fileSelector.select(QQmlFile::urlToLocalFileOrQrc(src));
     const QDateTime currentMtime = QFileInfo(fn).lastModified();
 
     {
