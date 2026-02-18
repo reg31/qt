@@ -599,7 +599,7 @@ void QSGRenderThread::handleDeviceLoss()
     rhiDeviceLost = true;
 }
 
-vvoid QSGRenderThread::syncAndRender()
+void QSGRenderThread::syncAndRender()
 {
     auto *cd = QQuickWindowPrivate::get(window);
     const bool syncRequested = (pendingUpdate & SyncRequest);
@@ -1127,7 +1127,7 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
     polishAndSync(w, true);
     startOrStopAnimationTimer();
     QPointer<QQuickWindow> safeWindow = window;
-    QMetaObject::invokeMethod(this, [this, safeWindow]() {
+    QMetaObject::invokeMethod(this, [safeWindow]() {
         if (!safeWindow) return;
         safeWindow->update();        
     }, Qt::QueuedConnection);
