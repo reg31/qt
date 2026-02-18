@@ -376,14 +376,11 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
 
         return true;
     },
-    [&](WMExposedEvent &e) {
-		qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "WM_Exposed");
+    [[&](WMExposedEvent &e) {
+    qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "WM_Exposed");
 		window = e.window;
 		windowSize = e.size;
 		dpr = e.dpr;
-		auto *cd = QQuickWindowPrivate::get(window);
-		if (rhi && cd->swapchain)
-			ensureRhi();
 		return true;
 	},
     [&](WMSyncEvent &e) {
@@ -1140,11 +1137,7 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
     QPointer<QQuickWindow> safeWindow = window;
     QMetaObject::invokeMethod(this, [this, safeWindow]() {
         if (!safeWindow) return;
-        Window *w = windowFor(safeWindow);
-        if (w && w->thread && w->thread->window) {
-            w->forceRenderPass = true;
-            polishAndSync(w, true);
-        }
+        safeWindow->update();        
     }, Qt::QueuedConnection);
 }
 
