@@ -371,8 +371,11 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
         return true;
     },
     [&](WMExposedEvent &e) {
-		qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "WM_Exposed");
+    qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "WM_Exposed");
 		window = e.window;
+		windowSize = e.size;
+		dpr = e.dpr;
+		ensureRhi();
 		return true;
 	},
     [&](WMSyncEvent &e) {
@@ -1031,49 +1034,48 @@ void QSGThreadedRenderLoop::releaseSwapchain(QQuickWindow *window)
 void QSGThreadedRenderLoop::exposureChanged(QQuickWindow *window)
 {
     QPointer<QQuickWindow> safeWindow = window;
-    QMetaObject::invokeMethod(this, [this, safeWindow]() {
-        if (!safeWindow) return;
 
-        QQuickWindowPrivate *wd = QQuickWindowPrivate::get(safeWindow);
-        if (!safeWindow->isExposed())
+    if (!safeWindow) return;
+
+    QQuickWindowPrivate *wd = QQuickWindowPrivate::get(safeWindow);
+    if (!safeWindow->isExposed())
+        wd->hasRenderableSwapchain = false;
+
+    bool skipThisExpose = false;
+    if (safeWindow->isExposed()) {
+        QSize surfaceSize;
+        if (wd->hasActiveSwapchain && wd->swapchain)
+            surfaceSize = wd->swapchain->surfacePixelSize();
+        else if (safeWindow->handle())
+            surfaceSize = safeWindow->handle()->geometry().size()
+                          * safeWindow->effectiveDevicePixelRatio();
+
+        if (surfaceSize.isEmpty()) {
             wd->hasRenderableSwapchain = false;
-
-        bool skipThisExpose = false;
-        if (safeWindow->isExposed()) {
-            QSize surfaceSize;
-            if (wd->hasActiveSwapchain && wd->swapchain)
-                surfaceSize = wd->swapchain->surfacePixelSize();
-            else if (safeWindow->handle())
-                surfaceSize = safeWindow->handle()->geometry().size()
-                              * safeWindow->effectiveDevicePixelRatio();
-
-            if (surfaceSize.isEmpty()) {
-                wd->hasRenderableSwapchain = false;
-                skipThisExpose = true;
-                QPointer<QQuickWindow> retryWindow = safeWindow;
-                QTimer::singleShot(16, this, [this, retryWindow]() {
-                    if (retryWindow && retryWindow->isExposed())
-                        handleExposure(retryWindow);
-                });
-            }
+            skipThisExpose = true;
+            QPointer<QQuickWindow> retryWindow = safeWindow;
+            QTimer::singleShot(16, this, [this, retryWindow]() {
+                if (retryWindow && retryWindow->isExposed())
+                    handleExposure(retryWindow);
+            });
         }
+    }
 
-        if (safeWindow->isExposed() && !wd->hasRenderableSwapchain && wd->hasActiveSwapchain
-                && !wd->swapchain->surfacePixelSize().isEmpty())
-        {
-            wd->hasRenderableSwapchain = true;
-            wd->swapchainJustBecameRenderable = true;
-        }
+    if (safeWindow->isExposed() && !wd->hasRenderableSwapchain && wd->hasActiveSwapchain
+            && !wd->swapchain->surfacePixelSize().isEmpty())
+    {
+        wd->hasRenderableSwapchain = true;
+        wd->swapchainJustBecameRenderable = true;
+    }
 
-        if (safeWindow->isExposed()) {
-            if (!skipThisExpose)
-                handleExposure(safeWindow);
-        } else {
-            Window *w = windowFor(safeWindow);
-            if (w)
-                handleObscurity(w);
-        }
-    }, Qt::QueuedConnection);
+    if (safeWindow->isExposed()) {
+        if (!skipThisExpose)
+            handleExposure(safeWindow);
+    } else {
+        Window *w = windowFor(safeWindow);
+        if (w)
+            handleObscurity(w);
+    }
 }
 
 void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
@@ -1122,13 +1124,22 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
         w->thread->start();
         return;
     } else {
-        w->thread->mutex.lock();
+        QMutexLocker lock(&w->thread->mutex);
         w->thread->postEvent(WMExposedEvent(w->window));
-        w->thread->mutex.unlock();
     }
     polishAndSync(w, true);
     startOrStopAnimationTimer();
+    QPointer<QQuickWindow> safeWindow = window;
+    QMetaObject::invokeMethod(this, [this, safeWindow]() {
+        if (!safeWindow) return;
+        Window *w = windowFor(safeWindow);
+        if (w && w->thread && w->thread->window) {
+            w->forceRenderPass = true;
+            polishAndSync(w, true);
+        }
+    }, Qt::QueuedConnection);
 }
+
 /*
     This function posts an event to the render thread to remove the window
     from the list of windows to render.
