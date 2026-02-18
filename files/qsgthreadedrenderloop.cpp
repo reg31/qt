@@ -566,40 +566,88 @@ void QSGRenderThread::handleDeviceLoss()
 
 void QSGRenderThread::syncAndRender()
 {
-    if (pendingUpdate == 0)
-        return;
-
-    if (!window->isExposed()) [[unlikely]] {
-        sleeping = true;
-        return;
-    }
-
+    auto *cd = QQuickWindowPrivate::get(window);
+    const bool syncRequested = (pendingUpdate & SyncRequest);
+    const bool exposeRequested = (pendingUpdate & ExposeRequest) == ExposeRequest;
     pendingUpdate = 0;
-
-    bool syncInExpose = false;
-    QEvent *e = pendingRenderLoopEvents.takeFirstOrNull();
-    while (e != nullptr) {
-        if (e->type() == QEvent::Type(WM_Sync)) {
-            WMSyncEvent *se = static_cast<WMSyncEvent *>(e);
-            if (se->syncInExpose) {
-                syncInExpose = true;
-            }
-            if (se->size.isValid()) {
-                windowSize = se->size;
-                dpr = se->dpr;
-                scProxyData = se->scProxyData;
-            }
-        }
-        delete e;
-        e = pendingRenderLoopEvents.takeFirstOrNull();
+    
+    const bool hasValidSwapChain = (cd->swapchain && windowSize.isValid());
+    
+    if (hasValidSwapChain && !rhi->isRecordingFrame()) [[likely]] {
+        rhi->makeThreadLocalNativeContextCurrent();
+    }
+    
+    if (animatorDriver->isRunning()) [[unlikely]] {
+        cd->animationController->lock();
+        animatorDriver->advance();
+        cd->animationController->unlock();
     }
 
-    sync(syncInExpose);
+    if (syncRequested) [[likely]] {
+        sync(exposeRequested);
+    }
+    
+    bool gpuStarted = false;
+    if (hasValidSwapChain) [[likely]] {
+        cd->swapchain->setProxyData(scProxyData);
+        const QSize effectiveOutputSize = cd->swapchain->surfacePixelSize();
+        
+        if (effectiveOutputSize.isEmpty()) [[unlikely]] {
+            return;
+        }
 
-    if (!window->isExposed()) [[unlikely]]
-        return;
+        const QSize previousOutputSize = cd->swapchain->currentPixelSize();
+        if (previousOutputSize != effectiveOutputSize || cd->swapchainJustBecameRenderable) [[unlikely]] {
+            cd->hasActiveSwapchain = cd->swapchain->createOrResize();
+            
+            if (!cd->hasActiveSwapchain) [[unlikely]] {
+                if (rhi->isDeviceLost()) {
+                    handleDeviceLoss();
+                } else if (previousOutputSize.isEmpty() && !swRastFallbackDueToSwapchainFailure && 
+                          QSGRhiSupport::instance()->attemptReinitWithSwRastUponFail()) {
+                    swRastFallbackDueToSwapchainFailure = true;
+                    teardownGraphics();
+                }
+                
+                QCoreApplication::postEvent(window, new QEvent(QEvent::Type(QQuickWindowPrivate::FullUpdateRequest)));
+                return;
+            }
 
-    render();
+            cd->swapchainJustBecameRenderable = false;
+            cd->hasRenderableSwapchain = cd->hasActiveSwapchain;
+        }
+
+        emit window->beforeFrameBegin();
+
+        if (rhi->beginFrame(cd->swapchain) == QRhi::FrameOpSuccess) {
+            gpuStarted = true;
+        } else {
+            if (rhi->isDeviceLost()) {
+                handleDeviceLoss();
+            }
+            QCoreApplication::postEvent(window, new QEvent(QEvent::Type(QQuickWindowPrivate::FullUpdateRequest)));
+            emit window->afterFrameEnd();
+            return;
+        }
+    }
+    
+    if (gpuStarted && cd->renderer) [[likely]] {
+        cd->renderSceneGraph();
+        
+        if (rhi->endFrame(cd->swapchain) != QRhi::FrameOpSuccess) [[unlikely]] {
+            if (rhi->isDeviceLost()) {
+                handleDeviceLoss();
+            }
+            QCoreApplication::postEvent(window, new QEvent(QEvent::Type(QQuickWindowPrivate::FullUpdateRequest)));
+        }
+        
+        cd->fireFrameSwapped();
+    } else if (gpuStarted) {
+        rhi->endFrame(cd->swapchain, QRhi::SkipPresent);
+    }
+    
+    if (hasValidSwapChain) [[likely]]
+        emit window->afterFrameEnd();
 }
 
 
