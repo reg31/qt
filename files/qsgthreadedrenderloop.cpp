@@ -376,8 +376,8 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
 
         return true;
     },
-    [[&](WMExposedEvent &e) {
-    qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "WM_Exposed");
+    [&](WMExposedEvent &e) {
+		qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "WM_Exposed");
 		window = e.window;
 		windowSize = e.size;
 		dpr = e.dpr;
@@ -599,7 +599,7 @@ void QSGRenderThread::handleDeviceLoss()
     rhiDeviceLost = true;
 }
 
-void QSGRenderThread::syncAndRender()
+vvoid QSGRenderThread::syncAndRender()
 {
     auto *cd = QQuickWindowPrivate::get(window);
     const bool syncRequested = (pendingUpdate & SyncRequest);
@@ -633,61 +633,54 @@ void QSGRenderThread::syncAndRender()
         cd->swapchain->setProxyData(scProxyData);
         const QSize effectiveOutputSize = cd->swapchain->surfacePixelSize();
 
-        if (effectiveOutputSize.isEmpty()) [[unlikely]] {
-            QMetaObject::invokeMethod(wm, [wm = this->wm, win = this->window]() {
-                if (QSGThreadedRenderLoop::Window *w = wm->windowFor(win))
-                    w->forceRenderPass = true;
-            }, Qt::QueuedConnection);
-            QCoreApplication::postEvent(window, new QEvent(QEvent::Type(QQuickWindowPrivate::FullUpdateRequest)));
-            return;
-        }
+        if (!effectiveOutputSize.isEmpty()) [[likely]] {
+            const QSize previousOutputSize = cd->swapchain->currentPixelSize();
+            if (previousOutputSize != effectiveOutputSize || cd->swapchainJustBecameRenderable) [[unlikely]] {
+                cd->hasActiveSwapchain = cd->swapchain->createOrResize();
 
-        const QSize previousOutputSize = cd->swapchain->currentPixelSize();
-        if (previousOutputSize != effectiveOutputSize || cd->swapchainJustBecameRenderable) [[unlikely]] {
-            cd->hasActiveSwapchain = cd->swapchain->createOrResize();
-
-            if (!cd->hasActiveSwapchain) [[unlikely]] {
-                if (rhi->isDeviceLost()) {
-                    handleDeviceLoss();
-                } else if (previousOutputSize.isEmpty() && !swRastFallbackDueToSwapchainFailure &&
-                          QSGRhiSupport::instance()->attemptReinitWithSwRastUponFail()) {
-                    swRastFallbackDueToSwapchainFailure = true;
-                    teardownGraphics();
+                if (!cd->hasActiveSwapchain) [[unlikely]] {
+                    if (rhi->isDeviceLost()) {
+                        handleDeviceLoss();
+                    } else if (previousOutputSize.isEmpty() && !swRastFallbackDueToSwapchainFailure &&
+                              QSGRhiSupport::instance()->attemptReinitWithSwRastUponFail()) {
+                        swRastFallbackDueToSwapchainFailure = true;
+                        teardownGraphics();
+                    }
                 }
 
-                QMetaObject::invokeMethod(wm, [wm = this->wm, win = this->window]() {
-                    if (QSGThreadedRenderLoop::Window *w = wm->windowFor(win))
-                        w->forceRenderPass = true;
-                }, Qt::QueuedConnection);
-                QCoreApplication::postEvent(window, new QEvent(QEvent::Type(QQuickWindowPrivate::FullUpdateRequest)));
-                return;
+                cd->swapchainJustBecameRenderable = false;
+                cd->hasRenderableSwapchain = cd->hasActiveSwapchain;
             }
 
-            cd->swapchainJustBecameRenderable = false;
-            cd->hasRenderableSwapchain = cd->hasActiveSwapchain;
-        }
+            if (cd->hasActiveSwapchain) {
+                emit window->beforeFrameBegin();
 
-        emit window->beforeFrameBegin();
-
-        if (rhi->beginFrame(cd->swapchain) == QRhi::FrameOpSuccess) {
-            gpuStarted = true;
-        } else {
-            if (rhi->isDeviceLost()) {
-                handleDeviceLoss();
+                if (rhi->beginFrame(cd->swapchain) == QRhi::FrameOpSuccess) {
+                    gpuStarted = true;
+                } else {
+                    if (rhi->isDeviceLost())
+                        handleDeviceLoss();
+                    emit window->afterFrameEnd();
+                }
             }
-            QCoreApplication::postEvent(window, new QEvent(QEvent::Type(QQuickWindowPrivate::FullUpdateRequest)));
-            emit window->afterFrameEnd();
-            return;
         }
+    }
+
+    if (exposeRequested && !gpuStarted) {
+        QMetaObject::invokeMethod(wm, [wm = this->wm, win = this->window]() {
+            if (QSGThreadedRenderLoop::Window *w = wm->windowFor(win))
+                w->forceRenderPass = true;
+        }, Qt::QueuedConnection);
+        QCoreApplication::postEvent(window, new QEvent(QEvent::Type(QQuickWindowPrivate::FullUpdateRequest)));
+        return;
     }
 
     if (gpuStarted && cd->renderer) [[likely]] {
         cd->renderSceneGraph();
 
         if (rhi->endFrame(cd->swapchain) != QRhi::FrameOpSuccess) [[unlikely]] {
-            if (rhi->isDeviceLost()) {
+            if (rhi->isDeviceLost())
                 handleDeviceLoss();
-            }
             QCoreApplication::postEvent(window, new QEvent(QEvent::Type(QQuickWindowPrivate::FullUpdateRequest)));
         }
 
@@ -699,7 +692,6 @@ void QSGRenderThread::syncAndRender()
     if (hasValidSwapChain) [[likely]]
         emit window->afterFrameEnd();
 }
-
 
 void QSGRenderThread::postEvent(QSGRenderThreadEvent e)
 {
