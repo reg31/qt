@@ -940,7 +940,7 @@ void QSGRhiGuiThreadShaderEffectManager::prepareShaderCode(ShaderInfo::Type type
     static std::flat_map<QString, CacheEntry> reflectCache;
     static std::shared_mutex reflectMutex;
 
-    const QString fn = m_fileSelector.select(QQmlFile::urlToLocalFileOrQrc(src));
+    const QString fn = m_fileSelector->select(QQmlFile::urlToLocalFileOrQrc(src));
     const QDateTime currentMtime = QFileInfo(fn).lastModified();
 
     {
