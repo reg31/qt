@@ -136,45 +136,6 @@ static inline QRegion scaledRegion(const QRegion &region, qreal factor, const QP
     return deviceRegion;
 }
 
-static QMatrix4x4 targetTransform(const QRectF &target, const QRect &viewport, bool invertY)
-{
-    const qreal x_scale = target.width() / viewport.width();
-    const qreal y_scale = target.height() / viewport.height();
-    const QPointF relative_to_viewport = target.topLeft() - viewport.topLeft();
-    const qreal x_translate = x_scale - 1.0 + ((relative_to_viewport.x() / viewport.width()) * 2.0);
-    qreal y_translate = invertY ? (y_scale - 1.0 + ((relative_to_viewport.y() / viewport.height()) * 2.0))
-                                : (-y_scale + 1.0 - ((relative_to_viewport.y() / viewport.height()) * 2.0));
-
-    QMatrix4x4 matrix;
-    matrix(0, 3) = x_translate;
-    matrix(1, 3) = y_translate;
-    matrix(0, 0) = x_scale;
-    matrix(1, 1) = (invertY ? -1.0 : 1.0) * y_scale;
-    return matrix;
-}
-
-enum class SourceTransformOrigin { BottomLeft, TopLeft };
-
-static QMatrix3x3 sourceTransform(const QRectF &subTexture, const QSize &textureSize, SourceTransformOrigin origin)
-{
-    qreal x_scale = subTexture.width() / textureSize.width();
-    qreal y_scale = subTexture.height() / textureSize.height();
-    const QPointF topLeft = subTexture.topLeft();
-    const qreal x_translate = topLeft.x() / textureSize.width();
-    qreal y_translate = topLeft.y() / textureSize.height();
-
-    if (origin == SourceTransformOrigin::TopLeft) {
-        y_scale = -y_scale;
-        y_translate = 1.0 - y_translate;
-    }
-
-    QMatrix3x3 matrix;
-    matrix(0, 2) = x_translate;
-    matrix(1, 2) = y_translate;
-    matrix(0, 0) = x_scale;
-    matrix(1, 1) = y_scale;
-    return matrix;
-}
 
 static inline QRect toBottomLeftRect(const QRect &topLeftRect, int windowHeight)
 {
