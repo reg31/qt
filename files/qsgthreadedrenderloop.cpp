@@ -131,7 +131,13 @@ public:
 class WMExposedEvent : public WMWindowEvent
 {
 public:
-    WMExposedEvent(QQuickWindow *c) : WMWindowEvent(c) {}
+    WMExposedEvent(QQuickWindow *c)
+        : WMWindowEvent(c)
+        , size(c->size())
+        , dpr(float(c->effectiveDevicePixelRatio()))
+    {}
+    QSize size;
+    float dpr;
 };
 
 class WMTryReleaseEvent : public WMWindowEvent
