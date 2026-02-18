@@ -304,6 +304,24 @@ void ShaderManager::clearCachedRendererData()
     }
 }
 
+void qsg_dumpShadowRoots(BatchRootInfo *i, int indent)
+{
+    QByteArray ind(indent + 10, ' ');
+
+    if (!i) {
+        qDebug("%s - no info", ind.constData());
+    } else {
+        qDebug() << ind.constData() << "- parent:" << i->parentRoot
+                 << "orders" << i->firstOrder << "->" << i->lastOrder
+                 << ", avail:" << i->availableOrders;
+        for (QSet<Node *>::const_iterator it = i->subRoots.constBegin();
+             it != i->subRoots.constEnd(); ++it) {
+            qDebug() << ind.constData() << "-" << *it;
+            qsg_dumpShadowRoots((*it)->rootInfo(), indent + 1);
+        }
+    }
+}
+
 #ifndef QT_NO_DEBUG_OUTPUT
 static void qsg_dumpShadowRoots_r(Node *n, int indent)
 {
@@ -330,33 +348,6 @@ void qsg_dumpShadowRoots(Node *n)
 {
 #ifndef QT_NO_DEBUG_OUTPUT
     qsg_dumpShadowRoots_r(n, 0);
-#else
-    Q_UNUSED(n);
-#endif
-}
-
-void qsg_dumpShadowRoots(Node *n)
-{
-#ifndef QT_NO_DEBUG_OUTPUT
-    static int indent = 0;
-    ++indent;
-
-    QByteArray ind(indent, ' ');
-
-    if (n->type() == QSGNode::ClipNodeType || n->isBatchRoot) {
-        qDebug() << ind.constData() << "[X]" << n->sgNode << Qt::hex << uint(n->sgNode->flags());
-        qsg_dumpShadowRoots(n->rootInfo(), indent);
-    } else {
-        QDebug d = qDebug();
-        d << ind.constData() << "[ ]" << n->sgNode << Qt::hex << uint(n->sgNode->flags());
-        if (n->type() == QSGNode::GeometryNodeType)
-            d << "order" << Qt::dec << n->element()->order;
-    }
-
-    SHADOWNODE_TRAVERSE(n)
-            qsg_dumpShadowRoots(child);
-
-    --indent;
 #else
     Q_UNUSED(n);
 #endif
