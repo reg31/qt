@@ -158,10 +158,8 @@ QRhiCommandBuffer::IndexFormat qsg_indexFormat(const QSGGeometry *geometry)
     switch (geometry->indexType()) {
     case QSGGeometry::UnsignedShortType:
         return QRhiCommandBuffer::IndexUInt16;
-        break;
     case QSGGeometry::UnsignedIntType:
         return QRhiCommandBuffer::IndexUInt32;
-        break;
     default:
         Q_UNREACHABLE_RETURN(QRhiCommandBuffer::IndexUInt16);
     }
@@ -188,13 +186,11 @@ QRhiGraphicsPipeline::Topology qsg_topology(int geomDrawMode, QRhi *rhi)
         break;
     case QSGGeometry::DrawTriangleFan:
     {
-        static bool triangleFanSupported = false;
-        static bool triangleFanSupportChecked = false;
-        if (!triangleFanSupportChecked) {
-            triangleFanSupportChecked = true;
-            triangleFanSupported = rhi->isFeatureSupported(QRhi::TriangleFanTopology);
-        }
-        if (triangleFanSupported) {
+        static QBasicAtomicInt s_checked = Q_BASIC_ATOMIC_INITIALIZER(0);
+        static bool s_supported = false;
+        if (s_checked.testAndSetAcquire(0, 1))
+            s_supported = rhi->isFeatureSupported(QRhi::TriangleFanTopology);
+        if (s_supported) {
             topology = QRhiGraphicsPipeline::TriangleFan;
             break;
         }
@@ -308,25 +304,35 @@ void ShaderManager::clearCachedRendererData()
     }
 }
 
-void qsg_dumpShadowRoots(BatchRootInfo *i, int indent)
+#ifndef QT_NO_DEBUG_OUTPUT
+static void qsg_dumpShadowRoots_r(Node *n, int indent)
 {
-    static int extraIndent = 0;
-    ++extraIndent;
+    QByteArray ind(indent, ' ');
 
-    QByteArray ind(indent + extraIndent + 10, ' ');
-
-    if (!i) {
-        qDebug("%s - no info", ind.constData());
+    if (n->type() == QSGNode::ClipNodeType || n->isBatchRoot) {
+        qDebug() << ind.constData() << "[X]" << n->sgNode
+                 << Qt::hex << uint(n->sgNode->flags());
+        qsg_dumpShadowRoots(n->rootInfo(), indent);
     } else {
-        qDebug() << ind.constData() << "- parent:" << i->parentRoot << "orders" << i->firstOrder << "->" << i->lastOrder << ", avail:" << i->availableOrders;
-        for (QSet<Node *>::const_iterator it = i->subRoots.constBegin();
-             it != i->subRoots.constEnd(); ++it) {
-            qDebug() << ind.constData() << "-" << *it;
-            qsg_dumpShadowRoots((*it)->rootInfo(), indent);
-        }
+        QDebug d = qDebug();
+        d << ind.constData() << "[ ]" << n->sgNode
+          << Qt::hex << uint(n->sgNode->flags());
+        if (n->type() == QSGNode::GeometryNodeType)
+            d << "order" << Qt::dec << n->element()->order;
     }
 
-    --extraIndent;
+    SHADOWNODE_TRAVERSE(n)
+        qsg_dumpShadowRoots_r(child, indent + 1);
+}
+#endif
+
+void qsg_dumpShadowRoots(Node *n)
+{
+#ifndef QT_NO_DEBUG_OUTPUT
+    qsg_dumpShadowRoots_r(n, 0);
+#else
+    Q_UNUSED(n);
+#endif
 }
 
 void qsg_dumpShadowRoots(Node *n)
@@ -1976,9 +1982,48 @@ static inline float calculateElementZOrder(const Element *e, qreal zRange)
  * iBase: The starting index for this element in the batch
  */
 
-void Renderer::uploadMergedElement(Element *e, int vaOffset, char **vertexData, char **zData, char **indexData, void *iBasePtr, int *indexCount)
+template<typename IndexType>
+static void uploadMergedElementIndices(QSGGeometry *g,
+                                       IndexType *indices,
+                                       IndexType *iBase,
+                                       int &iCount,
+                                       const int vCount,
+                                       const int drawingMode)
 {
-    if (Q_UNLIKELY(debug_upload())) qDebug() << "  - uploading element:" << e << e->node << (void *) *vertexData << (qintptr) (*zData - *vertexData) << (qintptr) (*indexData - *vertexData);
+    if (iCount == 0) {
+        iCount = vCount;
+        if (drawingMode == QSGGeometry::DrawTriangleStrip)
+            *indices++ = *iBase;
+        else
+            iCount = qsg_fixIndexCount(iCount, drawingMode);
+        for (int i = 0; i < iCount; ++i)
+            indices[i] = *iBase + i;
+    } else {
+        const quint16 *src = g->indexDataAsUShort();
+        if (drawingMode == QSGGeometry::DrawTriangleStrip)
+            *indices++ = *iBase + src[0];
+        else
+            iCount = qsg_fixIndexCount(iCount, drawingMode);
+        for (int i = 0; i < iCount; ++i)
+            indices[i] = *iBase + src[i];
+    }
+    if (drawingMode == QSGGeometry::DrawTriangleStrip) {
+        indices[iCount] = indices[iCount - 1];
+        iCount += 2;
+    }
+    *iBase += vCount;
+}
+
+void Renderer::uploadMergedElement(Element *e, int vaOffset, char **vertexData,
+                                   char **zData, char **indexData,
+                                   void *iBasePtr, int *indexCount)
+{
+    if (Q_UNLIKELY(debug_upload()))
+        qDebug() << "  - uploading element:" << e << e->node
+                 << (void *) *vertexData
+                 << (qintptr)(*zData - *vertexData)
+                 << (qintptr)(*indexData - *vertexData);
+
     QSGGeometry *g = e->node->geometry();
 
     const QMatrix4x4 &localx = *e->node->matrix();
@@ -1988,17 +2033,16 @@ void Renderer::uploadMergedElement(Element *e, int vaOffset, char **vertexData, 
     const int vSize = g->sizeOfVertex();
     memcpy(*vertexData, g->vertexData(), vSize * vCount);
 
-    // apply vertex transform..
     char *vdata = *vertexData + vaOffset;
     if (localx.flags() == QMatrix4x4::Translation) {
-        for (int i=0; i<vCount; ++i) {
+        for (int i = 0; i < vCount; ++i) {
             Pt *p = (Pt *) vdata;
             p->x += localxdata[12];
             p->y += localxdata[13];
             vdata += vSize;
         }
     } else if (localx.flags() > QMatrix4x4::Translation) {
-        for (int i=0; i<vCount; ++i) {
+        for (int i = 0; i < vCount; ++i) {
             ((Pt *) vdata)->map(localx);
             vdata += vSize;
         }
@@ -2007,73 +2051,28 @@ void Renderer::uploadMergedElement(Element *e, int vaOffset, char **vertexData, 
     if (useDepthBuffer()) {
         float *vzorder = (float *) *zData;
         float zorder = calculateElementZOrder(e, m_zRange);
-        for (int i=0; i<vCount; ++i)
+        for (int i = 0; i < vCount; ++i)
             vzorder[i] = zorder;
         *zData += vCount * sizeof(float);
     }
 
     int iCount = g->indexCount();
+    const int drawingMode = g->drawingMode();
+
     if (m_uint32IndexForRhi) {
-        // can only happen when using the rhi
-        quint32 *iBase = (quint32 *) iBasePtr;
-        quint32 *indices = (quint32 *) *indexData;
-        if (iCount == 0) {
-            iCount = vCount;
-            if (g->drawingMode() == QSGGeometry::DrawTriangleStrip)
-                *indices++ = *iBase;
-            else
-                iCount = qsg_fixIndexCount(iCount, g->drawingMode());
-
-            for (int i=0; i<iCount; ++i)
-                indices[i] = *iBase + i;
-        } else {
-            // source index data in QSGGeometry is always ushort (we would not merge otherwise)
-            const quint16 *srcIndices = g->indexDataAsUShort();
-            if (g->drawingMode() == QSGGeometry::DrawTriangleStrip)
-                *indices++ = *iBase + srcIndices[0];
-            else
-                iCount = qsg_fixIndexCount(iCount, g->drawingMode());
-
-            for (int i=0; i<iCount; ++i)
-                indices[i] = *iBase + srcIndices[i];
-        }
-        if (g->drawingMode() == QSGGeometry::DrawTriangleStrip) {
-            indices[iCount] = indices[iCount - 1];
-            iCount += 2;
-        }
-        *iBase += vCount;
+        uploadMergedElementIndices<quint32>(g,
+            reinterpret_cast<quint32 *>(*indexData),
+            reinterpret_cast<quint32 *>(iBasePtr),
+            iCount, vCount, drawingMode);
     } else {
-        // normally batching is only done for ushort index data
-        quint16 *iBase = (quint16 *) iBasePtr;
-        quint16 *indices = (quint16 *) *indexData;
-        if (iCount == 0) {
-            iCount = vCount;
-            if (g->drawingMode() == QSGGeometry::DrawTriangleStrip)
-                *indices++ = *iBase;
-            else
-                iCount = qsg_fixIndexCount(iCount, g->drawingMode());
-
-            for (int i=0; i<iCount; ++i)
-                indices[i] = *iBase + i;
-        } else {
-            const quint16 *srcIndices = g->indexDataAsUShort();
-            if (g->drawingMode() == QSGGeometry::DrawTriangleStrip)
-                *indices++ = *iBase + srcIndices[0];
-            else
-                iCount = qsg_fixIndexCount(iCount, g->drawingMode());
-
-            for (int i=0; i<iCount; ++i)
-                indices[i] = *iBase + srcIndices[i];
-        }
-        if (g->drawingMode() == QSGGeometry::DrawTriangleStrip) {
-            indices[iCount] = indices[iCount - 1];
-            iCount += 2;
-        }
-        *iBase += vCount;
+        uploadMergedElementIndices<quint16>(g,
+            reinterpret_cast<quint16 *>(*indexData),
+            reinterpret_cast<quint16 *>(iBasePtr),
+            iCount, vCount, drawingMode);
     }
 
     *vertexData += vCount * vSize;
-    *indexData += iCount * mergedIndexElemSize();
+    *indexData  += iCount * mergedIndexElemSize();
     *indexCount += iCount;
 }
 
@@ -4236,18 +4235,27 @@ bool operator!=(const GraphicsState &a, const GraphicsState &b) noexcept
 
 size_t qHash(const GraphicsState &s, size_t seed) noexcept
 {
-    // do not bother with all fields
-    return seed
-            + s.depthTest * 1000
-            + s.depthWrite * 100
-            + s.depthFunc
-            + s.blending * 10
-            + s.srcColor
-            + s.cullMode
-            + s.usesScissor
-            + s.stencilTest
-            + s.sampleCount
-            + s.multiViewCount;
+    return qHashMulti(seed,
+        s.depthTest,
+        s.depthWrite,
+        s.depthFunc,
+        s.blending,
+        s.srcColor,
+        s.dstColor,
+        s.srcAlpha,
+        s.dstAlpha,
+        s.opColor,
+        s.opAlpha,
+        s.colorWrite,
+        s.cullMode,
+        s.usesScissor,
+        s.stencilTest,
+        s.sampleCount,
+        s.drawMode,
+        s.lineWidth,
+        s.polygonMode,
+        s.multiViewCount
+    );
 }
 
 bool operator==(const GraphicsPipelineStateKey &a, const GraphicsPipelineStateKey &b) noexcept
@@ -4285,7 +4293,7 @@ bool operator!=(const ShaderKey &a, const ShaderKey &b) noexcept
 
 size_t qHash(const ShaderKey &k, size_t seed) noexcept
 {
-    return qHash(k.type, seed) ^ int(k.renderMode) ^ k.multiViewCount;
+    return qHashMulti(seed, k.type, int(k.renderMode), k.multiViewCount);
 }
 
 Visualizer::Visualizer(Renderer *renderer)
