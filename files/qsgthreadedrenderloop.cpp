@@ -1095,16 +1095,14 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
         w->thread->postEvent(new WMWindowEvent(w->window, QEvent::Type(WM_Exposed)));
         w->thread->mutex.unlock();
     }
-   
     polishAndSync(w, true);
     startOrStopAnimationTimer();
-    QPointer<QQuickWindow> safeWindow = window;
+    Pointer<QQuickWindow> safeWindow = window;
     QMetaObject::invokeMethod(this, [safeWindow]() {
         if (safeWindow && safeWindow->isExposed())
             safeWindow->requestUpdate();
     }, Qt::QueuedConnection);
 }
-
 /*
     This function posts an event to the render thread to remove the window
     from the list of windowses to render.
@@ -1372,7 +1370,6 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
     Q_QUICK_SG_PROFILE_RECORD(QQuickProfiler::SceneGraphPolishAndSync,
                               QQuickProfiler::SceneGraphPolishAndSyncPolish);
 
-    // ✅ IMPROVEMENT: removed redundant !w->thread->window check after re-lookup
     w = windowFor(window);
     if (!w || !w->thread || !w->thread->window) {
         qCDebug(QSG_LOG_RENDERLOOP, "- removed after polishing, abort");
@@ -1384,13 +1381,10 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
 
     emit window->afterAnimating();
 
-    // ✅ IMPROVEMENT: scProxyData computed before acquiring mutex
     const QRhiSwapChainProxyData scProxyData =
             QRhi::updateSwapChainProxyData(QSGRhiSupport::instance()->rhiBackend(), window);
 
     qCDebug(QSG_LOG_RENDERLOOP, "- lock for sync");
-
-    // ✅ IMPROVEMENT: QMutexLocker instead of manual lock/unlock (exception-safe)
     {
         QMutexLocker lock(&w->thread->mutex);
         m_lockedForSync = true;
