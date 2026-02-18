@@ -377,11 +377,13 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
         return true;
     },
     [&](WMExposedEvent &e) {
-    qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "WM_Exposed");
+		qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "WM_Exposed");
 		window = e.window;
 		windowSize = e.size;
 		dpr = e.dpr;
-		ensureRhi();
+		auto *cd = QQuickWindowPrivate::get(window);
+		if (rhi && cd->swapchain)
+			ensureRhi();
 		return true;
 	},
     [&](WMSyncEvent &e) {
