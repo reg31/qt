@@ -1097,9 +1097,14 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
         w->psTimeAccumulator = 0.0f;
         w->psTimeSampleCount = 0;
         w->timeBetweenPolishAndSyncs.start();
-		connect(window, &QWindow::visibleChanged, this, [window](bool visible) {
-            if (visible)
-                window->update();
+		connect(window, &QWindow::visibleChanged, this, [this, window](bool visible) {
+            if (visible) {
+                Window *w = windowFor(window);
+                if (w && w->thread->isRunning()) {
+                    w->forceRenderPass = true;
+                    polishAndSync(w, true);
+                }
+            }
         });
     }
     if (!w->window->handle()) [[unlikely]] window->create();
