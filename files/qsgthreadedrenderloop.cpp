@@ -605,6 +605,7 @@ void QSGRenderThread::syncAndRender()
     auto *cd = QQuickWindowPrivate::get(window);
     const bool syncRequested = (pendingUpdate & SyncRequest);
     const bool exposeRequested = (pendingUpdate & ExposeRequest) == ExposeRequest;
+    const bool repaintRequested = (pendingUpdate & RepaintRequest);
     pendingUpdate = 0;
 
     const bool hasValidSwapChain = (cd->swapchain && windowSize.isValid());
@@ -624,7 +625,7 @@ void QSGRenderThread::syncAndRender()
     }
 
     if (syncRequested && !syncResultedInChanges && !exposeRequested
-            && !(pendingUpdate & RepaintRequest)) {
+            && lastFrameValid && !repaintRequested) {
         qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- sync produced no changes, skipping render");
         return;
     }
@@ -696,31 +697,6 @@ void QSGRenderThread::syncAndRender()
 
     if (hasValidSwapChain) [[likely]]
         emit window->afterFrameEnd();
-}
-
-void QSGRenderThread::postEvent(QSGRenderThreadEvent e)
-{
-    eventQueue.addEvent(std::move(e));
-}
-
-void QSGRenderThread::processEvents()
-{
-    qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "--- begin processEvents()");
-    auto batch = eventQueue.drain();
-    for (auto &e : batch)
-        processEvent(e);
-    qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "--- done processEvents()");
-}
-
-void QSGRenderThread::processEventsAndWaitForMore()
-{
-    qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "--- begin processEventsAndWaitForMore()");
-    stopEventProcessing = false;
-    while (!stopEventProcessing) {
-        QSGRenderThreadEvent e = eventQueue.takeEventOrWait();
-        processEvent(e);
-    }
-    qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "--- done processEventsAndWaitForMore()");
 }
 
 void QSGRenderThread::ensureRhi()
@@ -1160,9 +1136,7 @@ void QSGThreadedRenderLoop::handleObscurity(Window *w)
             qCDebug(QSG_LOG_RENDERLOOP, "- updatesEnabled is false, abort");
             return;
         }
-        QMutexLocker locker(&w->thread->mutex);
         w->thread->postEvent(WMObscureEvent(w->window));
-        w->thread->waitCondition.wait(&w->thread->mutex);
     }
     startOrStopAnimationTimer();
 }
