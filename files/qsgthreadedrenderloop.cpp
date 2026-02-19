@@ -1529,14 +1529,15 @@ QImage QSGThreadedRenderLoop::grab(QQuickWindow *window)
     if (!window->handle())
         window->create();
 
+    qCDebug(QSG_LOG_RENDERLOOP, "- polishing items");
+    QQuickWindowPrivate *d = QQuickWindowPrivate::get(window);
+    m_inPolish = true;
+    d->polishItems();
+    m_inPolish = false;
+
     QImage result;
     {
         QMutexLocker locker(&w->thread->mutex);
-        qCDebug(QSG_LOG_RENDERLOOP, "- polishing items");
-        QQuickWindowPrivate *d = QQuickWindowPrivate::get(window);
-        m_inPolish = true;
-        d->polishItems();
-        m_inPolish = false;
         m_lockedForSync = true;
         qCDebug(QSG_LOG_RENDERLOOP, "- posting grab event");
         w->thread->postEvent(WMGrabEvent(window, &result));
