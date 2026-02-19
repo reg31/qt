@@ -1160,7 +1160,9 @@ void QSGThreadedRenderLoop::handleObscurity(Window *w)
             qCDebug(QSG_LOG_RENDERLOOP, "- updatesEnabled is false, abort");
             return;
         }
+        QMutexLocker locker(&w->thread->mutex);
         w->thread->postEvent(WMObscureEvent(w->window));
+        w->thread->waitCondition.wait(&w->thread->mutex);
     }
     startOrStopAnimationTimer();
 }
