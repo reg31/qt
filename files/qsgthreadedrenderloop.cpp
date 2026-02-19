@@ -362,21 +362,18 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
 {
     return std::visit(overloaded {
     [&](WMObscureEvent &e) {
-        qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "WM_Obscure");
-
-        Q_ASSERT(!window || window == e.window);
-
-        mutex.lock();
-        if (window) {
-            QQuickWindowPrivate::get(window)->fireAboutToStop();
-            qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- window removed");
-            window = nullptr;
-        }
-        waitCondition.wakeOne();
-        mutex.unlock();
-
-        return true;
-    },
+		qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "WM_Obscure");
+		mutex.lock();
+		if (window) {
+			QQuickWindowPrivate::get(window)->fireAboutToStop();
+			qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- window removed");
+			window = nullptr;
+			lastFrameValid = false;
+		}
+		waitCondition.wakeOne();
+		mutex.unlock();
+		return true;
+	},
     [&](WMExposedEvent &e) {
 		qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "WM_Exposed");
 		window = e.window;
@@ -474,18 +471,18 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
         return true;
     },
     [&](WMReleaseSwapchainEvent &e) {
-        qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "WM_ReleaseSwapchain");
-        // forget about 'window' here that may be null when already unexposed
-        Q_ASSERT(e.window);
-        mutex.lock();
-        if (e.window) {
-            wm->releaseSwapchain(e.window);
-            qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- swapchain released");
-        }
-        waitCondition.wakeOne();
-        mutex.unlock();
-        return true;
-    }
+		qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "WM_ReleaseSwapchain");
+		Q_ASSERT(e.window);
+		mutex.lock();
+		if (e.window) {
+			wm->releaseSwapchain(e.window);
+			lastFrameValid = false;
+			qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- swapchain released");
+		}
+		waitCondition.wakeOne();
+		mutex.unlock();
+		return true;
+	}
     }, e);
 }
 
