@@ -1349,10 +1349,10 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
 
     QQuickWindowPrivate::get(window)->deliveryAgentPrivate()->flushFrameSynchronousEvents(window);
     w = windowFor(window);
-    if (!w || !w->thread || !w->thread->window) {
-        qCDebug(QSG_LOG_RENDERLOOP, "- removed after event flushing, abort");
-        return;
-    }
+    if (!w || !w->thread || (!w->thread->window && !inExpose)) {
+		qCDebug(QSG_LOG_RENDERLOOP, "- removed after event flushing, abort");
+		return;
+	}
 
     Q_TRACE_SCOPE(QSG_polishAndSync);
     QElapsedTimer timer;
@@ -1405,7 +1405,7 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
     Q_QUICK_SG_PROFILE_RECORD(QQuickProfiler::SceneGraphPolishAndSync,
                               QQuickProfiler::SceneGraphPolishAndSyncPolish);
 
-    iif (!w->thread || (!w->thread->window && !inExpose)) {
+    if (!w->thread || (!w->thread->window && !inExpose)) {
         qCDebug(QSG_LOG_RENDERLOOP, "- removed after polishing, abort");
         return;
     }
