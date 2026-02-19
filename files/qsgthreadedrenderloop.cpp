@@ -338,6 +338,7 @@ public:
     bool rhiDoomed = false;
     bool guiNotifiedAboutRhiFailure = false;
     bool swRastFallbackDueToSwapchainFailure = false;
+	bool lastFrameValid = false;
 
     // Local event queue stuff...
     bool stopEventProcessing;
@@ -507,7 +508,6 @@ void QSGRenderThread::invalidateGraphics(QQuickWindow *window, bool inDestructor
 
     QQuickWindowPrivate *dd = QQuickWindowPrivate::get(window);
 
-    // The canvas nodes must be cleaned up regardless if we are in the destructor..
     if (wipeSG) {
         dd->cleanupNodesOnShutdown();
 #if QT_CONFIG(quick_shadereffect)
@@ -525,11 +525,11 @@ void QSGRenderThread::invalidateGraphics(QQuickWindow *window, bool inDestructor
 
     qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- invalidating scene graph");
 
+    lastFrameValid = false;
+
     if (wipeGraphics) {
         if (dd->swapchain) {
             if (window->handle()) {
-                // We get here when exiting via QCoreApplication::quit() instead of
-                // through QWindow::close().
                 wm->releaseSwapchain(window);
             } else {
                 qWarning("QSGThreadedRenderLoop cleanup with QQuickWindow %p swapchain %p still alive, this should not happen.",
@@ -587,6 +587,7 @@ void QSGRenderThread::teardownGraphics()
     if (ownRhi)
         QSGRhiSupport::instance()->destroyRhi(rhi, {});
     rhi = nullptr;
+    lastFrameValid = false;
 }
 
 void QSGRenderThread::handleDeviceLoss()
@@ -682,11 +683,15 @@ void QSGRenderThread::syncAndRender()
             if (rhi->isDeviceLost())
                 handleDeviceLoss();
             QCoreApplication::postEvent(window, new QEvent(QEvent::Type(QQuickWindowPrivate::FullUpdateRequest)));
+            lastFrameValid = false;
+        } else {
+            lastFrameValid = true;
         }
 
         cd->fireFrameSwapped();
     } else if (gpuStarted) {
         rhi->endFrame(cd->swapchain, QRhi::SkipPresent);
+        lastFrameValid = false;
     }
 
     if (hasValidSwapChain) [[likely]]
