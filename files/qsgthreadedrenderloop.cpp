@@ -1097,11 +1097,9 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
         w->psTimeAccumulator = 0.0f;
         w->psTimeSampleCount = 0;
         w->timeBetweenPolishAndSyncs.start();
-		cconnect(window, &QWindow::visibleChanged, this, [window](bool visible) {
-            if (visible) {
-                QCoreApplication::sendPostedEvents(window, QEvent::UpdateRequest);
+		connect(window, &QWindow::visibleChanged, this, [window](bool visible) {
+            if (visible)
                 window->update();
-            }
         });
     }
     if (!w->window->handle()) [[unlikely]] window->create();
