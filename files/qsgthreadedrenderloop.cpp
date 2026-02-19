@@ -849,15 +849,6 @@ QSGThreadedRenderLoop::QSGThreadedRenderLoop()
     connect(m_animation_driver, SIGNAL(stopped()), this, SLOT(animationStopped()));
 
     m_animation_driver->install();
-
-    connect(qGuiApp, &QGuiApplication::applicationStateChanged, this, [this](Qt::ApplicationState state) {
-        if (state == Qt::ApplicationActive) {
-            for (const auto &w : std::as_const(m_windows)) {
-                if (w.window->isVisible() && w.window->isExposed())
-                    w.window->update();
-            }
-        }
-    });
 }
 
 QSGThreadedRenderLoop::~QSGThreadedRenderLoop()
@@ -1106,6 +1097,12 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
         w->psTimeAccumulator = 0.0f;
         w->psTimeSampleCount = 0;
         w->timeBetweenPolishAndSyncs.start();
+		cconnect(window, &QWindow::visibleChanged, this, [this, window](bool visible) {
+            if (visible) {
+                QCoreApplication::sendPostedEvents(window, QEvent::UpdateRequest);
+                window->update();
+            }
+        });
     }
     if (!w->window->handle()) [[unlikely]] window->create();
     if (!w->thread->isRunning()) {
