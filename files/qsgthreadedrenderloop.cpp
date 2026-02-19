@@ -1155,10 +1155,7 @@ void QSGThreadedRenderLoop::handleObscurity(Window *w)
             qCDebug(QSG_LOG_RENDERLOOP, "- updatesEnabled is false, abort");
             return;
         }
-        w->thread->mutex.lock();
         w->thread->postEvent(WMObscureEvent(w->window));
-        w->thread->waitCondition.wait(&w->thread->mutex);
-        w->thread->mutex.unlock();
     }
     startOrStopAnimationTimer();
 }
@@ -1529,15 +1526,14 @@ QImage QSGThreadedRenderLoop::grab(QQuickWindow *window)
     if (!window->handle())
         window->create();
 
-    qCDebug(QSG_LOG_RENDERLOOP, "- polishing items");
-    QQuickWindowPrivate *d = QQuickWindowPrivate::get(window);
-    m_inPolish = true;
-    d->polishItems();
-    m_inPolish = false;
-
     QImage result;
     {
-        QMutexLocker lock(&w->thread->mutex);
+        QMutexLocker locker(&w->thread->mutex);
+        qCDebug(QSG_LOG_RENDERLOOP, "- polishing items");
+        QQuickWindowPrivate *d = QQuickWindowPrivate::get(window);
+        m_inPolish = true;
+        d->polishItems();
+        m_inPolish = false;
         m_lockedForSync = true;
         qCDebug(QSG_LOG_RENDERLOOP, "- posting grab event");
         w->thread->postEvent(WMGrabEvent(window, &result));
