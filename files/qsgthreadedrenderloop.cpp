@@ -699,6 +699,31 @@ void QSGRenderThread::syncAndRender()
         emit window->afterFrameEnd();
 }
 
+void QSGRenderThread::postEvent(QSGRenderThreadEvent e)
+{
+    eventQueue.addEvent(std::move(e));
+}
+
+void QSGRenderThread::processEvents()
+{
+    qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "--- begin processEvents()");
+    auto batch = eventQueue.drain();
+    for (auto &e : batch)
+        processEvent(e);
+    qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "--- done processEvents()");
+}
+
+void QSGRenderThread::processEventsAndWaitForMore()
+{
+    qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "--- begin processEventsAndWaitForMore()");
+    stopEventProcessing = false;
+    while (!stopEventProcessing) {
+        QSGRenderThreadEvent e = eventQueue.takeEventOrWait();
+        processEvent(e);
+    }
+    qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "--- done processEventsAndWaitForMore()");
+}
+
 void QSGRenderThread::ensureRhi()
 {
     auto *cd = QQuickWindowPrivate::get(window);
