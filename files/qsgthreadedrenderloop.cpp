@@ -1343,7 +1343,7 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
     qCDebug(QSG_LOG_RENDERLOOP) << "polishAndSync" << (inExpose ? "(in expose)" : "(normal)") << w->window;
 
     QQuickWindow *window = w->window;
-    if (!w->thread || !w->thread->window) {
+    if (!w->thread || (!w->thread->window && !inExpose)) {
         qCDebug(QSG_LOG_RENDERLOOP, "- not exposed, abort");
         return;
     }
