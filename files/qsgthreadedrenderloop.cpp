@@ -437,17 +437,18 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
         Q_ASSERT(e.window);
         Q_ASSERT(e.window == window || !window);
         mutex.lock();
-        if (e.window) {
-            if (rhi) {
-                QQuickWindowPrivate *cd = QQuickWindowPrivate::get(e.window);
-                // The assumption is that the swapchain is usable, because on
-                // expose the thread starts up and renders a frame so one cannot
-                // get here without having done at least one on-screen frame.
+        if (e.window && rhi) {
+            QQuickWindowPrivate *cd = QQuickWindowPrivate::get(e.window);
+            if (!lastFrameValid) {
                 cd->rhi->beginFrame(cd->swapchain);
-                cd->rhi->makeThreadLocalNativeContextCurrent(); // for custom GL rendering before/during/after sync
+                cd->rhi->makeThreadLocalNativeContextCurrent();
                 cd->syncSceneGraph();
                 sgrc->endSync();
                 cd->renderSceneGraph();
+                *e.image = QSGRhiSupport::instance()->grabAndBlockInCurrentFrame(rhi, cd->swapchain->currentFrameCommandBuffer());
+                cd->rhi->endFrame(cd->swapchain, QRhi::SkipPresent);
+            } else {
+                cd->rhi->beginFrame(cd->swapchain);
                 *e.image = QSGRhiSupport::instance()->grabAndBlockInCurrentFrame(rhi, cd->swapchain->currentFrameCommandBuffer());
                 cd->rhi->endFrame(cd->swapchain, QRhi::SkipPresent);
             }
@@ -553,8 +554,8 @@ void QSGRenderThread::sync(bool inExpose)
         if (d->renderer) [[likely]] {
             if (d->renderer != m_connectedRenderer) {
                 if (m_connectedRenderer)
-                    disconnect(m_connectedRenderer, SIGNAL(sceneGraphChanged()), this, SLOT(sceneGraphChanged()));
-                connect(d->renderer, SIGNAL(sceneGraphChanged()), this, SLOT(sceneGraphChanged()), Qt::DirectConnection);
+                    disconnect(m_connectedRenderer, &QSGRenderer::sceneGraphChanged, this, &QSGRenderThread::sceneGraphChanged);
+                connect(d->renderer, &QSGRenderer::sceneGraphChanged, this, &QSGRenderThread::sceneGraphChanged, Qt::DirectConnection);
                 m_connectedRenderer = d->renderer;
             }
             d->renderer->clearChangedFlag();
@@ -816,7 +817,7 @@ void QSGRenderThread::run()
         QMacAutoReleasePool frameReleasePool;
 #endif
         processEvents();
-        QCoreApplication::processEvents();
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
 
         if (window) [[likely]] {
             ensureRhi();
@@ -848,8 +849,8 @@ QSGThreadedRenderLoop::QSGThreadedRenderLoop()
 {
     m_animation_driver = sg->createAnimationDriver(this);
 
-    connect(m_animation_driver, SIGNAL(started()), this, SLOT(animationStarted()));
-    connect(m_animation_driver, SIGNAL(stopped()), this, SLOT(animationStopped()));
+    connect(m_animation_driver, &QAnimationDriver::started, this, &QSGThreadedRenderLoop::animationStarted);
+	connect(m_animation_driver, &QAnimationDriver::stopped, this, &QSGThreadedRenderLoop::animationStopped);
 
     m_animation_driver->install();
 }
@@ -1404,7 +1405,7 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
     Q_QUICK_SG_PROFILE_RECORD(QQuickProfiler::SceneGraphPolishAndSync,
                               QQuickProfiler::SceneGraphPolishAndSyncPolish);
 
-    if (!w->thread || !w->thread->window) {
+    iif (!w->thread || (!w->thread->window && !inExpose)) {
         qCDebug(QSG_LOG_RENDERLOOP, "- removed after polishing, abort");
         return;
     }
