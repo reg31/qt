@@ -623,7 +623,7 @@ void QSGRenderThread::syncAndRender()
     }
 
     if (syncRequested && !syncResultedInChanges && !exposeRequested
-            && lastFrameValid && !repaintRequested) {
+        && lastFrameValid && !repaintRequested && !animatorDriver->isRunning()) {
         qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- sync produced no changes, skipping render");
         return;
     }
