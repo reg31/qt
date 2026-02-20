@@ -1688,34 +1688,19 @@ void Renderer::invalidateBatchAndOverlappingRenderOrders(Batch *batch)
     Q_ASSERT(batch->first);
 
     int first = batch->first->order;
-    int last  = batch->lastOrderInBatch;
-
-    const int wideFirst = (m_renderOrderRebuildLower >= 0) ? qMin(m_renderOrderRebuildLower, first) : first;
-    const int wideLast  = (m_renderOrderRebuildUpper >= 0) ? qMax(m_renderOrderRebuildUpper, last)  : last;
-
-    const auto batches    = std::span(m_alphaBatches.data(),    m_alphaBatches.size());
-    const auto renderList = std::span(m_alphaRenderList.data(), m_alphaRenderList.size());
-
-    if ((wideFirst < first || wideLast > last)
-        && std::ranges::any_of(batches, [&](Batch *b) {
-               if (!b->first || b == batch) return false;
-               const int bf = b->first->order, bl = b->lastOrderInBatch;
-               return (bl > wideFirst && bf < wideLast) && !(bl > first && bf < last);
-           })
-        && std::ranges::any_of(renderList, [&](Element *e) {
-               return e && e->batch && e->batch != batch && e->order > first && e->order < last;
-           }))
-    {
-        first = m_renderOrderRebuildLower = wideFirst;
-        last  = m_renderOrderRebuildUpper = wideLast;
-    }
+    int last = batch->lastOrderInBatch;
 
     batch->invalidate();
 
-    std::ranges::for_each(batches, [&](Batch *b) {
-        if (b->first && b->lastOrderInBatch > first && b->first->order < last)
-            b->invalidate();
-    });
+    for (int i = 0; i < m_alphaBatches.size(); ++i) {
+        Batch *b = m_alphaBatches.at(i);
+        if (b->first) {
+            int bf = b->first->order;
+            int bl = b->lastOrderInBatch;
+            if (bl > first && bf < last)
+                b->invalidate();
+        }
+    }
 
     m_rebuild |= BuildBatches;
 }
@@ -1862,9 +1847,9 @@ void Renderer::prepareAlphaBatches()
         ei->batch = batch;
 
         QSGGeometryNode *gni = ei->node;
-        const QSGGeometry *gniGeometry = gni->geometry();
+        QSGGeometry *gniGeometry = gni->geometry();
         const QSGMaterial *gniMaterial = gni->activeMaterial();
-        const int gniDrawMode = gniGeometry->drawingMode();
+        const unsigned int gniDrawMode = gniGeometry->drawingMode();
         const float gniLineWidth = gniGeometry->lineWidth();
         batch->positionAttribute = qsg_positionAttribute(gniGeometry);
 
@@ -1890,7 +1875,7 @@ void Renderer::prepareAlphaBatches()
             if (gnj->geometry()->vertexCount() == 0)
                 continue;
 
-            const QSGGeometry *gnjGeometry = gnj->geometry();
+            QSGGeometry *gnjGeometry = gnj->geometry();
             const QSGMaterial *gnjMaterial = gnj->activeMaterial();
             if (gni->clipList() == gnj->clipList()
                     && gniDrawMode == gnjGeometry->drawingMode()
