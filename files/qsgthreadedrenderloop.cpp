@@ -685,6 +685,8 @@ void QSGRenderThread::syncAndRender()
             lastFrameValid = false;
         } else {
             lastFrameValid = true;
+			if (animatorDriver->isRunning())
+                pendingUpdate |= RepaintRequest;
         }
 
         cd->fireFrameSwapped();
