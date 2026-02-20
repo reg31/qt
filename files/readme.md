@@ -434,12 +434,12 @@ while (active) {
 ```
 
 ### Optimised
-`processEvents()` runs first, so any events posted by the GUI thread (including `WMSyncEvent`) are consumed before `syncAndRender()` reads `pendingUpdate`. `QCoreApplication::processEvents()` replaced with the narrower `sendPostedEvents(nullptr, QEvent::DeferredDelete)` — sufficient for deferred-delete cleanup without probing the system event queue.
+`processEvents()` runs first, so any events posted by the GUI thread (including `WMSyncEvent`) are consumed before `syncAndRender()` reads `pendingUpdate`. `QCoreApplication::processEvents()` replaced with `sendPostedEvents(nullptr, 0)` — passing `0` delivers all posted Qt events, including `QMetaCallEvent` (the type used by queued signal connections), so `QQuickAnimatorController` correctly receives its start/stop signals from the GUI thread. Unlike `processEvents()`, it does not probe the system event queue (sockets, file descriptors, timers), avoiding unnecessary overhead on every frame.
 
 ```cpp
 while (active) {
     processEvents();
-    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    QCoreApplication::sendPostedEvents(nullptr, 0);
     if (window) {
         ensureRhi();
         syncAndRender();
@@ -447,6 +447,8 @@ while (active) {
     // ...
 }
 ```
+
+> **Note:** Using `sendPostedEvents(nullptr, QEvent::DeferredDelete)` (type 52) instead of `0` silently drops all other posted events including `QMetaCallEvent`, causing `QQuickAnimatorController` to never receive its start signal — render-thread animators such as `BusyIndicator` stop working entirely.
 
 A pre-loop `ensureRhi()` call initialises graphics on the render thread before the first `polishAndSync` is triggered from the GUI side, allowing parallel initialisation.
 
@@ -483,7 +485,7 @@ connect(m_animation_driver, &QAnimationDriver::stopped, this, &QSGThreadedRender
 | `syncAndRender()` | Reorder sync before beginFrame; skip optimisation; `lastFrameValid` tracking; animator keepalive; `prepareSwapchain()` extraction; expose retry |
 | `invalidateGraphics()` | Add `lastFrameValid = false`; `sendPostedEvents` replaces `processEvents` |
 | `teardownGraphics()` | Add `lastFrameValid = false` |
-| `run()` | `processEvents` before `syncAndRender`; `sendPostedEvents` replaces `processEvents`; pre-loop `ensureRhi` |
+| `run()` | `processEvents` before `syncAndRender`; `sendPostedEvents(nullptr, 0)` replaces `processEvents`; pre-loop `ensureRhi` |
 | `exposureChanged()` | Extended empty-surface guard for post-release case |
 | `handleExposure()` | Async `WMExposedEvent`; seed RT data; `visibleChanged` connection |
 | `handleObscurity()` | Remove synchronous wait |
@@ -579,7 +581,7 @@ connect(m_animation_driver, &QAnimationDriver::stopped, this, &QSGThreadedRender
 | 15 | `grab()` skip when `lastFrameValid` | Performance | On grab |
 | 16 | `yieldCurrentThread` → `thread->wait()` | Performance | On destroy |
 | 17 | `processEvents` before `syncAndRender` | Correctness | Every frame |
-| 18 | `sendPostedEvents` replaces `processEvents` | Performance | Every frame |
+| 18 | `sendPostedEvents(nullptr, 0)` replaces `processEvents` | Performance | Every frame |
 | 19 | PMF signal syntax | Modernisation | Connections |
 | 20 | `lastFrameValid = false` on all teardown paths | Correctness | Minimize/reset |
 
