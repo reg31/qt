@@ -622,12 +622,6 @@ void QSGRenderThread::syncAndRender()
         sync(exposeRequested);
     }
 
-    if (syncRequested && !syncResultedInChanges && !exposeRequested
-        && lastFrameValid && !repaintRequested && !animatorDriver->isRunning()) {
-        qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- sync produced no changes, skipping render");
-        return;
-    }
-
     bool gpuStarted = false;
     if (hasValidSwapChain) [[likely]] {
         cd->swapchain->setProxyData(scProxyData);
@@ -1103,15 +1097,6 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
         w->psTimeAccumulator = 0.0f;
         w->psTimeSampleCount = 0;
         w->timeBetweenPolishAndSyncs.start();
-		connect(window, &QWindow::visibleChanged, this, [this, window](bool visible) {
-            if (visible) {
-                Window *w = windowFor(window);
-                if (w && w->thread->isRunning()) {
-                    w->forceRenderPass = true;
-                    polishAndSync(w, true);
-                }
-            }
-        });
     }
     if (!w->window->handle()) [[unlikely]] window->create();
     if (!w->thread->isRunning()) {
@@ -1233,16 +1218,21 @@ void QSGThreadedRenderLoop::maybeUpdate(Window *w)
 
     qCDebug(QSG_LOG_RENDERLOOP) << "update from item" << w->window;
 
+    // Call this function from the Gui thread later as startTimer cannot be
+    // called from the render thread.
     if (current == w->thread) {
         qCDebug(QSG_LOG_RENDERLOOP, "- on render thread");
         w->updateDuringSync = true;
         return;
     }
 
+    // An updatePolish() implementation may call update() to get the QQuickItem
+    // dirtied. That's fine but it also leads to calling this function.
+    // Requesting another update is a waste then since the updatePolish() call
+    // will be followed up with a round of sync and render.
     if (m_inPolish)
         return;
 
-    w->forceRenderPass = true;
     postUpdateRequest(w);
 }
 
