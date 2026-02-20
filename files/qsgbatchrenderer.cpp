@@ -1857,7 +1857,11 @@ void Renderer::prepareAlphaBatches()
         ei->batch = batch;
 
         QSGGeometryNode *gni = ei->node;
-        batch->positionAttribute = qsg_positionAttribute(gni->geometry());
+        const QSGGeometry *gniGeometry = gni->geometry();
+        const QSGMaterial *gniMaterial = gni->activeMaterial();
+        const int gniDrawMode = gniGeometry->drawingMode();
+        const float gniLineWidth = gniGeometry->lineWidth();
+        batch->positionAttribute = qsg_positionAttribute(gniGeometry);
 
         Rect overlapBounds;
         overlapBounds.set(FLT_MAX, FLT_MAX, -FLT_MAX, -FLT_MAX);
@@ -1881,17 +1885,13 @@ void Renderer::prepareAlphaBatches()
             if (gnj->geometry()->vertexCount() == 0)
                 continue;
 
-            const QSGGeometry *gniGeometry = gni->geometry();
-            const QSGMaterial *gniMaterial = gni->activeMaterial();
             const QSGGeometry *gnjGeometry = gnj->geometry();
             const QSGMaterial *gnjMaterial = gnj->activeMaterial();
             if (gni->clipList() == gnj->clipList()
-                    && gniGeometry->drawingMode() == gnjGeometry->drawingMode()
-                    && (gniGeometry->drawingMode() != QSGGeometry::DrawLines
-                        || (gniGeometry->lineWidth() == gnjGeometry->lineWidth()
-                            // Must not do overlap checks when the line width is not 1,
-                            // we have no knowledge how such lines are rasterized.
-                            && gniGeometry->lineWidth() == 1.0f))
+                    && gniDrawMode == gnjGeometry->drawingMode()
+                    && (gniDrawMode != QSGGeometry::DrawLines
+                        || (gniLineWidth == gnjGeometry->lineWidth()
+                            && gniLineWidth == 1.0f))
                     && gniGeometry->attributes() == gnjGeometry->attributes()
                     && gniGeometry->indexType() == gnjGeometry->indexType()
                     && gni->inheritedOpacity() == gnj->inheritedOpacity()
@@ -1904,11 +1904,6 @@ void Renderer::prepareAlphaBatches()
                     next->nextInBatch = ej;
                     next = ej;
                 } else {
-                    /* When we come across a compatible element which hits an overlap, we
-                     * need to stop the batch right away. We cannot add more elements
-                     * to the current batch as they will be rendered before the batch that the
-                     * current 'ej' will be added to.
-                     */
                     break;
                 }
             } else {
@@ -1918,8 +1913,6 @@ void Renderer::prepareAlphaBatches()
 
         batch->lastOrderInBatch = next->order;
     }
-
-
 }
 
 static inline int qsg_fixIndexCount(int iCount, int drawMode)
