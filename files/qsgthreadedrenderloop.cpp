@@ -622,6 +622,12 @@ void QSGRenderThread::syncAndRender()
         sync(exposeRequested);
     }
 
+    if (syncRequested && !syncResultedInChanges && !exposeRequested
+        && lastFrameValid && !repaintRequested && !animatorDriver->isRunning()) {
+        qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- sync produced no changes, skipping render");
+        return;
+    }
+
     bool gpuStarted = false;
     if (hasValidSwapChain) [[likely]] {
         cd->swapchain->setProxyData(scProxyData);
