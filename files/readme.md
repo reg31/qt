@@ -48,6 +48,8 @@ std::visit(overloaded { [&](WMSyncEvent &e) { ... }, ... }, e);
 
 **Benefit:** Zero heap allocation per event in steady state. No virtual dispatch. No manual memory management.
 
+> **Note:** An upstream patch proposing the same direction exists in Qt's Gerrit review queue: [699605](https://codereview.qt-project.org/c/qt/qtdeclarative/+/699605) — *"QSGThreadedRenderLoop: avoid heap allocations for render thread events"*. It has not been merged. Monitor it — if it lands, this change can be dropped in favour of the official version.
+
 ---
 
 ## Change 2 — Event Queue: Per-Event Locking → Batch Drain
