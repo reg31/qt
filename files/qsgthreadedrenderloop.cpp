@@ -361,7 +361,7 @@ template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
 bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
 {
     return std::visit(overloaded {
-    [&](WMObscureEvent &e) {
+    [&](WMObscureEvent &) {
 		qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "WM_Obscure");
 		mutex.lock();
 		if (window) {
@@ -1204,6 +1204,17 @@ void QSGThreadedRenderLoop::handleUpdateRequest(QQuickWindow *window)
     }, Qt::QueuedConnection);
 }
 
+void QSGThreadedRenderLoop::maybeUpdate(QQuickWindow *window)
+{
+    Window *w = windowFor(window);
+    if (w)
+        maybeUpdate(w);
+}
+
+/*
+    Called whenever the QML scene has changed. Will post an event to
+    ourselves that a sync is needed.
+ */
 void QSGThreadedRenderLoop::maybeUpdate(Window *w)
 {
     if (!QCoreApplication::instance())
@@ -1232,46 +1243,6 @@ void QSGThreadedRenderLoop::maybeUpdate(Window *w)
         return;
 
     w->forceRenderPass = true;
-    postUpdateRequest(w);
-}
-
-/*
-    Called whenever the QML scene has changed. Will post an event to
-    ourselves that a sync is needed.
- */
-void QSGThreadedRenderLoop::maybeUpdate(Window *w)
-{
-    if (!QCoreApplication::instance())
-        return;
-
-    if (!w || !w->thread->isRunning())
-        return;
-
-    QThread *current = QThread::currentThread();
-    if (current == w->thread && w->thread->rhi && w->thread->rhi->isDeviceLost())
-        return;
-    if (current != QCoreApplication::instance()->thread() && (current != w->thread || !m_lockedForSync)) {
-        qWarning() << "Updates can only be scheduled from GUI thread or from QQuickItem::updatePaintNode()";
-        return;
-    }
-
-    qCDebug(QSG_LOG_RENDERLOOP) << "update from item" << w->window;
-
-    // Call this function from the Gui thread later as startTimer cannot be
-    // called from the render thread.
-    if (current == w->thread) {
-        qCDebug(QSG_LOG_RENDERLOOP, "- on render thread");
-        w->updateDuringSync = true;
-        return;
-    }
-
-    // An updatePolish() implementation may call update() to get the QQuickItem
-    // dirtied. That's fine but it also leads to calling this function.
-    // Requesting another update is a waste then since the updatePolish() call
-    // will be followed up with a round of sync and render.
-    if (m_inPolish)
-        return;
-
     postUpdateRequest(w);
 }
 
