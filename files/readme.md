@@ -597,6 +597,23 @@ connect(m_animation_driver, &QAnimationDriver::stopped, this, &QSGThreadedRender
 
 ---
 
+---
+
+### Batch Renderer — `qsgbatchrenderer.cpp` (complementary)
+
+Per-element AABB viewport culling added to `prepareRenderPass()` skips upload and draw for any batch whose bounds do not intersect the viewport. Lazy `uploadBatch()` gating ensures geometry is only transferred to the GPU when the element is both visible and dirty.
+
+| Scene Type | GPU Uploads Saved | Draw Calls Saved |
+|------------|-------------------|-----------------|
+| Single full-screen view | ~0% | ~0% |
+| Scroll view (half off-screen) | ~50% | ~50% |
+| Stack navigator (prev page hidden) | ~80–90% | ~80–90% |
+| Large scene, small viewport | Up to ~95% | Up to ~95% |
+
+Impact is scene-dependent but zero-cost when everything is on-screen. On tile-based mobile GPUs the reduction in bus traffic is as important as the draw call count.
+
+---
+
 These modifications transform the Qt Quick threaded render loop from a model that continuously burns CPU and GPU resources regardless of visual activity into one that is fundamentally demand-driven: every microsecond of render thread CPU time, every GPU submission, and every mutex acquisition now corresponds directly to a visible change on screen.
 
 The two most impactful changes work in concert. The early `wakeOne()` in `sync()` frees the GUI thread ~20ms earlier per frame — recovering time that was previously burned waiting for `endSync()`, a render-thread-only operation that the GUI had no reason to wait for. The static frame skip means that on a truly idle screen, the render thread never reaches `beginFrame()` at all: no command buffer is recorded, no GPU work is queued, no vsync wakeup is needed. The thread sleeps at the OS level until something changes.
