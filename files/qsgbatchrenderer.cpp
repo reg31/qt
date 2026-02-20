@@ -1402,10 +1402,18 @@ void Renderer::nodeChanged(QSGNode *node, QSGNode::DirtyState state)
     }
 
     if (state & QSGNode::DirtyNodeAdded) {
-        if (nodeUpdater()->isNodeBlocked(node, rootNode())) {
-            QSGRenderer::nodeChanged(node, state);
-            return;
-        }
+        // *** OPTION A FIX ***
+        // Previously, nodes created while outside the visible clip region
+        // (e.g. off-screen ComboBox popup delegates prefetched by a ListView)
+        // were silently dropped here. isNodeBlocked() reflects ancestor clip
+        // geometry, not the QQuickItem::visible flag — unlike DirtySubtreeBlocked,
+        // there is no later signal to re-add these nodes when the viewport scrolls
+        // to reveal them. The result was that those items never entered the batch
+        // system and remained invisible even after scrolling into view.
+        //
+        // The scissor/stencil clip in updateClipState() already prevents these
+        // nodes from being drawn while they are out of view, so it is safe to
+        // unconditionally register their shadow nodes here.
         if (node == rootNode())
             nodeWasAdded(node, nullptr);
         else
