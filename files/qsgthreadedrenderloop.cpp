@@ -1204,11 +1204,35 @@ void QSGThreadedRenderLoop::handleUpdateRequest(QQuickWindow *window)
     }, Qt::QueuedConnection);
 }
 
-void QSGThreadedRenderLoop::maybeUpdate(QQuickWindow *window)
+void QSGThreadedRenderLoop::maybeUpdate(Window *w)
 {
-    Window *w = windowFor(window);
-    if (w)
-        maybeUpdate(w);
+    if (!QCoreApplication::instance())
+        return;
+
+    if (!w || !w->thread->isRunning())
+        return;
+
+    QThread *current = QThread::currentThread();
+    if (current == w->thread && w->thread->rhi && w->thread->rhi->isDeviceLost())
+        return;
+    if (current != QCoreApplication::instance()->thread() && (current != w->thread || !m_lockedForSync)) {
+        qWarning() << "Updates can only be scheduled from GUI thread or from QQuickItem::updatePaintNode()";
+        return;
+    }
+
+    qCDebug(QSG_LOG_RENDERLOOP) << "update from item" << w->window;
+
+    if (current == w->thread) {
+        qCDebug(QSG_LOG_RENDERLOOP, "- on render thread");
+        w->updateDuringSync = true;
+        return;
+    }
+
+    if (m_inPolish)
+        return;
+
+    w->forceRenderPass = true;
+    postUpdateRequest(w);
 }
 
 /*
