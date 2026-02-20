@@ -3820,6 +3820,10 @@ void Renderer::prepareRenderPass(RenderPassContext *ctx)
         for (auto *b : opaque) {
             bool batchVisible = false;
             for (Element *e = b->first; e; e = e->nextInBatch) {
+                if (!e->boundsComputed) {
+                    batchVisible = true;
+                    break;
+                }
                 const Rect &bounds = e->bounds;
                 if (!(bounds.br.x < vLeft || bounds.tl.x > vRight ||
                       bounds.br.y < vTop || bounds.tl.y > vBottom)) {
@@ -3839,7 +3843,7 @@ void Renderer::prepareRenderPass(RenderPassContext *ctx)
                 ok = prepareRenderMergedBatch(b, &renderBatch);
             else
                 ok = prepareRenderUnmergedBatch(b, &renderBatch);
-            
+
             if (ok) [[likely]]
                 ctx->opaqueRenderBatches.append(renderBatch);
         }
@@ -3861,6 +3865,10 @@ void Renderer::prepareRenderPass(RenderPassContext *ctx)
             if (!b->isRenderNode) {
                 bool batchVisible = false;
                 for (Element *e = b->first; e; e = e->nextInBatch) {
+                    if (!e->boundsComputed) {
+                        batchVisible = true;
+                        break;
+                    }
                     const Rect &bounds = e->bounds;
                     if (!(bounds.br.x < vLeft || bounds.tl.x > vRight ||
                           bounds.br.y < vTop || bounds.tl.y > vBottom)) {
@@ -3883,7 +3891,7 @@ void Renderer::prepareRenderPass(RenderPassContext *ctx)
                 ok = prepareRhiRenderNode(b, &renderBatch);
             else
                 ok = prepareRenderUnmergedBatch(b, &renderBatch);
-            
+
             if (ok) [[likely]]
                 ctx->alphaRenderBatches.append(renderBatch);
         }
