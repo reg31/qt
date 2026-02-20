@@ -1350,7 +1350,6 @@ void Renderer::turnNodeIntoBatchRoot(Node *node)
             nodeChangedBatchRoot(child, node);
 }
 
-
 void Renderer::nodeChanged(QSGNode *node, QSGNode::DirtyState state)
 {
 #ifndef QT_NO_DEBUG_OUTPUT
@@ -1374,20 +1373,15 @@ void Renderer::nodeChanged(QSGNode *node, QSGNode::DirtyState state)
         if (state & QSGNode::DirtyForceUpdate)
             debug << "ForceUpdate";
 
-        // when removed, some parts of the node could already have been destroyed
-        // so don't debug it out.
         if (state & QSGNode::DirtyNodeRemoved)
             debug << (void *) node << node->type();
         else
             debug << node;
     }
 #endif
-    // As this function calls nodeChanged recursively, we do it at the top
-    // to avoid that any of the others are processed twice.
     if (state & QSGNode::DirtySubtreeBlocked) {
         Node *sn = m_nodes.value(node);
 
-        // Force a batch rebuild if this includes an opacity change
         if (state & QSGNode::DirtyOpacity)
             m_rebuild |= FullRebuild;
 
@@ -1402,29 +1396,14 @@ void Renderer::nodeChanged(QSGNode *node, QSGNode::DirtyState state)
     }
 
     if (state & QSGNode::DirtyNodeAdded) {
-        // *** OPTION A FIX ***
-        // Previously, nodes created while outside the visible clip region
-        // (e.g. off-screen ComboBox popup delegates prefetched by a ListView)
-        // were silently dropped here. isNodeBlocked() reflects ancestor clip
-        // geometry, not the QQuickItem::visible flag — unlike DirtySubtreeBlocked,
-        // there is no later signal to re-add these nodes when the viewport scrolls
-        // to reveal them. The result was that those items never entered the batch
-        // system and remained invisible even after scrolling into view.
-        //
-        // The scissor/stencil clip in updateClipState() already prevents these
-        // nodes from being drawn while they are out of view, so it is safe to
-        // unconditionally register their shadow nodes here.
         if (node == rootNode())
             nodeWasAdded(node, nullptr);
         else
             nodeWasAdded(node, m_nodes.value(node->parent()));
     }
 
-    // Mark this node dirty in the shadow tree.
     Node *shadowNode = m_nodes.value(node);
 
-    // Blocked subtrees won't have shadow nodes, so we can safely abort
-    // here..
     if (!shadowNode) {
         QSGRenderer::nodeChanged(node, state);
         return;
@@ -1477,7 +1456,6 @@ void Renderer::nodeChanged(QSGNode *node, QSGNode::DirtyState state)
         }
     }
 
-    // Mark the shadow tree dirty all the way back to the root...
     QSGNode::DirtyState dirtyChain = state & (QSGNode::DirtyNodeAdded
                                               | QSGNode::DirtyOpacity
                                               | QSGNode::DirtyMatrix
@@ -1492,7 +1470,6 @@ void Renderer::nodeChanged(QSGNode *node, QSGNode::DirtyState state)
         }
     }
 
-    // Delete happens at the very end because it deletes the shadownode.
     if (state & QSGNode::DirtyNodeRemoved) {
         Node *parent = shadowNode->parent();
         if (parent)
@@ -1705,30 +1682,35 @@ void Renderer::invalidateBatchAndOverlappingRenderOrders(Batch *batch)
     Q_ASSERT(batch);
     Q_ASSERT(batch->first);
 
-#if defined(QSGBATCHRENDERER_INVALIDATE_WEDGED_NODES)
-    if (m_renderOrderRebuildLower < 0 || batch->first->order < m_renderOrderRebuildLower)
-        m_renderOrderRebuildLower = batch->first->order;
-    if (m_renderOrderRebuildUpper < 0 || batch->lastOrderInBatch > m_renderOrderRebuildUpper)
-        m_renderOrderRebuildUpper = batch->lastOrderInBatch;
-
-    int first = m_renderOrderRebuildLower;
-    int last = m_renderOrderRebuildUpper;
-#else
     int first = batch->first->order;
-    int last = batch->lastOrderInBatch;
-#endif
+    int last  = batch->lastOrderInBatch;
+
+    const int wideFirst = (m_renderOrderRebuildLower >= 0) ? qMin(m_renderOrderRebuildLower, first) : first;
+    const int wideLast  = (m_renderOrderRebuildUpper >= 0) ? qMax(m_renderOrderRebuildUpper, last)  : last;
+
+    const auto batches    = std::span(m_alphaBatches.data(),    m_alphaBatches.size());
+    const auto renderList = std::span(m_alphaRenderList.data(), m_alphaRenderList.size());
+
+    if ((wideFirst < first || wideLast > last)
+        && std::ranges::any_of(batches, [&](Batch *b) {
+               if (!b->first || b == batch) return false;
+               const int bf = b->first->order, bl = b->lastOrderInBatch;
+               return (bl > wideFirst && bf < wideLast) && !(bl > first && bf < last);
+           })
+        && std::ranges::any_of(renderList, [&](Element *e) {
+               return e && e->batch && e->batch != batch && e->order > first && e->order < last;
+           }))
+    {
+        first = m_renderOrderRebuildLower = wideFirst;
+        last  = m_renderOrderRebuildUpper = wideLast;
+    }
 
     batch->invalidate();
 
-    for (int i=0; i<m_alphaBatches.size(); ++i) {
-        Batch *b = m_alphaBatches.at(i);
-        if (b->first) {
-            int bf = b->first->order;
-            int bl = b->lastOrderInBatch;
-            if (bl > first && bf < last)
-                b->invalidate();
-        }
-    }
+    std::ranges::for_each(batches, [&](Batch *b) {
+        if (b->first && b->lastOrderInBatch > first && b->first->order < last)
+            b->invalidate();
+    });
 
     m_rebuild |= BuildBatches;
 }
