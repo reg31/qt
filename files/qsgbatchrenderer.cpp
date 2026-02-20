@@ -1396,10 +1396,15 @@ void Renderer::nodeChanged(QSGNode *node, QSGNode::DirtyState state)
     }
 
     if (state & QSGNode::DirtyNodeAdded) {
-        if (node == rootNode())
+        if (node == rootNode()) {
             nodeWasAdded(node, nullptr);
-        else
-            nodeWasAdded(node, m_nodes.value(node->parent()));
+        } else {
+            QSGNode *p = node->parent();
+            Node *shadowParent = nullptr;
+            while (p && !(shadowParent = m_nodes.value(p)))
+                p = p->parent();
+            nodeWasAdded(node, shadowParent);
+        }
     }
 
     Node *shadowNode = m_nodes.value(node);
@@ -2005,17 +2010,26 @@ void Renderer::uploadMergedElement(Element *e, int vaOffset, char **vertexData,
 
     const int vCount = g->vertexCount();
     const int vSize = g->sizeOfVertex();
-    memcpy(*vertexData, g->vertexData(), vSize * vCount);
+    const QMatrix4x4::Flags matrixFlags = localx.flags();
 
-    char *vdata = *vertexData + vaOffset;
-    if (localx.flags() == QMatrix4x4::Translation) {
+    if (matrixFlags == QMatrix4x4::Identity) {
+        memcpy(*vertexData, g->vertexData(), vSize * vCount);
+    } else if (matrixFlags == QMatrix4x4::Translation) {
+        const float tx = localxdata[12];
+        const float ty = localxdata[13];
+        const char *src = (const char *) g->vertexData();
+        char *dst = *vertexData;
         for (int i = 0; i < vCount; ++i) {
-            Pt *p = (Pt *) vdata;
-            p->x += localxdata[12];
-            p->y += localxdata[13];
-            vdata += vSize;
+            memcpy(dst, src, vSize);
+            Pt *p = (Pt *)(dst + vaOffset);
+            p->x += tx;
+            p->y += ty;
+            src += vSize;
+            dst += vSize;
         }
-    } else if (localx.flags() > QMatrix4x4::Translation) {
+    } else {
+        memcpy(*vertexData, g->vertexData(), vSize * vCount);
+        char *vdata = *vertexData + vaOffset;
         for (int i = 0; i < vCount; ++i) {
             ((Pt *) vdata)->map(localx);
             vdata += vSize;
@@ -2024,9 +2038,8 @@ void Renderer::uploadMergedElement(Element *e, int vaOffset, char **vertexData,
 
     if (useDepthBuffer()) {
         float *vzorder = (float *) *zData;
-        float zorder = calculateElementZOrder(e, m_zRange);
-        for (int i = 0; i < vCount; ++i)
-            vzorder[i] = zorder;
+        const float zorder = calculateElementZOrder(e, m_zRange);
+        std::fill(vzorder, vzorder + vCount, zorder);
         *zData += vCount * sizeof(float);
     }
 
@@ -3372,19 +3385,17 @@ bool Renderer::prepareRenderUnmergedBatch(Batch *batch, PreparedRenderBatch *ren
     for (int viewIndex = 0; viewIndex < viewCount; ++viewIndex)
         m_current_projection_matrix[viewIndex] = projectionMatrix(viewIndex);
 
-    m_current_projection_matrix_native_ndc.resize(projectionMatrixWithNativeNDCCount());
-    for (int viewIndex = 0; viewIndex < projectionMatrixWithNativeNDCCount(); ++viewIndex)
+    const int nativeNDCCount = projectionMatrixWithNativeNDCCount();
+    m_current_projection_matrix_native_ndc.resize(nativeNDCCount);
+    for (int viewIndex = 0; viewIndex < nativeNDCCount; ++viewIndex)
         m_current_projection_matrix_native_ndc[viewIndex] = projectionMatrixWithNativeNDC(viewIndex);
 
     QSGGeometryNode *gn = e->node;
     if (m_renderMode != QSGRendererInterface::RenderMode3D)
         updateClipState(gn->clipList(), batch);
 
-    // We always have dirty matrix as all batches are at a unique z range.
     QSGMaterialShader::RenderState::DirtyStates dirty = QSGMaterialShader::RenderState::DirtyMatrix;
 
-    // The vertex attributes are assumed to be the same for all elements in the
-    // unmerged batch since the material (and so the shaders) is the same.
     QSGGeometry *g = gn->geometry();
     QSGMaterial *material = gn->activeMaterial();
     ShaderManager::Shader *sms = m_shaderManager->prepareMaterialNoRewrite(material, g, m_renderMode, renderTarget().multiViewCount);
@@ -3434,8 +3445,7 @@ bool Renderer::prepareRenderUnmergedBatch(Batch *batch, PreparedRenderBatch *ren
 
     QSGMaterialShader::RenderState renderState = state(QSGMaterialShader::RenderState::DirtyStates(int(dirty)));
     bool pendingGStatePop = false;
-    updateMaterialStaticData(sms, renderState,
-                             material, batch, &pendingGStatePop);
+    updateMaterialStaticData(sms, renderState, material, batch, &pendingGStatePop);
 
     int ubufOffset = 0;
     QRhiGraphicsPipeline *ps = nullptr;
@@ -3452,17 +3462,7 @@ bool Renderer::prepareRenderUnmergedBatch(Batch *batch, PreparedRenderBatch *ren
         m_current_model_view_matrix = rootMatrix * *gn->matrix();
         m_current_determinant = m_current_model_view_matrix.determinant();
 
-        const int viewCount = projectionMatrixCount();
-        m_current_projection_matrix.resize(viewCount);
-        for (int viewIndex = 0; viewIndex < viewCount; ++viewIndex)
-            m_current_projection_matrix[viewIndex] = projectionMatrix(viewIndex);
-
-        m_current_projection_matrix_native_ndc.resize(projectionMatrixWithNativeNDCCount());
-        for (int viewIndex = 0; viewIndex < projectionMatrixWithNativeNDCCount(); ++viewIndex)
-            m_current_projection_matrix_native_ndc[viewIndex] = projectionMatrixWithNativeNDC(viewIndex);
-
         if (useDepthBuffer()) {
-            // this cannot be multiview
             m_current_projection_matrix[0](2, 2) = m_zRange;
             m_current_projection_matrix[0](2, 3) = calculateElementZOrder(e, m_zRange);
         }
@@ -3477,9 +3477,6 @@ bool Renderer::prepareRenderUnmergedBatch(Batch *batch, PreparedRenderBatch *ren
         m_gstate.drawMode = QSGGeometry::DrawingMode(g->drawingMode());
         m_gstate.lineWidth = g->lineWidth();
 
-        // Do not bother even looking up the ps if the topology has not changed
-        // since everything else is the same for all elements in the batch.
-        // (except if the material modified blend state)
         if (!ps || m_gstate.drawMode != prevDrawMode || m_gstate.lineWidth != prevLineWidth || pendingGStatePop) {
             if (!ensurePipelineState(e, sms)) {
                 if (pendingGStatePop)
@@ -3500,11 +3497,8 @@ bool Renderer::prepareRenderUnmergedBatch(Batch *batch, PreparedRenderBatch *ren
                 e->depthPostPassPs = depthPostPassPs;
         }
 
-        // We don't need to bother with asking each node for its material as they
-        // are all identical (compare==0) since they are in the same batch.
         m_currentMaterial = material;
 
-        // We only need to push this on the very first iteration...
         dirty &= ~QSGMaterialShader::RenderState::DirtyOpacity;
 
         e = e->nextInBatch;
