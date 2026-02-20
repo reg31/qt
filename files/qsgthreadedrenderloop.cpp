@@ -819,7 +819,7 @@ void QSGRenderThread::run()
         QMacAutoReleasePool frameReleasePool;
 #endif
         processEvents();
-        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        QCoreApplication::sendPostedEvents(nullptr, 0);
 
         if (window) [[likely]] {
             ensureRhi();
