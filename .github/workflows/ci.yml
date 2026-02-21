@@ -4,9 +4,9 @@ env:
   SCCACHE_GHA_ENABLED: "true"
   OPENSSL_VERSION: openssl-3.6
   INIT_FLAGS: --module-subset=qtbase,qtdeclarative,-qtlanguageserver,-qtquicktimeline,-qtquick3d,-qtimageformats,-qtsvg --branch --no-update
-  SHARED_COMPILER_FLAGS: "-Os -ffunction-sections -fdata-sections -fomit-frame-pointer -DNDEBUG -fno-exceptions -fvisibility=hidden"
-  SHARED_LINKER_FLAGS: "-fuse-ld=lld -Wl,-S"
-  SHARED_FLAGS: -release -no-feature-testlib -DQT_NO_PACKAGE_VERSION_CHECK=ON -DQT_NO_PACKAGE_VERSION_INCOMPATIBLE_WARNING=ON -c++std c++2b
+  SHARED_COMPILER_FLAGS: "-O2 -ffunction-sections -fdata-sections -DNDEBUG"
+  SHARED_LINKER_FLAGS: "-fuse-ld=lld -Wl,-S,--icf=safe,--gc-sections"
+  SHARED_FLAGS: -release -no-feature-testlib -DQT_NO_PACKAGE_VERSION_CHECK=ON -DQT_NO_PACKAGE_VERSION_INCOMPATIBLE_WARNING=ON -c++std c++2b -no-pch
     -no-feature-hijricalendar -no-feature-islamiccivilcalendar -nomake tests -nomake examples -submodules qtbase,qtdeclarative -no-feature-whatsthis
     -skip qtlanguageserver,qtquicktimeline,qtquick3d,qtimageformats,qtsvg -qt-zlib -qt-libjpeg -qt-libpng -qt-pcre -qt-harfbuzz -qt-freetype -reduce-exports
     -DQT_BUILD_EXAMPLES_BY_DEFAULT=OFF -DQT_BUILD_TESTS_BY_DEFAULT=OFF -DQT_BUILD_TOOLS_BY_DEFAULT=ON -no-feature-calendarwidget -no-feature-textodfwriter
@@ -115,8 +115,8 @@ jobs:
         run: |          
           set "CMAKE_C_COMPILER_LAUNCHER=sccache"
           set "CMAKE_CXX_COMPILER_LAUNCHER=sccache"
-          set "CMAKE_C_COMPILER=C:\ProgramData\mingw64\mingw64\bin\x86_64-w64-mingw32-gcc.exe"
-          set "CMAKE_CXX_COMPILER=C:\ProgramData\mingw64\mingw64\bin\x86_64-w64-mingw32-g++.exe"
+          set "CC=C:\ProgramData\mingw64\mingw64\bin\x86_64-w64-mingw32-gcc.exe"
+          set "CXX=C:\ProgramData\mingw64\mingw64\bin\x86_64-w64-mingw32-g++.exe"
           set "OUTPUT_DIR=%CD%\qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
           mkdir build
           cd build
