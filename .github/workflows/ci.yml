@@ -297,11 +297,9 @@ jobs:
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.9
 
-      - name: Setup LLVM
-        uses: ZhongRuoyu/setup-llvm@v0
-        with:
-          llvm-version: 21
-
+      - name: Setup LLD
+        run : brew install lld
+        
       - name: Initialize Qt submodules
         run: perl init-repository ${{ env.INIT_FLAGS }}
 
