@@ -246,7 +246,7 @@ jobs:
               -reduce-relocations -openssl-runtime -- -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT%" ^
               -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp" ^
               -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp" ^
-              -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,--pack-dyn-relocs=android+relr,--use-android-relr-tags,--icf=safe,--gc-sections"
+              -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,--pack-dyn-relocs=android+relr,--use-android-relr-tags"
                       
       - name: List features
         run: configure.bat -list-features          
@@ -499,7 +499,7 @@ jobs:
           ../configure -platform macx-ios-clang ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} -securetransport -feature-appstore-compliant \
           -skip qtshadertools -gc-binaries -prefix $OUTPUT_DIR -qt-host-path $HOST_PATH -- -DCMAKE_OSX_ARCHITECTURES="arm64" \
             -DCMAKE_C_FLAGS="${{ env.SHARED_COMPILER_FLAGS }}  $EXTRA_FLAGS" -DCMAKE_CXX_FLAGS="${{ env.SHARED_COMPILER_FLAGS }} $EXTRA_FLAGS" \
-            -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,-dead_strip,--icf=safe"
+            -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,-dead_strip"
           ../configure -list-features
           
           cmake --build . -j$(sysctl -n hw.ncpu)
