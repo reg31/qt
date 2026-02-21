@@ -10,7 +10,7 @@ env:
   WITH_STRIP_BUILD_FLAGS: 
     -DCMAKE_CXX_FLAGS_RELEASE="-O2 -ffunction-sections -fdata-sections -fvisibility=hidden -fvisibility-inlines-hidden -DNDEBUG -s" 
       -DCMAKE_C_FLAGS_RELEASE="-O2 -ffunction-sections -fdata-sections -fvisibility=hidden -fvisibility-inlines-hidden -DNDEBUG -s"
-  SHARED_LINKER_FLAGS: "-fuse-ld=lld -Wl,--icf=safe -Wl,--gc-sections -Wl,--exclude-libs,ALL -Wl,--strip-all"
+  SHARED_LINKER_FLAGS: "-Wl,--icf=safe -Wl,--gc-sections -Wl,--exclude-libs,ALL -Wl,--strip-all"
   SHARED_FLAGS: -release -no-feature-testlib -DQT_NO_PACKAGE_VERSION_CHECK=ON -DQT_NO_PACKAGE_VERSION_INCOMPATIBLE_WARNING=ON -c++std c++2b
     -no-feature-hijricalendar -no-feature-islamiccivilcalendar -nomake tests -nomake examples -submodules qtbase,qtdeclarative -no-feature-whatsthis
     -skip qtlanguageserver,qtquicktimeline,qtquick3d,qtimageformats,qtsvg -qt-zlib -qt-libjpeg -qt-libpng -qt-pcre -qt-harfbuzz -qt-freetype -reduce-exports
@@ -79,11 +79,6 @@ jobs:
             
       - name: Set up MinGW
         uses: egor-tensin/setup-mingw@v3
-
-      - name: Install LLVM and LLD
-        uses: KyleMayes/install-llvm-action@v2
-        with:
-          version: "20"
         
       - name: Initialize Qt submodules
         run: init-repository.bat ${{ env.INIT_FLAGS }}
@@ -176,11 +171,6 @@ jobs:
           distribution: 'temurin'
           java-version: 25
           check-latest: true
-
-      - name: Install LLVM and LLD
-        uses: KyleMayes/install-llvm-action@v2
-        with:
-          version: "20"
         
       - name: Initialize Qt submodules
         run: init-repository.bat ${{ env.INIT_FLAGS }}
@@ -302,11 +292,6 @@ jobs:
 
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.9
-
-      - name: Install LLVM and LLD
-        uses: KyleMayes/install-llvm-action@v2
-        with:
-          version: "20"
 
       - name: Initialize Qt submodules
         run: perl init-repository ${{ env.INIT_FLAGS }}
@@ -451,11 +436,6 @@ jobs:
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: latest-stable
-
-      - name: Install LLVM and LLD
-        uses: KyleMayes/install-llvm-action@v2
-        with:
-          version: "20"
       
       - name: Initialize Qt submodules
         run: perl init-repository ${{ env.INIT_FLAGS }}
