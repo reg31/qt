@@ -488,7 +488,7 @@ jobs:
           
           ../configure -platform macx-ios-clang ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} -securetransport -feature-appstore-compliant \
           -skip qtshadertools -gc-binaries -prefix $OUTPUT_DIR -qt-host-path $HOST_PATH -- -DCMAKE_OSX_ARCHITECTURES="arm64" \
-            -DCMAKE_C_FLAGS="${{ env.SHARED_COMPILER_FLAGS }}"  $EXTRA_FLAGS -DCMAKE_CXX_FLAGS="${{ env.SHARED_COMPILER_FLAGS }} $EXTRA_FLAGS" \
+            -DCMAKE_C_FLAGS="${{ env.SHARED_COMPILER_FLAGS }}  $EXTRA_FLAGS" -DCMAKE_CXX_FLAGS="${{ env.SHARED_COMPILER_FLAGS }} $EXTRA_FLAGS" \
             -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }}"
           ../configure -list-features
           
