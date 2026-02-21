@@ -115,6 +115,8 @@ jobs:
         run: |          
           set "CMAKE_C_COMPILER_LAUNCHER=sccache"
           set "CMAKE_CXX_COMPILER_LAUNCHER=sccache"
+          set "CMAKE_C_COMPILER=gcc"
+          set "CMAKE_CXX_COMPILER=g++"
           set "OUTPUT_DIR=%CD%\qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
           mkdir build
           cd build
@@ -123,8 +125,7 @@ jobs:
             -- -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s" ^
               -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s" ^
               -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,--gc-sections"
-              -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
-            
+              
       - name: List features
         run: configure.bat -list-features
 
