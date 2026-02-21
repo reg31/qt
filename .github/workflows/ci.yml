@@ -18,8 +18,8 @@ env:
     -no-feature-undogroup -no-feature-ctf -no-feature-widgets -no-feature-imageformat_xbm -no-feature-sortfilterproxymodel -no-feature-filesystemwatcher    
     -no-feature-sql -no-feature-gssapi -no-feature-graphicsframecapture -DFEATURE_no_direct_extern_access=ON
   EXTRA_FLAGS: -no-feature-qml-network -no-feature-qml-ssl -no-feature-quickcontrols2-fusion
-  QT_BASE_CHERRY_PICK: 714596 632732 714788 712956 713974 680265 611485 714785 714787 714786
-  QT_DECLARATIVE_CHERRY_PICK: 695153 622692 663127 714522 714366 715066 669129 
+  QT_BASE_CHERRY_PICK: 714596 680265 712956 713974 652062
+  QT_DECLARATIVE_CHERRY_PICK: 695153 622692 
     
 on:
   workflow_dispatch:
@@ -123,6 +123,7 @@ jobs:
             -- -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s" ^
               -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s" ^
               -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,--gc-sections"
+              -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
             
       - name: List features
         run: configure.bat -list-features
@@ -297,7 +298,7 @@ jobs:
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.9
 
-      - name: Setup LLD
+      - name: Setup lld
         run : brew install lld
         
       - name: Initialize Qt submodules
