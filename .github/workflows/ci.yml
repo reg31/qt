@@ -133,7 +133,7 @@ jobs:
       - name: Build Qt
         run: |
           cd build
-          cmake . -DCMAKE_CXX_SIMULATE_ID="MSVC"
+          cmake . -DTEST_ld_version_script=OFF
           cmake --build . -j%NUMBER_OF_PROCESSORS%
           cmake --install .
           
