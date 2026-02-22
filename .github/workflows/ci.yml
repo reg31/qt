@@ -4,9 +4,9 @@ env:
   SCCACHE_GHA_ENABLED: "true"
   OPENSSL_VERSION: openssl-3.6
   INIT_FLAGS: --module-subset=qtbase,qtdeclarative,-qtlanguageserver,-qtquicktimeline,-qtquick3d,-qtimageformats,-qtsvg --branch --no-update
-  SHARED_COMPILER_FLAGS: "-O2 -DNDEBUG -ffunction-sections -fdata-sections"
+  SHARED_COMPILER_FLAGS: "-O2 -DNDEBUG"
   SHARED_LINKER_FLAGS: "-fuse-ld=lld -Wl,-S,--icf=safe"
-  SHARED_FLAGS: -release -no-feature-testlib -DQT_NO_PACKAGE_VERSION_CHECK=ON -DQT_NO_PACKAGE_VERSION_INCOMPATIBLE_WARNING=ON -c++std c++2b
+  SHARED_FLAGS: -release -O2 -DNDEBUG -no-feature-testlib -DQT_NO_PACKAGE_VERSION_CHECK=ON -DQT_NO_PACKAGE_VERSION_INCOMPATIBLE_WARNING=ON -c++std c++2b
     -no-feature-hijricalendar -no-feature-islamiccivilcalendar -nomake tests -nomake examples -submodules qtbase,qtdeclarative -no-feature-whatsthis
     -skip qtlanguageserver,qtquicktimeline,qtquick3d,qtimageformats,qtsvg -qt-zlib -qt-libjpeg -qt-libpng -qt-pcre -qt-harfbuzz -qt-freetype -reduce-exports
     -DQT_BUILD_EXAMPLES_BY_DEFAULT=OFF -DQT_BUILD_TESTS_BY_DEFAULT=OFF -DQT_BUILD_TOOLS_BY_DEFAULT=ON -no-feature-calendarwidget -no-feature-textodfwriter
@@ -121,11 +121,10 @@ jobs:
           
           mkdir build
           cd build          
-          ..\configure.bat -schannel -prefix "%OUTPUT_DIR%" ${{ env.SHARED_FLAGS }} ^
+          ..\configure.bat -schannel -prefix "%OUTPUT_DIR%" ${{ env.SHARED_FLAGS }} -DQT_NO_VERSION_TAGGING=ON ^
            -- -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s" ^
               -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s" ^
-              -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,--gc-sections" ^
-              -DCMAKE_CXX_SIMULATE_ID="MSVC"
+              -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,--gc-sections"
               
       - name: List features
         run: configure.bat -list-features
@@ -133,7 +132,6 @@ jobs:
       - name: Build Qt
         run: |
           cd build
-          cmake . -DTEST_ld_version_script=OFF
           cmake --build . -j%NUMBER_OF_PROCESSORS%
           cmake --install .
           
