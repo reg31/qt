@@ -113,7 +113,6 @@ jobs:
           
       - name: Configure
         run: |
-          set "CMAKE_CXX_SIMULATE_ID=MSVC"
           set "CMAKE_C_COMPILER_LAUNCHER=sccache"
           set "CMAKE_CXX_COMPILER_LAUNCHER=sccache"
           set "CC=C:\ProgramData\mingw64\mingw64\bin\x86_64-w64-mingw32-gcc.exe"
@@ -125,7 +124,8 @@ jobs:
           ..\configure.bat -schannel -prefix "%OUTPUT_DIR%" ${{ env.SHARED_FLAGS }} ^
            -- -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s" ^
               -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s" ^
-              -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,--gc-sections"
+              -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,--gc-sections" ^
+              -DCMAKE_CXX_SIMULATE_ID=MSVC
               
       - name: List features
         run: configure.bat -list-features
