@@ -1,21 +1,13 @@
 @echo off
-setlocal enabledelayedexpansion
-set ARGS=
-:loop
-if "%~1"=="" goto done
-if "%~1"=="--version-script" (
-    shift
-    shift
-    goto loop
-)
-set "ARG=%~1"
-if "!ARG:~0,17!"=="--version-script=" (
-    shift
-    goto loop
-)
-set "ARGS=!ARGS! "%~1""
-shift
-goto loop
-:done
-"%LLVM_PATH%\bin\ld.lld" !ARGS!
-exit /b %ERRORLEVEL%
+powershell -Command "
+    $args = '%*' -split ' '
+    $pipe = New-Object System.IO.Pipes.NamedPipeClientStream('.', 'lld-wrapper-pipe', [System.IO.Pipes.PipeDirection]::InOut)
+    $pipe.Connect(5000)
+    $writer = New-Object System.IO.StreamWriter($pipe)
+    $writer.AutoFlush = $true
+    $reader = New-Object System.IO.StreamReader($pipe)
+    $writer.WriteLine(($args | ConvertTo-Json -Compress))
+    $exit = $reader.ReadLine()
+    $pipe.Dispose()
+    exit [int]$exit
+"
