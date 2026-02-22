@@ -1,7 +1,5 @@
 @echo off
 setlocal enabledelayedexpansion
-set LINKER=%1
-shift
 set ARGS=
 :loop
 if "%~1"=="" goto done
@@ -19,5 +17,5 @@ set "ARGS=!ARGS! %1"
 shift
 goto loop
 :done
-%LINKER% !ARGS!
+"%LLVM_PATH%\bin\ld.lld" !ARGS!
 exit /b %ERRORLEVEL%
