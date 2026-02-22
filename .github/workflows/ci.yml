@@ -122,16 +122,27 @@ jobs:
           set "CMAKE_C_COMPILER_LAUNCHER=sccache"
           set "CMAKE_CXX_COMPILER_LAUNCHER=sccache"
           set "CC=C:\ProgramData\mingw64\mingw64\bin\x86_64-w64-mingw32-gcc.exe"
-          set "CXX=%LLD_WRAPPER%"
+          set "CXX=C:\ProgramData\mingw64\mingw64\bin\x86_64-w64-mingw32-g++.exe"
           set "OUTPUT_DIR=%CD%\qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
-
-          
+      
           mkdir build
           cd build
           ..\configure.bat -schannel -prefix "%OUTPUT_DIR%" ${{ env.SHARED_FLAGS }} ^
            -- -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s" ^
               -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s" ^
               -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,--gc-sections"
+
+      - name: Patch build.ninja
+        shell: pwsh
+        run: |
+          Get-ChildItem -Path build -Filter "*.ninja" -Recurse | ForEach-Object {
+            $content = Get-Content $_.FullName -Raw
+            $patched = $content -replace ' -Wl,--version-script,[^\s]+', ''
+            if ($content -ne $patched) {
+              Set-Content $_.FullName $patched
+              Write-Host "Patched: $($_.FullName)"
+            }
+          }
               
       - name: List features
         run: configure.bat -list-features
