@@ -115,29 +115,23 @@ jobs:
       - name: Create LLD linker wrapper
         run: |
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/lld-wrapper.cmd -o "%RUNNER_TEMP%\lld-wrapper.cmd"
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/lld-server.ps1 -o "%RUNNER_TEMP%\lld-server.ps1"
           echo LLD_WRAPPER=%RUNNER_TEMP%\lld-wrapper.cmd>> %GITHUB_ENV%
-
-      - name: Start LLD server
-        shell: pwsh
-        run: |
-          Start-Process pwsh -ArgumentList "-File $env:RUNNER_TEMP\lld-server.ps1" -WindowStyle Hidden
-          echo "LLD_CLIENT=$env:RUNNER_TEMP\lld-client.cmd" >> $env:GITHUB_ENV
           
       - name: Configure
         run: |
           set "CMAKE_C_COMPILER_LAUNCHER=sccache"
           set "CMAKE_CXX_COMPILER_LAUNCHER=sccache"
           set "CC=C:\ProgramData\mingw64\mingw64\bin\x86_64-w64-mingw32-gcc.exe"
-          set "CXX=C:\ProgramData\mingw64\mingw64\bin\x86_64-w64-mingw32-g++.exe"
+          set "CXX=%LLD_WRAPPER%"
           set "OUTPUT_DIR=%CD%\qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
+
           
           mkdir build
           cd build
           ..\configure.bat -schannel -prefix "%OUTPUT_DIR%" ${{ env.SHARED_FLAGS }} ^
            -- -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s" ^
               -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s" ^
-              -DCMAKE_SHARED_LINKER_FLAGS="-fuse-ld=%LLD_WRAPPER% -Wl,-S,--icf=safe,--gc-sections"
+              -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,--gc-sections"
               
       - name: List features
         run: configure.bat -list-features
