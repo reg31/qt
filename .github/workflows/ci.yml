@@ -85,7 +85,7 @@ jobs:
         run: init-repository.bat ${{ env.INIT_FLAGS }}
 
       - name: Apply QT cherry picks
-        if: env.QT_BASE_CHERRY_PICK != '' || env.QT_DECLARATIVE_CHERRY_PICK != '' || env.APPLY_CHERRY_PICK != false
+        if: (env.QT_BASE_CHERRY_PICK != '' || env.QT_DECLARATIVE_CHERRY_PICK != '') && env.APPLY_CHERRY_PICK != false
         shell: bash
         run: |
           apply_changes() {
@@ -193,7 +193,7 @@ jobs:
         run: init-repository.bat ${{ env.INIT_FLAGS }}
 
       - name: Apply QT cherry picks
-        if: env.QT_BASE_CHERRY_PICK != '' || env.QT_DECLARATIVE_CHERRY_PICK != ''  || env.APPLY_CHERRY_PICK != false
+        if: (env.QT_BASE_CHERRY_PICK != '' || env.QT_DECLARATIVE_CHERRY_PICK != '') && env.APPLY_CHERRY_PICK != false
         shell: bash
         run: |
           apply_changes() {
@@ -319,7 +319,7 @@ jobs:
         run: perl init-repository ${{ env.INIT_FLAGS }}
 
       - name: Apply QT cherry picks
-        if: env.QT_BASE_CHERRY_PICK != '' || env.QT_DECLARATIVE_CHERRY_PICK != '' || env.APPLY_CHERRY_PICK != false
+        if: (env.QT_BASE_CHERRY_PICK != '' || env.QT_DECLARATIVE_CHERRY_PICK != '') && env.APPLY_CHERRY_PICK != false
         shell: bash
         run: |
           apply_changes() {
@@ -465,7 +465,7 @@ jobs:
         run: perl init-repository ${{ env.INIT_FLAGS }}
 
       - name: Apply QT cherry picks
-        if: env.QT_BASE_CHERRY_PICK != '' || env.QT_DECLARATIVE_CHERRY_PICK != '' || env.APPLY_CHERRY_PICK != false
+        if: (env.QT_BASE_CHERRY_PICK != '' || env.QT_DECLARATIVE_CHERRY_PICK != '') && env.APPLY_CHERRY_PICK != false
         shell: bash
         run: |
           apply_changes() {
