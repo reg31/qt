@@ -130,7 +130,7 @@ jobs:
            -- -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s" ^
               -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s" ^
               -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,--gc-sections" ^
-              -DCMAKE_LINKER="%LLD_WRAPPER%;%LLVM_PATH%\bin\ld.lld"
+              -DCMAKE_LINKER="%LLD_WRAPPER%"
               
       - name: List features
         run: configure.bat -list-features
