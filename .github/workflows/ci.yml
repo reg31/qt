@@ -111,11 +111,6 @@ jobs:
           echo "Downloading experimental changes  ..."
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgthreadedrenderloop.cpp -o qtdeclarative/src/quick/scenegraph/qsgthreadedrenderloop.cpp
           echo "Download completed  ..."
-
-      - name: Create LLD linker wrapper
-        run: |
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/lld-wrapper.cmd -o "%RUNNER_TEMP%\lld-wrapper.cmd"
-          echo LLD_WRAPPER=%RUNNER_TEMP%\lld-wrapper.cmd>> %GITHUB_ENV%
           
       - name: Configure
         run: |
