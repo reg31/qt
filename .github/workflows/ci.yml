@@ -125,7 +125,7 @@ jobs:
            -- -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s" ^
               -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s" ^
               -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,--gc-sections" ^
-              -DCMAKE_CXX_SIMULATE_ID=MSVC
+              -DCMAKE_CXX_SIMULATE_ID="MSVC"
               
       - name: List features
         run: configure.bat -list-features
@@ -133,6 +133,7 @@ jobs:
       - name: Build Qt
         run: |
           cd build
+          cmake . -DCMAKE_CXX_SIMULATE_ID="MSVC"
           cmake --build . -j%NUMBER_OF_PROCESSORS%
           cmake --install .
           
