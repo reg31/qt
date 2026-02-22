@@ -110,6 +110,30 @@ jobs:
           echo "Downloading experimental changes  ..."
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgthreadedrenderloop.cpp -o qtdeclarative/src/quick/scenegraph/qsgthreadedrenderloop.cpp
           echo "Download completed  ..."
+
+      - name: Create LLD linker wrapper
+        shell: bash
+        run: |
+          cat > "$RUNNER_TEMP/lld-wrapper.py" << 'EOF'
+          #!/usr/bin/env python3
+          import sys, subprocess
+      
+          linker = sys.argv[1]
+          args = []
+          i = 0
+          argv = sys.argv[2:]
+          while i < len(argv):
+              if argv[i] == '--version-script':
+                  i += 2
+              elif argv[i].startswith('--version-script='):
+                  i += 1
+              else:
+                  args.append(argv[i])
+                  i += 1
+      
+          sys.exit(subprocess.call([linker] + args))
+          EOF
+          echo "LLD_WRAPPER=$RUNNER_TEMP/lld-wrapper.py" >> $GITHUB_ENV
           
       - name: Configure
         run: |
@@ -121,10 +145,11 @@ jobs:
           
           mkdir build
           cd build          
-          ..\configure.bat -schannel -prefix "%OUTPUT_DIR%" ${{ env.SHARED_FLAGS }} -DTEST_ld_version_script=OFF ^
+          ..\configure.bat -schannel -prefix "%OUTPUT_DIR%" ${{ env.SHARED_FLAGS }} ^
            -- -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s" ^
               -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s" ^
-              -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,--gc-sections"
+              -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,--gc-sections" ^
+              -DCMAKE_LINKER="python3;$LLD_WRAPPER;$LLD_PATH"
               
       - name: List features
         run: configure.bat -list-features
