@@ -314,7 +314,7 @@ jobs:
 
       - name: Setup lld
         run: brew install lld
-        
+
       - name: Initialize Qt submodules
         run: perl init-repository ${{ env.INIT_FLAGS }}
 
@@ -345,20 +345,48 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgthreadedrenderloop.cpp -o qtdeclarative/src/quick/scenegraph/qsgthreadedrenderloop.cpp
           echo "Download completed  ..."
 
-      - name: Configure and build
+      - name: Download prebuilt Qt Host (cross-compile only)
+        if: matrix.arch == 'x86_64'
+        run: |
+          mkdir -p qt-macos-host
+          cd qt-macos-host
+          QT_ARCHIVE=qt-macos-release-dev.zip
+          curl -fsSL -o $QT_ARCHIVE https://github.com/reg31/qt/releases/latest/download/$QT_ARCHIVE
+          7z x $QT_ARCHIVE
+
+      - name: Configure (native arm64)
+        if: matrix.arch == 'arm64'
         run: |
           OUTPUT_DIR=$(pwd)/qt-macos-${{ matrix.arch }}-release-${{ needs.setup.outputs.qt_branch }}
           export CMAKE_CXX_COMPILER_LAUNCHER="sccache"
           export CMAKE_C_COMPILER_LAUNCHER="sccache"
-          mkdir -p build
-          cd build
+          mkdir -p build && cd build
 
           ../configure ${{ env.SHARED_FLAGS }} -securetransport -feature-appstore-compliant -prefix $OUTPUT_DIR \
-          -- -DCMAKE_OSX_ARCHITECTURES="${{ matrix.arch }}" -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,-dead_strip" \
+          -- -DCMAKE_OSX_ARCHITECTURES="arm64" -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,-dead_strip" \
             -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp" \
             -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp"
           ../configure -list-features
 
+      - name: Configure (cross-compile x86_64)
+        if: matrix.arch == 'x86_64'
+        run: |
+          OUTPUT_DIR=$(pwd)/qt-macos-${{ matrix.arch }}-release-${{ needs.setup.outputs.qt_branch }}
+          HOST_PATH=$(pwd)/qt-macos-host
+          export CMAKE_CXX_COMPILER_LAUNCHER="sccache"
+          export CMAKE_C_COMPILER_LAUNCHER="sccache"
+          mkdir -p build && cd build
+
+          ../configure ${{ env.SHARED_FLAGS }} -securetransport -feature-appstore-compliant -prefix $OUTPUT_DIR \
+          -qt-host-path "$HOST_PATH" \
+          -- -DCMAKE_OSX_ARCHITECTURES="x86_64" -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,-dead_strip" \
+            -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp" \
+            -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp"
+          ../configure -list-features
+
+      - name: Build
+        run: |
+          cd build
           cmake --build . -j$(sysctl -n hw.ncpu)
           cmake --install . --strip
 
