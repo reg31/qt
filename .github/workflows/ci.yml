@@ -112,7 +112,8 @@ jobs:
           echo "Download completed  ..."
           
       - name: Configure
-        run: |          
+        run: |
+          set "CMAKE_CXX_SIMULATE_ID=MSVC"
           set "CMAKE_C_COMPILER_LAUNCHER=sccache"
           set "CMAKE_CXX_COMPILER_LAUNCHER=sccache"
           set "CC=C:\ProgramData\mingw64\mingw64\bin\x86_64-w64-mingw32-gcc.exe"
@@ -121,7 +122,7 @@ jobs:
           
           mkdir build
           cd build          
-          ..\configure.bat -schannel -prefix "%OUTPUT_DIR%" ${{ env.SHARED_FLAGS }} -DINPUT_linker=lld -DTEST_ld_version_script=OFF ^
+          ..\configure.bat -schannel -prefix "%OUTPUT_DIR%" ${{ env.SHARED_FLAGS }} ^
            -- -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s" ^
               -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s" ^
               -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,--gc-sections"
