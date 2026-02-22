@@ -112,37 +112,9 @@ jobs:
           echo "Download completed  ..."
 
       - name: Create LLD linker wrapper
-        shell: bash
         run: |
-          cat > "$RUNNER_TEMP/lld-wrapper.cmd" << 'EOF'
-          @echo off
-          setlocal enabledelayedexpansion
-      
-          set LINKER=%1
-          shift
-      
-          set ARGS=
-          :loop
-          if "%~1"=="" goto done
-          if "%~1"=="--version-script" (
-              shift
-              shift
-              goto loop
-          )
-          set "ARG=%~1"
-          if "!ARG:~0,17!"=="--version-script=" (
-              shift
-              goto loop
-          )
-          set "ARGS=!ARGS! %1"
-          shift
-          goto loop
-      
-          :done
-          %LINKER% !ARGS!
-          exit /b %ERRORLEVEL%
-          EOF
-          echo "LLD_WRAPPER=$RUNNER_TEMP\lld-wrapper.cmd" >> $GITHUB_ENV
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/lld-wrapper.cmd -o "%RUNNER_TEMP%\lld-wrapper.cmd"
+          echo LLD_WRAPPER=%RUNNER_TEMP%\lld-wrapper.cmd>> %GITHUB_ENV%
           
       - name: Configure
         run: |
