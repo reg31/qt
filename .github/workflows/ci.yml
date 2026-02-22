@@ -290,16 +290,11 @@ jobs:
 
   build-macos:
     needs: setup
-    runs-on: ${{ matrix.runner }}
+    runs-on: macos-latest
     strategy:
       matrix:
-        include:
-          - arch: x86_64
-            runner: macos-15-intel
-            build_type: [release]
-          - arch: arm64
-            runner: macos-latest
-            build_type: [release]
+        arch: [x86_64, arm64]
+        build_type: [release]
     steps:
       - name: Setup xcode
         uses: maxim-lobanov/setup-xcode@v1
@@ -318,7 +313,7 @@ jobs:
         uses: mozilla-actions/sccache-action@v0.0.9
 
       - name: Setup lld
-        run : brew install lld
+        run: brew install lld
         
       - name: Initialize Qt submodules
         run: perl init-repository ${{ env.INIT_FLAGS }}
