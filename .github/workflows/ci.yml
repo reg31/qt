@@ -124,10 +124,10 @@ jobs:
       
           mkdir build
           cd build
-          ..\configure.bat -schannel -prefix "%OUTPUT_DIR%" ${{ env.SHARED_FLAGS }} -DCMAKE_UNITY_BUILD=ON ^
+          ..\configure.bat -schannel -prefix "%OUTPUT_DIR%" ${{ env.SHARED_FLAGS }} -no-pch ^
            -- -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s" ^
               -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s" ^
-              -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,--gc-sections"
+              -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,--gc-sections" -DCMAKE_UNITY_BUILD=ON
 
       - name: Patch build.ninja
         shell: pwsh
@@ -258,7 +258,7 @@ jobs:
           mkdir build
           cd build
           
-            ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} -skip qtshadertools ^
+            ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} -no-pch -skip qtshadertools ^
               -android-abis ${{ matrix.arch }} -android-ndk "%ANDROID_NDK_LATEST_HOME%" -android-sdk "%ANDROID_SDK_ROOT%" ^
               -reduce-relocations -openssl-runtime -- -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT%" -DCMAKE_UNITY_BUILD=ON ^
               -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp" ^
