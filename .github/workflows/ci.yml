@@ -124,7 +124,7 @@ jobs:
       
           mkdir build
           cd build
-          ..\configure.bat -schannel -prefix "%OUTPUT_DIR%" ${{ env.SHARED_FLAGS }} ^
+          ..\configure.bat -schannel -prefix "%OUTPUT_DIR%" ${{ env.SHARED_FLAGS }} -DCMAKE_UNITY_BUILD=ON ^
            -- -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s" ^
               -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s" ^
               -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,--gc-sections"
@@ -260,7 +260,7 @@ jobs:
           
             ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} -skip qtshadertools ^
               -android-abis ${{ matrix.arch }} -android-ndk "%ANDROID_NDK_LATEST_HOME%" -android-sdk "%ANDROID_SDK_ROOT%" ^
-              -reduce-relocations -openssl-runtime -- -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT%" ^
+              -reduce-relocations -openssl-runtime -- -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT%" -DCMAKE_UNITY_BUILD=ON ^
               -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp" ^
               -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp" ^
               -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,--pack-dyn-relocs=android+relr,--use-android-relr-tags,--gc-sections"
