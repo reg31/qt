@@ -6,7 +6,7 @@ env:
   INIT_FLAGS: --module-subset=qtbase,qtdeclarative,-qtlanguageserver,-qtquicktimeline,-qtquick3d,-qtimageformats,-qtsvg --branch --no-update
   SHARED_COMPILER_FLAGS: "-O2 -DNDEBUG"
   SHARED_LINKER_FLAGS: "-fuse-ld=lld -Wl,-S,--icf=safe"
-  APPLY_CHERRY_PICK: false
+  APPLY_CHERRY_PICK: true
   SHARED_FLAGS: -release -no-feature-testlib -DQT_NO_PACKAGE_VERSION_CHECK=ON -DQT_NO_PACKAGE_VERSION_INCOMPATIBLE_WARNING=ON -c++std c++2b
     -no-feature-hijricalendar -no-feature-islamiccivilcalendar -nomake tests -nomake examples -submodules qtbase,qtdeclarative -no-feature-whatsthis
     -skip qtlanguageserver,qtquicktimeline,qtquick3d,qtimageformats,qtsvg -qt-zlib -qt-libjpeg -qt-libpng -qt-pcre -qt-harfbuzz -qt-freetype -reduce-exports
@@ -94,16 +94,18 @@ jobs:
             local workspace=$(echo "${{ github.workspace }}" | sed 's/\\/\//g')
             for change in "$@"; do
               cd "$workspace/$repo"
-              suffix=$(printf "%02d" $((change % 100)))
-              ref=$(git ls-remote https://codereview.qt-project.org/qt/$repo "refs/changes/$suffix/$change/*" | sort -t/ -k5 -n | tail -1 | awk '{print $2}')
-              [ -z "$ref" ] && { echo "::error::Change $change not found in $repo"; exit 1; }
-              git fetch https://codereview.qt-project.org/qt/$repo "$ref" || exit 1
+              commit=$(curl -sf \
+                "https://codereview.qt-project.org/changes/qt%2F${repo}~${change}/revisions/current/commit" \
+                | tail -n +2 \
+                | jq -r '.commit')
+              [ -z "$commit" ] && { echo "::error::Change $change not found in $repo"; exit 1; }
+              git fetch https://codereview.qt-project.org/qt/$repo "$commit" || exit 1
               git cherry-pick --no-commit FETCH_HEAD || { echo "::error::Cherry-pick failed for $change"; git cherry-pick --abort; exit 1; }
             done
           }
           [ -n "${QT_BASE_CHERRY_PICK}" ] && apply_changes qtbase ${QT_BASE_CHERRY_PICK}
           [ -n "${QT_DECLARATIVE_CHERRY_PICK}" ] && apply_changes qtdeclarative ${QT_DECLARATIVE_CHERRY_PICK}
-
+    
       - name: Experimental library improvement
         shell: bash
         run: |
@@ -202,10 +204,12 @@ jobs:
             local workspace=$(echo "${{ github.workspace }}" | sed 's/\\/\//g')
             for change in "$@"; do
               cd "$workspace/$repo"
-              suffix=$(printf "%02d" $((change % 100)))
-              ref=$(git ls-remote https://codereview.qt-project.org/qt/$repo "refs/changes/$suffix/$change/*" | sort -t/ -k5 -n | tail -1 | awk '{print $2}')
-              [ -z "$ref" ] && { echo "::error::Change $change not found in $repo"; exit 1; }
-              git fetch https://codereview.qt-project.org/qt/$repo "$ref" || exit 1
+              commit=$(curl -sf \
+                "https://codereview.qt-project.org/changes/qt%2F${repo}~${change}/revisions/current/commit" \
+                | tail -n +2 \
+                | jq -r '.commit')
+              [ -z "$commit" ] && { echo "::error::Change $change not found in $repo"; exit 1; }
+              git fetch https://codereview.qt-project.org/qt/$repo "$commit" || exit 1
               git cherry-pick --no-commit FETCH_HEAD || { echo "::error::Cherry-pick failed for $change"; git cherry-pick --abort; exit 1; }
             done
           }
@@ -320,12 +324,15 @@ jobs:
           apply_changes() {
             local repo=$1
             shift
+            local workspace=$(echo "${{ github.workspace }}" | sed 's/\\/\//g')
             for change in "$@"; do
-              cd ${{ github.workspace }}/$repo
-              suffix=$(printf "%02d" $((change % 100)))
-              ref=$(git ls-remote https://codereview.qt-project.org/qt/$repo "refs/changes/$suffix/$change/*" | sort -t/ -k5 -n | tail -1 | awk '{print $2}')
-              [ -z "$ref" ] && { echo "::error::Change $change not found in $repo"; exit 1; }
-              git fetch https://codereview.qt-project.org/qt/$repo "$ref" || exit 1
+              cd "$workspace/$repo"
+              commit=$(curl -sf \
+                "https://codereview.qt-project.org/changes/qt%2F${repo}~${change}/revisions/current/commit" \
+                | tail -n +2 \
+                | jq -r '.commit')
+              [ -z "$commit" ] && { echo "::error::Change $change not found in $repo"; exit 1; }
+              git fetch https://codereview.qt-project.org/qt/$repo "$commit" || exit 1
               git cherry-pick --no-commit FETCH_HEAD || { echo "::error::Cherry-pick failed for $change"; git cherry-pick --abort; exit 1; }
             done
           }
@@ -494,12 +501,15 @@ jobs:
           apply_changes() {
             local repo=$1
             shift
+            local workspace=$(echo "${{ github.workspace }}" | sed 's/\\/\//g')
             for change in "$@"; do
-              cd ${{ github.workspace }}/$repo
-              suffix=$(printf "%02d" $((change % 100)))
-              ref=$(git ls-remote https://codereview.qt-project.org/qt/$repo "refs/changes/$suffix/$change/*" | sort -t/ -k5 -n | tail -1 | awk '{print $2}')
-              [ -z "$ref" ] && { echo "::error::Change $change not found in $repo"; exit 1; }
-              git fetch https://codereview.qt-project.org/qt/$repo "$ref" || exit 1
+              cd "$workspace/$repo"
+              commit=$(curl -sf \
+                "https://codereview.qt-project.org/changes/qt%2F${repo}~${change}/revisions/current/commit" \
+                | tail -n +2 \
+                | jq -r '.commit')
+              [ -z "$commit" ] && { echo "::error::Change $change not found in $repo"; exit 1; }
+              git fetch https://codereview.qt-project.org/qt/$repo "$commit" || exit 1
               git cherry-pick --no-commit FETCH_HEAD || { echo "::error::Cherry-pick failed for $change"; git cherry-pick --abort; exit 1; }
             done
           }
