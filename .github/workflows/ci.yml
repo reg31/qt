@@ -54,10 +54,13 @@ jobs:
           
   build-windows:
     needs: setup
-    runs-on: ubuntu-latest
+    runs-on: windows-2022
     strategy:
       matrix:
         build_type: [release]
+    defaults:
+      run:
+        shell: cmd
     steps:
       - name: Checkout Qt
         uses: actions/checkout@v6
@@ -66,30 +69,31 @@ jobs:
           ref: ${{ needs.setup.outputs.qt_branch }}
           fetch-depth: 0
           submodules: false
-  
+          
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.9
-  
+            
       - name: Set up MinGW
-        id: mingw
         uses: egor-tensin/setup-mingw@v3
-  
+        
       - name: Setup LLVM
         uses: ZhongRuoyu/setup-llvm@v0
         with:
           llvm-version: 21
-  
+    
       - name: Initialize Qt submodules
-        run: perl init-repository ${{ env.INIT_FLAGS }}
-  
+        run: init-repository.bat ${{ env.INIT_FLAGS }}
+
       - name: Apply QT cherry picks
         if: (env.QT_BASE_CHERRY_PICK != '' || env.QT_DECLARATIVE_CHERRY_PICK != '') && env.APPLY_CHERRY_PICK != 'false'
+        shell: bash
         run: |
           apply_changes() {
             local repo=$1
             shift
+            local workspace=$(echo "${{ github.workspace }}" | sed 's/\\/\//g')
             for change in "$@"; do
-              cd "${{ github.workspace }}/$repo"
+              cd "$workspace/$repo"
               commit=$(curl -sf \
                 "https://codereview.qt-project.org/changes/qt%2F${repo}~${change}/revisions/current/commit" \
                 | tail -n +2 \
@@ -101,45 +105,57 @@ jobs:
           }
           [ -n "${QT_BASE_CHERRY_PICK}" ] && apply_changes qtbase ${QT_BASE_CHERRY_PICK}
           [ -n "${QT_DECLARATIVE_CHERRY_PICK}" ] && apply_changes qtdeclarative ${QT_DECLARATIVE_CHERRY_PICK}
-  
+    
       - name: Experimental library improvement
+        shell: bash
         run: |
           set -e
+          echo "Downloading experimental changes  ..."
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgthreadedrenderloop.cpp -o qtdeclarative/src/quick/scenegraph/qsgthreadedrenderloop.cpp
-  
+          echo "Download completed  ..."
+          
       - name: Configure
         run: |
-          export CMAKE_C_COMPILER_LAUNCHER=sccache
-          export CMAKE_CXX_COMPILER_LAUNCHER=sccache
-          OUTPUT_DIR=$(pwd)/qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
-  
-          mkdir build && cd build
-          ../configure -schannel -prefix "$OUTPUT_DIR" ${{ env.SHARED_FLAGS }} \
-            -- -DCMAKE_C_COMPILER=${{ steps.mingw.outputs.gcc }} \
-               -DCMAKE_CXX_COMPILER=${{ steps.mingw.outputs.gxx }} \
-               -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s" \
-               -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s" \
-               -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,--gc-sections"
-  
+          set "CMAKE_C_COMPILER_LAUNCHER=sccache"
+          set "CMAKE_CXX_COMPILER_LAUNCHER=sccache"
+          set "CC=C:\ProgramData\mingw64\mingw64\bin\x86_64-w64-mingw32-gcc.exe"
+          set "CXX=C:\ProgramData\mingw64\mingw64\bin\x86_64-w64-mingw32-g++.exe"
+          set "OUTPUT_DIR=%CD%\qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
+      
+          mkdir build
+          cd build
+          ..\configure.bat -schannel -prefix "%OUTPUT_DIR%" ${{ env.SHARED_FLAGS }} ^
+           -- -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s" ^
+              -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s" ^
+              -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,--gc-sections"
+
       - name: Patch build.ninja
+        shell: pwsh
         run: |
-          find build -name "*.ninja" | xargs sed -i 's/ -Wl,--version-script,[^ ]*//g'
-  
+          Get-ChildItem -Path build -Filter "*.ninja" -Recurse | ForEach-Object {
+            $content = Get-Content $_.FullName -Raw
+            $patched = $content -replace ' -Wl,--version-script,[^\s]+', ''
+            if ($content -ne $patched) {
+              Set-Content $_.FullName $patched
+              Write-Host "Patched: $($_.FullName)"
+            }
+          }
+              
       - name: List features
-        run: ./configure -list-features
-  
+        run: configure.bat -list-features
+
       - name: Build Qt
         run: |
           cd build
-          cmake --build . -j$(nproc)
+          cmake --build . -j%NUMBER_OF_PROCESSORS%
           cmake --install .
-  
+          
       - name: Package artifacts
         run: |
-          OUTPUT_NAME=qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
-          cp ${{ steps.mingw.outputs.prefix }}/bin/*.dll ./$OUTPUT_NAME/bin/
-          7z a $OUTPUT_NAME.zip ./$OUTPUT_NAME/* -x!./$OUTPUT_NAME/share -x!./$OUTPUT_NAME/sbom -x!./$OUTPUT_NAME/doc
-  
+          set "OUTPUT_NAME=qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
+          Xcopy C:\ProgramData\mingw64\mingw64\bin\*.dll .\%OUTPUT_NAME%\bin\ /c /i /s /y /r
+          7z a %OUTPUT_NAME%.zip .\%OUTPUT_NAME%\* -x!.\%OUTPUT_NAME%\share -x!.\%OUTPUT_NAME%\sbom -x!.\%OUTPUT_NAME%\doc
+          
       - name: Upload build artifact
         uses: actions/upload-artifact@v6
         with:
