@@ -62,23 +62,18 @@ jobs:
       run:
         shell: cmd
     steps:
-      - name: Configure Windows Defender
+      - name: Configure Windows Defender exclusions
         shell: powershell
         run: |
-          # Try full disable first (works if Tamper Protection is off)
-          try {
-            Set-MpPreference -DisableRealtimeMonitoring $true
-            Set-MpPreference -DisableIOAVProtection $true
-            Set-MpPreference -DisableBehaviourMonitoring $true
-            Set-MpPreference -DisableBlockAtFirstSeen $true
-          } catch {
-            Write-Host "Full disable failed (Tamper Protection likely on), falling back to exclusions"
-          }
-          
           Add-MpPreference -ExclusionPath "${{ github.workspace }}"
           Add-MpPreference -ExclusionExtension "obj"
-          Add-MpPreference -ExclusionExtension "cpp"
-          Add-MpPreference -ExclusionExtension "h"
+          Add-MpPreference -ExclusionExtension "pch"
+          Add-MpPreference -ExclusionExtension "pdb"
+          Add-MpPreference -ExclusionExtension "ilk"
+          Add-MpPreference -ExclusionExtension "exp"
+          Add-MpPreference -ExclusionExtension "lib"
+          Add-MpPreference -ExclusionExtension "dll"
+          Add-MpPreference -ExclusionExtension "exe"
     
       - name: Checkout Qt
         uses: actions/checkout@v6
@@ -192,23 +187,18 @@ jobs:
       run:
         shell: cmd
     steps:
-      - name: Configure Windows Defender
+      - name: Configure Windows Defender exclusions
         shell: powershell
         run: |
-          # Try full disable first (works if Tamper Protection is off)
-          try {
-            Set-MpPreference -DisableRealtimeMonitoring $true
-            Set-MpPreference -DisableIOAVProtection $true
-            Set-MpPreference -DisableBehaviourMonitoring $true
-            Set-MpPreference -DisableBlockAtFirstSeen $true
-          } catch {
-            Write-Host "Full disable failed (Tamper Protection likely on), falling back to exclusions"
-          }
-          
           Add-MpPreference -ExclusionPath "${{ github.workspace }}"
           Add-MpPreference -ExclusionExtension "obj"
-          Add-MpPreference -ExclusionExtension "cpp"
-          Add-MpPreference -ExclusionExtension "h"
+          Add-MpPreference -ExclusionExtension "pch"
+          Add-MpPreference -ExclusionExtension "pdb"
+          Add-MpPreference -ExclusionExtension "ilk"
+          Add-MpPreference -ExclusionExtension "exp"
+          Add-MpPreference -ExclusionExtension "lib"
+          Add-MpPreference -ExclusionExtension "dll"
+          Add-MpPreference -ExclusionExtension "exe"
           
       - name: Checkout Qt
         uses: actions/checkout@v6
