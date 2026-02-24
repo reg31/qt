@@ -62,10 +62,23 @@ jobs:
       run:
         shell: cmd
     steps:
-      - name: Disable Windows Defender real-time protection
+      - name: Configure Windows Defender
         shell: powershell
         run: |
-          Set-MpPreference -DisableRealtimeMonitoring $true
+          # Try full disable first (works if Tamper Protection is off)
+          try {
+            Set-MpPreference -DisableRealtimeMonitoring $true
+            Set-MpPreference -DisableIOAVProtection $true
+            Set-MpPreference -DisableBehaviourMonitoring $true
+            Set-MpPreference -DisableBlockAtFirstSeen $true
+          } catch {
+            Write-Host "Full disable failed (Tamper Protection likely on), falling back to exclusions"
+          }
+          
+          Add-MpPreference -ExclusionPath "${{ github.workspace }}"
+          Add-MpPreference -ExclusionExtension "obj"
+          Add-MpPreference -ExclusionExtension "cpp"
+          Add-MpPreference -ExclusionExtension "h"
     
       - name: Checkout Qt
         uses: actions/checkout@v6
@@ -179,10 +192,23 @@ jobs:
       run:
         shell: cmd
     steps:
-      - name: Disable Windows Defender real-time protection
+      - name: Configure Windows Defender
         shell: powershell
         run: |
-          Set-MpPreference -DisableRealtimeMonitoring $true
+          # Try full disable first (works if Tamper Protection is off)
+          try {
+            Set-MpPreference -DisableRealtimeMonitoring $true
+            Set-MpPreference -DisableIOAVProtection $true
+            Set-MpPreference -DisableBehaviourMonitoring $true
+            Set-MpPreference -DisableBlockAtFirstSeen $true
+          } catch {
+            Write-Host "Full disable failed (Tamper Protection likely on), falling back to exclusions"
+          }
+          
+          Add-MpPreference -ExclusionPath "${{ github.workspace }}"
+          Add-MpPreference -ExclusionExtension "obj"
+          Add-MpPreference -ExclusionExtension "cpp"
+          Add-MpPreference -ExclusionExtension "h"
           
       - name: Checkout Qt
         uses: actions/checkout@v6
