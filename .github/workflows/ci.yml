@@ -64,23 +64,14 @@ jobs:
     steps:
       - name: Configure Windows Defender exclusions
         shell: powershell
-        run: |
-          Add-MpPreference -ExclusionPath "${{ github.workspace }}"
-          Add-MpPreference -ExclusionExtension "obj"
-          Add-MpPreference -ExclusionExtension "pch"
-          Add-MpPreference -ExclusionExtension "pdb"
-          Add-MpPreference -ExclusionExtension "ilk"
-          Add-MpPreference -ExclusionExtension "exp"
-          Add-MpPreference -ExclusionExtension "lib"
-          Add-MpPreference -ExclusionExtension "dll"
-          Add-MpPreference -ExclusionExtension "exe"
+        run: Add-MpPreference -ExclusionPath ${{ github.workspace }}
     
       - name: Checkout Qt
         uses: actions/checkout@v6
         with:
           repository: qt/qt5
           ref: ${{ needs.setup.outputs.qt_branch }}
-          fetch-depth: 0
+          fetch-depth: 1
           submodules: false
           
       - name: Setup sccache
@@ -189,23 +180,14 @@ jobs:
     steps:
       - name: Configure Windows Defender exclusions
         shell: powershell
-        run: |
-          Add-MpPreference -ExclusionPath "${{ github.workspace }}"
-          Add-MpPreference -ExclusionExtension "obj"
-          Add-MpPreference -ExclusionExtension "pch"
-          Add-MpPreference -ExclusionExtension "pdb"
-          Add-MpPreference -ExclusionExtension "ilk"
-          Add-MpPreference -ExclusionExtension "exp"
-          Add-MpPreference -ExclusionExtension "lib"
-          Add-MpPreference -ExclusionExtension "dll"
-          Add-MpPreference -ExclusionExtension "exe"
+        run: Add-MpPreference -ExclusionPath ${{ github.workspace }}
           
       - name: Checkout Qt
         uses: actions/checkout@v6
         with:
           repository: qt/qt5
           ref: ${{ needs.setup.outputs.qt_branch }}
-          fetch-depth: 0
+          fetch-depth: 1
           submodules: false
           
       - name: Setup sccache
@@ -332,7 +314,7 @@ jobs:
         with:
           repository: qt/qt5
           ref: ${{ needs.setup.outputs.qt_branch }}
-          fetch-depth: 0
+          fetch-depth: 1
           submodules: false
 
       - name: Setup sccache
@@ -508,7 +490,7 @@ jobs:
         with:
           repository: qt/qt5
           ref: ${{ needs.setup.outputs.qt_branch }}
-          fetch-depth: 0
+          fetch-depth: 1
           submodules: false
 
       - name: Setup sccache
