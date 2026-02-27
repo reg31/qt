@@ -157,7 +157,7 @@ jobs:
           7z a %OUTPUT_NAME%.zip .\%OUTPUT_NAME%\* -x!.\%OUTPUT_NAME%\share -x!.\%OUTPUT_NAME%\sbom -x!.\%OUTPUT_NAME%\doc
           
       - name: Upload build artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: qt-windows-mingw
           path: ./qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
@@ -286,7 +286,7 @@ jobs:
           7z a %OUTPUT_NAME%.zip .\%OUTPUT_NAME%\* -x!.\%OUTPUT_NAME%\share -x!.\%OUTPUT_NAME%\sbom -x!.\%OUTPUT_NAME%\doc
           
       - name: Upload build artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: qt-android-${{ matrix.arch }}
           path: ./qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
@@ -398,7 +398,7 @@ jobs:
           cmake --install . --strip
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: qt-macos-${{ matrix.arch }}
           path: qt-macos-${{ matrix.arch }}-release-${{ needs.setup.outputs.qt_branch }}
@@ -468,7 +468,7 @@ jobs:
           7z a "${OUTPUT_NAME}.zip" "./${UNIVERSAL_DIR}/"* -x!./${UNIVERSAL_DIR}/share -x!./${UNIVERSAL_DIR}/sbom -x!./${UNIVERSAL_DIR}/doc
           
       - name: Upload universal build
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: qt-macos
           path: qt-macos-release-${{ needs.setup.outputs.qt_branch }}.zip
@@ -563,7 +563,7 @@ jobs:
           7z a $OUTPUT_NAME.zip ./$OUTPUT_NAME/* -x!./$OUTPUT_NAME/share -x!./$OUTPUT_NAME/sbom -x!./$OUTPUT_NAME/doc
           
       - name: Upload build artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: qt-ios
           path: qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
