@@ -379,7 +379,7 @@ static void savePipelineCache(QRhi *rhi)
     QFile f(pipelineCachePath());
     if (f.open(QIODevice::WriteOnly | QIODevice::Truncate))
         f.write(data);
-    qCDebug(QSG_LOG_RENDERLOOP, "RHI pipeline cache saved (%d bytes)", data.size());
+    qCDebug(QSG_LOG_RENDERLOOP, "RHI pipeline cache saved (%lld bytes)", (long long)data.size());
 }
 
 static void loadPipelineCache(QRhi *rhi)
@@ -389,7 +389,7 @@ static void loadPipelineCache(QRhi *rhi)
         return;
     const QByteArray data = f.readAll();
     rhi->setPipelineCacheData(data);
-    qCDebug(QSG_LOG_RENDERLOOP, "RHI pipeline cache loaded (%d bytes)", data.size());
+    qCDebug(QSG_LOG_RENDERLOOP, "RHI pipeline cache loaded (%lld bytes)", (long long)data.size());
 }
 }
 
@@ -1106,50 +1106,42 @@ void QSGThreadedRenderLoop::exposureChanged(QQuickWindow *window)
             handleExposure(safeWindow);
     } else {
         Window *w = windowFor(safeWindow);
-        if (!w && safeWindow->handle())
-            startPreWarm(safeWindow);
-        else if (w)
+        if (!w && safeWindow->handle()) {
+            qCDebug(QSG_LOG_RENDERLOOP) << "pre-warming render thread for" << safeWindow;
+            auto *wd = QQuickWindowPrivate::get(safeWindow);
+            auto *renderContext = wd->context;
+            pendingRenderContexts.remove(renderContext);
+            m_windows.emplace_back();
+            w = &m_windows.back();
+            w->window = safeWindow;
+            w->actualWindowFormat = safeWindow->format();
+            w->thread = new QSGRenderThread(this, renderContext);
+            w->updateDuringSync = false;
+            w->forceRenderPass = true;
+            w->badVSync = false;
+            w->psTimeAccumulator = 0.0f;
+            w->psTimeSampleCount = 0;
+            w->timeBetweenPolishAndSyncs.start();
+            auto *rhiSupport = QSGRhiSupport::instance();
+            w->thread->offscreenSurface = rhiSupport->maybeCreateOffscreenSurface(safeWindow);
+            w->thread->window = safeWindow;
+            w->thread->windowSize = safeWindow->size();
+            w->thread->dpr = float(safeWindow->effectiveDevicePixelRatio());
+            w->thread->scProxyData = QRhi::updateSwapChainProxyData(rhiSupport->rhiBackend(), safeWindow);
+            safeWindow->installEventFilter(this);
+            if (auto *controller = wd->animationController.get();
+                controller->thread() != w->thread) [[unlikely]]
+                controller->moveToThread(w->thread);
+            w->thread->active = true;
+            if (w->thread->thread() == QThread::currentThread()) [[unlikely]] {
+                w->thread->sgrc->moveToThread(w->thread);
+                w->thread->moveToThread(w->thread);
+            }
+            w->thread->start();
+        } else if (w) {
             handleObscurity(w);
+        }
     }
-}
-
-void QSGThreadedRenderLoop::startPreWarm(QQuickWindow *window)
-{
-    qCDebug(QSG_LOG_RENDERLOOP) << "startPreWarm()" << window;
-    auto *wd = QQuickWindowPrivate::get(window);
-    auto *renderContext = wd->context;
-    pendingRenderContexts.remove(renderContext);
-
-    m_windows.emplace_back();
-    Window *w = &m_windows.back();
-    w->window = window;
-    w->actualWindowFormat = window->format();
-    w->thread = new QSGRenderThread(this, renderContext);
-    w->updateDuringSync = false;
-    w->forceRenderPass = true;
-    w->badVSync = false;
-    w->psTimeAccumulator = 0.0f;
-    w->psTimeSampleCount = 0;
-    w->timeBetweenPolishAndSyncs.start();
-
-    auto *rhiSupport = QSGRhiSupport::instance();
-    w->thread->offscreenSurface = rhiSupport->maybeCreateOffscreenSurface(window);
-    w->thread->window = window;
-    w->thread->windowSize = window->size();
-    w->thread->dpr = float(window->effectiveDevicePixelRatio());
-    w->thread->scProxyData = QRhi::updateSwapChainProxyData(rhiSupport->rhiBackend(), window);
-    window->installEventFilter(this);
-
-    if (auto *controller = wd->animationController.get();
-        controller->thread() != w->thread) [[unlikely]]
-        controller->moveToThread(w->thread);
-
-    w->thread->active = true;
-    if (w->thread->thread() == QThread::currentThread()) [[unlikely]] {
-        w->thread->sgrc->moveToThread(w->thread);
-        w->thread->moveToThread(w->thread);
-    }
-    w->thread->start();
 }
 
 void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
