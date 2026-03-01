@@ -7,6 +7,9 @@
 #include <QtCore/QWaitCondition>
 #include <QtCore/QAnimationDriver>
 #include <QtCore/QTimer>
+#include <QtCore/QStandardPaths>
+#include <QtCore/QFile>
+#include <QtCore/QDir>
 #include <atomic>
 #include <variant>
 #include <deque>
@@ -359,6 +362,35 @@ public slots:
 namespace {
 template<class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
 template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
+
+static const QString pipelineCachePath()
+{
+    return QStandardPaths::writableLocation(QStandardPaths::CacheLocation)
+           + QLatin1String("/qsg_pipeline_cache.bin");
+}
+
+static void savePipelineCache(QRhi *rhi)
+{
+    const QByteArray data = rhi->pipelineCacheData();
+    if (data.isEmpty())
+        return;
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
+    QDir().mkpath(dir);
+    QFile f(pipelineCachePath());
+    if (f.open(QIODevice::WriteOnly | QIODevice::Truncate))
+        f.write(data);
+    qCDebug(QSG_LOG_RENDERLOOP, "RHI pipeline cache saved (%d bytes)", data.size());
+}
+
+static void loadPipelineCache(QRhi *rhi)
+{
+    QFile f(pipelineCachePath());
+    if (!f.open(QIODevice::ReadOnly))
+        return;
+    const QByteArray data = f.readAll();
+    rhi->setPipelineCacheData(data);
+    qCDebug(QSG_LOG_RENDERLOOP, "RHI pipeline cache loaded (%d bytes)", data.size());
+}
 }
 
 bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
@@ -534,8 +566,10 @@ void QSGRenderThread::invalidateGraphics(QQuickWindow *window, bool inDestructor
                          window, dd->swapchain);
             }
         }
-        if (ownRhi)
+        if (ownRhi) {
+            savePipelineCache(rhi);
             QSGRhiSupport::instance()->destroyRhi(rhi, dd->graphicsConfig);
+        }
         rhi = nullptr;
         dd->rhi = nullptr;
         qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- QRhi destroyed");
@@ -583,8 +617,10 @@ void QSGRenderThread::teardownGraphics()
     wd->cleanupNodesOnShutdown();
     sgrc->invalidate();
     wm->releaseSwapchain(window);
-    if (ownRhi)
+    if (ownRhi) {
+        savePipelineCache(rhi);
         QSGRhiSupport::instance()->destroyRhi(rhi, {});
+    }
     rhi = nullptr;
     lastFrameValid = false;
 }
@@ -745,6 +781,7 @@ void QSGRenderThread::ensureRhi()
             rhiDeviceLost = false;
             rhiSampleCount = rhiSupport->chooseSampleCountForWindowWithRhi(window, rhi);
             rhi->makeThreadLocalNativeContextCurrent();
+            loadPipelineCache(rhi);
         } else {
             if (!rhiDeviceLost) [[likely]] rhiDoomed = true;
             return;
@@ -761,7 +798,7 @@ void QSGRenderThread::ensureRhi()
         sgrc->initialize(&params);
     }
 
-    if (rhi && !cd->swapchain) [[unlikely]] {
+    if (rhi && !cd->swapchain && window->isExposed()) [[unlikely]] {
         cd->rhi = rhi;
         const auto requestedFormat = window->requestedFormat();
         QRhiSwapChain::Flags flags = QRhiSwapChain::UsedAsTransferSource;
@@ -803,18 +840,8 @@ void QSGRenderThread::run()
 
     m_threadTimeBetweenRenders.start();
 
-    if (window) {
+    if (window)
         ensureRhi();
-
-        QPointer<QQuickWindow> safeWindow = window;
-        QMetaObject::invokeMethod(wm, [this, safeWindow]() {
-            if (!safeWindow) return;
-            if (QSGThreadedRenderLoop::Window *w = wm->windowFor(safeWindow)) {
-                wm->polishAndSync(w, true);
-                wm->startOrStopAnimationTimer();
-            }
-        }, Qt::QueuedConnection);
-    }
 
     while (active) [[likely]] {
 #ifdef Q_OS_DARWIN
@@ -825,7 +852,8 @@ void QSGRenderThread::run()
 
         if (window) [[likely]] {
             ensureRhi();
-            syncAndRender();
+            if (pendingUpdate != 0 || animatorDriver->isRunning())
+                syncAndRender();
         }
 
         if (active && (pendingUpdate == 0 || !window)) [[unlikely]] {
@@ -1078,9 +1106,50 @@ void QSGThreadedRenderLoop::exposureChanged(QQuickWindow *window)
             handleExposure(safeWindow);
     } else {
         Window *w = windowFor(safeWindow);
-        if (w)
+        if (!w && safeWindow->handle())
+            startPreWarm(safeWindow);
+        else if (w)
             handleObscurity(w);
     }
+}
+
+void QSGThreadedRenderLoop::startPreWarm(QQuickWindow *window)
+{
+    qCDebug(QSG_LOG_RENDERLOOP) << "startPreWarm()" << window;
+    auto *wd = QQuickWindowPrivate::get(window);
+    auto *renderContext = wd->context;
+    pendingRenderContexts.remove(renderContext);
+
+    m_windows.emplace_back();
+    Window *w = &m_windows.back();
+    w->window = window;
+    w->actualWindowFormat = window->format();
+    w->thread = new QSGRenderThread(this, renderContext);
+    w->updateDuringSync = false;
+    w->forceRenderPass = true;
+    w->badVSync = false;
+    w->psTimeAccumulator = 0.0f;
+    w->psTimeSampleCount = 0;
+    w->timeBetweenPolishAndSyncs.start();
+
+    auto *rhiSupport = QSGRhiSupport::instance();
+    w->thread->offscreenSurface = rhiSupport->maybeCreateOffscreenSurface(window);
+    w->thread->window = window;
+    w->thread->windowSize = window->size();
+    w->thread->dpr = float(window->effectiveDevicePixelRatio());
+    w->thread->scProxyData = QRhi::updateSwapChainProxyData(rhiSupport->rhiBackend(), window);
+    window->installEventFilter(this);
+
+    if (auto *controller = wd->animationController.get();
+        controller->thread() != w->thread) [[unlikely]]
+        controller->moveToThread(w->thread);
+
+    w->thread->active = true;
+    if (w->thread->thread() == QThread::currentThread()) [[unlikely]] {
+        w->thread->sgrc->moveToThread(w->thread);
+        w->thread->moveToThread(w->thread);
+    }
+    w->thread->start();
 }
 
 void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
@@ -1127,7 +1196,6 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
             w->thread->moveToThread(w->thread);
         }
         w->thread->start();
-        return;
     } else {
         QMutexLocker lock(&w->thread->mutex);
         w->thread->postEvent(WMExposedEvent(w->window));
