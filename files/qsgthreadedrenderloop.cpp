@@ -1480,8 +1480,9 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
 
     qCDebug(QSG_LOG_RENDERLOOP, "- lock for sync");
     {
-        static constexpr unsigned long ADAPTIVE_TIMEOUT_MS = 12;
         static constexpr int HYSTERESIS_FRAMES = 5;
+        const unsigned long ADAPTIVE_TIMEOUT_MS = static_cast<unsigned long>(
+            sg->vsyncIntervalForAnimationDriver(m_animation_driver) * 0.75f);
 
         QMutexLocker lock(&w->thread->mutex);
         m_lockedForSync = true;
@@ -1502,8 +1503,6 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
         m_lockedForSync = false;
         qCDebug(QSG_LOG_RENDERLOOP, "- sync done");
 
-        if (profileFrames)
-            syncTime = timer.nsecsElapsed();
         Q_TRACE(QSG_sync_exit);
         Q_QUICK_SG_PROFILE_RECORD(QQuickProfiler::SceneGraphPolishAndSync,
                                   QQuickProfiler::SceneGraphPolishAndSyncSync);
@@ -1526,6 +1525,8 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
         }
     }
 
+    if (profileFrames)
+        syncTime = timer.nsecsElapsed();
     Q_TRACE(QSG_animations_entry);
 
     if (m_animation_timer == 0 && m_animation_driver->isRunning()) {
@@ -1551,7 +1552,7 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
     }
 
     if (profileFrames) {
-        qCDebug(QSG_LOG_TIME_RENDERLOOP, "[window %p][gui thread] Frame prepared, polish=%d ms, lock=%d ms, blockedForSync=%d ms, animations=%d ms",
+        qCDebug(QSG_LOG_TIME_RENDERLOOP, "[window %p][gui thread] Frame prepared, polish=%d ms, lock=%d ms, sync+renderWait=%d ms, animations=%d ms",
                 window,
                 int(polishTime / 1000000),
                 int((waitTime - polishTime) / 1000000),
