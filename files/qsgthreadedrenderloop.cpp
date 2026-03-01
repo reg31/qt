@@ -220,7 +220,7 @@ public:
 
     void addEvent(QSGRenderThreadEvent e) {
         QMutexLocker lock(&mutex);
-        m_queue.push_back(std::move(e));
+        m_queue.emplace_back(std::move(e));
         if (waiting)
             condition.wakeOne();
     }
@@ -341,7 +341,7 @@ public:
     bool rhiDoomed = false;
     bool guiNotifiedAboutRhiFailure = false;
     bool swRastFallbackDueToSwapchainFailure = false;
-	bool lastFrameValid = false;
+    bool lastFrameValid = false;
 
     bool stopEventProcessing;
     QSGRenderThreadEventQueue eventQueue;
@@ -354,6 +354,8 @@ public:
     uint64_t lastPostedSyncSerial = 0;
     uint64_t currentSyncSerial = 0;
     int pipelinedFramesRemaining = 0;
+
+    QSize m_lastPixelSize;
 
 public slots:
     void sceneGraphChanged() {
@@ -396,33 +398,34 @@ static void loadPipelineCache(QRhi *rhi)
     rhi->setPipelineCacheData(data);
     qCDebug(QSG_LOG_RENDERLOOP, "RHI pipeline cache loaded (%lld bytes)", (long long)data.size());
 }
+
 }
 
 bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
 {
     return std::visit(overloaded {
     [&](WMObscureEvent &) {
-		qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "WM_Obscure");
-		QMutexLocker lock(&mutex);
-		if (window) {
-			QQuickWindowPrivate::get(window)->fireAboutToStop();
-			qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- window removed");
-			window = nullptr;
-			lastFrameValid = false;
-		}
-		waitCondition.wakeOne();
-		return true;
-	},
+        qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "WM_Obscure");
+        QMutexLocker lock(&mutex);
+        if (window) {
+            QQuickWindowPrivate::get(window)->fireAboutToStop();
+            qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- window removed");
+            window = nullptr;
+            lastFrameValid = false;
+        }
+        waitCondition.wakeOne();
+        return true;
+    },
     [&](WMExposedEvent &e) {
-		qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "WM_Exposed");
-		window = e.window;
-		windowSize = e.size;
-		dpr = e.dpr;
-		pipelinedFramesRemaining = 0;
-		renderCompletedSerial.store(syncAcknowledgedSerial.load(std::memory_order_relaxed),
+        qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "WM_Exposed");
+        window = e.window;
+        windowSize = e.size;
+        dpr = e.dpr;
+        pipelinedFramesRemaining = 0;
+        renderCompletedSerial.store(syncAcknowledgedSerial.load(std::memory_order_relaxed),
                                     std::memory_order_relaxed);
-		return true;
-	},
+        return true;
+    },
     [&](WMSyncEvent &e) {
         qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "WM_RequestSync");
         if (sleeping)
@@ -513,17 +516,17 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
         return true;
     },
     [&](WMReleaseSwapchainEvent &e) {
-		qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "WM_ReleaseSwapchain");
-		Q_ASSERT(e.window);
-		QMutexLocker lock(&mutex);
-		if (e.window) {
-			wm->releaseSwapchain(e.window);
-			lastFrameValid = false;
-			qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- swapchain released");
-		}
-		waitCondition.wakeOne();
-		return true;
-	}
+        qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "WM_ReleaseSwapchain");
+        Q_ASSERT(e.window);
+        QMutexLocker lock(&mutex);
+        if (e.window) {
+            wm->releaseSwapchain(e.window);
+            lastFrameValid = false;
+            qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- swapchain released");
+        }
+        waitCondition.wakeOne();
+        return true;
+    }
     }, e);
 }
 
@@ -727,19 +730,28 @@ void QSGRenderThread::syncAndRender()
     if (gpuStarted && cd->renderer) [[likely]] {
         cd->renderSceneGraph();
 
+        const bool asyncPresent = rhi && QSGRhiSupport::instance()->rhiBackend() != QRhi::OpenGLES2;
+        if (asyncPresent) {
+            QMutexLocker lock(&mutex);
+            renderCompletedSerial.store(currentSyncSerial, std::memory_order_relaxed);
+            waitCondition.wakeOne();
+        }
+
         if (rhi->endFrame(cd->swapchain) != QRhi::FrameOpSuccess) [[unlikely]] {
             if (rhi->isDeviceLost())
                 handleDeviceLoss();
             QCoreApplication::postEvent(window, new QEvent(QEvent::Type(QQuickWindowPrivate::FullUpdateRequest)));
             lastFrameValid = false;
-            QMutexLocker lock(&mutex);
-            renderCompletedSerial.store(currentSyncSerial, std::memory_order_relaxed);
-            waitCondition.wakeOne();
+            if (!asyncPresent) {
+                QMutexLocker lock(&mutex);
+                renderCompletedSerial.store(currentSyncSerial, std::memory_order_relaxed);
+                waitCondition.wakeOne();
+            }
         } else {
             lastFrameValid = true;
-			if (animatorRunning)
+            if (animatorRunning)
                 pendingUpdate |= RepaintRequest;
-            {
+            if (!asyncPresent) {
                 QMutexLocker lock(&mutex);
                 renderCompletedSerial.store(currentSyncSerial, std::memory_order_relaxed);
                 waitCondition.wakeOne();
@@ -793,11 +805,22 @@ void QSGRenderThread::processEventsAndWaitForMore()
 void QSGRenderThread::ensureRhi()
 {
     auto *cd = QQuickWindowPrivate::get(window);
-    const QSize pixelSize = windowSize * dpr;
 
-    if (rhi && cd->swapchain && cd->swapchain->currentPixelSize() == pixelSize) [[likely]] {
+    // Compute the target pixel size with an explicit integer cast to avoid
+    // the implicit QSizeF -> QSize coercion that the original windowSize * dpr
+    // expression produces. Cache the result so the common hot path — where
+    // neither window size nor DPR has changed — skips the virtual
+    // swapchain size query entirely.
+    const QSize pixelSize(static_cast<int>(windowSize.width() * dpr),
+                          static_cast<int>(windowSize.height() * dpr));
+
+    if (rhi && cd->swapchain && pixelSize == m_lastPixelSize) [[likely]]
         return;
-    }
+
+    m_lastPixelSize = pixelSize;
+
+    if (rhi && cd->swapchain && cd->swapchain->currentPixelSize() == pixelSize) [[likely]]
+        return;
 
     if (!rhi) [[unlikely]] {
         if (rhiDoomed) [[unlikely]] return;
@@ -910,7 +933,7 @@ QSGThreadedRenderLoop::QSGThreadedRenderLoop()
     m_animation_driver = sg->createAnimationDriver(this);
 
     connect(m_animation_driver, &QAnimationDriver::started, this, &QSGThreadedRenderLoop::animationStarted);
-	connect(m_animation_driver, &QAnimationDriver::stopped, this, &QSGThreadedRenderLoop::animationStopped);
+    connect(m_animation_driver, &QAnimationDriver::stopped, this, &QSGThreadedRenderLoop::animationStopped);
 
     m_animation_driver->install();
 }
@@ -1400,9 +1423,9 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
     QQuickWindowPrivate::get(window)->deliveryAgentPrivate()->flushFrameSynchronousEvents(window);
     w = windowFor(window);
     if (!w || !w->thread || (!w->thread->window && !inExpose)) {
-		qCDebug(QSG_LOG_RENDERLOOP, "- removed after event flushing, abort");
-		return;
-	}
+        qCDebug(QSG_LOG_RENDERLOOP, "- removed after event flushing, abort");
+        return;
+    }
 
     Q_TRACE(QSG_polishAndSync);
     QElapsedTimer timer;
