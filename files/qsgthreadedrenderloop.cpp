@@ -671,6 +671,9 @@ void QSGRenderThread::syncAndRender()
     if (syncRequested && !syncResultedInChanges && !exposeRequested
         && lastFrameValid && !repaintRequested && !animatorRunning) {
         qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- sync produced no changes, skipping render");
+        QMutexLocker lock(&mutex);
+        renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
+        waitCondition.wakeAll();
         return;
     }
 
@@ -729,6 +732,9 @@ void QSGRenderThread::syncAndRender()
                 handleDeviceLoss();
             QCoreApplication::postEvent(window, new QEvent(QEvent::Type(QQuickWindowPrivate::FullUpdateRequest)));
             lastFrameValid = false;
+            QMutexLocker lock(&mutex);
+            renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
+            waitCondition.wakeAll();
         } else {
             lastFrameValid = true;
 			if (animatorRunning)
@@ -744,10 +750,19 @@ void QSGRenderThread::syncAndRender()
     } else if (gpuStarted) {
         rhi->endFrame(cd->swapchain, QRhi::SkipPresent);
         lastFrameValid = false;
+        QMutexLocker lock(&mutex);
+        renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
+        waitCondition.wakeAll();
     }
 
     if (hasValidSwapChain) [[likely]]
         emit window->afterFrameEnd();
+
+    if (!gpuStarted) {
+        QMutexLocker lock(&mutex);
+        renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
+        waitCondition.wakeAll();
+    }
 }
 
 void QSGRenderThread::postEvent(QSGRenderThreadEvent e)
