@@ -371,12 +371,15 @@ static const QString pipelineCachePath()
            + QLatin1String("/qsg_pipeline_cache.bin");
 }
 
+Q_GLOBAL_STATIC(QMutex, pipelineCacheFileMutex)
+
 static void savePipelineCache(QRhi *rhi)
 {
     const QByteArray data = rhi->pipelineCacheData();
     if (data.isEmpty())
         return;
     const QString dir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
+    QMutexLocker fileLock(pipelineCacheFileMutex());
     QDir().mkpath(dir);
     QFile f(pipelineCachePath());
     if (f.open(QIODevice::WriteOnly | QIODevice::Truncate))
@@ -415,6 +418,9 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
 		window = e.window;
 		windowSize = e.size;
 		dpr = e.dpr;
+		pipelinedFramesRemaining = 0;
+		renderCompletedSerial.store(syncAcknowledgedSerial.load(std::memory_order_relaxed),
+                                    std::memory_order_relaxed);
 		return true;
 	},
     [&](WMSyncEvent &e) {
