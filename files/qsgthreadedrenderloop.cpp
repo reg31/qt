@@ -350,8 +350,10 @@ public:
     QSGRenderer *m_connectedRenderer = nullptr;
 
     std::atomic<uint64_t> syncAcknowledgedSerial{0};
+    std::atomic<uint64_t> renderCompletedSerial{0};
     uint64_t lastPostedSyncSerial = 0;
     uint64_t currentSyncSerial = 0;
+    int pipelinedFramesRemaining = 0;
 
 public slots:
     void sceneGraphChanged() {
@@ -725,6 +727,11 @@ void QSGRenderThread::syncAndRender()
             lastFrameValid = true;
 			if (animatorRunning)
                 pendingUpdate |= RepaintRequest;
+            {
+                QMutexLocker lock(&mutex);
+                renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
+                waitCondition.wakeAll();
+            }
         }
 
         cd->fireFrameSwapped();
@@ -1447,16 +1454,6 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
     Q_QUICK_SG_PROFILE_START(QQuickProfiler::SceneGraphPolishAndSync);
     Q_TRACE(QSG_polishItems_entry);
 
-    if (!inExpose && w->thread->lastPostedSyncSerial > 0) {
-        qCDebug(QSG_LOG_RENDERLOOP, "- waiting for previous frame sync acknowledgement");
-        QMutexLocker lock(&w->thread->mutex);
-        m_lockedForSync = true;
-        while (w->thread->lastPostedSyncSerial > w->thread->syncAcknowledgedSerial.load(std::memory_order_acquire))
-            w->thread->waitCondition.wait(&w->thread->mutex);
-        m_lockedForSync = false;
-        qCDebug(QSG_LOG_RENDERLOOP, "- previous frame sync acknowledged");
-    }
-
     QQuickWindowPrivate *d = QQuickWindowPrivate::get(window);
     m_inPolish = true;
     d->polishItems();
@@ -1483,34 +1480,52 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
 
     qCDebug(QSG_LOG_RENDERLOOP, "- lock for sync");
     {
+        static constexpr unsigned long ADAPTIVE_TIMEOUT_MS = 12;
+        static constexpr int HYSTERESIS_FRAMES = 5;
+
         QMutexLocker lock(&w->thread->mutex);
         m_lockedForSync = true;
         const uint64_t serial = ++w->thread->lastPostedSyncSerial;
         w->thread->postEvent(WMSyncEvent(window, inExpose, w->forceRenderPass, scProxyData, serial));
         w->forceRenderPass = false;
 
-        if (inExpose) {
-            qCDebug(QSG_LOG_RENDERLOOP, "- blocking for expose sync");
-            if (profileFrames)
-                waitTime = timer.nsecsElapsed();
-            Q_TRACE(QSG_wait_exit);
-            Q_QUICK_SG_PROFILE_RECORD(QQuickProfiler::SceneGraphPolishAndSync,
-                                      QQuickProfiler::SceneGraphPolishAndSyncWait);
-            Q_TRACE(QSG_sync_entry);
-            w->thread->waitCondition.wait(&w->thread->mutex);
-            qCDebug(QSG_LOG_RENDERLOOP, "- expose sync done");
-        }
+        if (profileFrames)
+            waitTime = timer.nsecsElapsed();
+        Q_TRACE(QSG_wait_exit);
+        Q_QUICK_SG_PROFILE_RECORD(QQuickProfiler::SceneGraphPolishAndSync,
+                                  QQuickProfiler::SceneGraphPolishAndSyncWait);
+        Q_TRACE(QSG_sync_entry);
 
+        qCDebug(QSG_LOG_RENDERLOOP, "- waiting for sync");
+        while (w->thread->syncAcknowledgedSerial.load(std::memory_order_acquire) < serial)
+            w->thread->waitCondition.wait(&w->thread->mutex);
         m_lockedForSync = false;
+        qCDebug(QSG_LOG_RENDERLOOP, "- sync done");
+
+        if (profileFrames)
+            syncTime = timer.nsecsElapsed();
+        Q_TRACE(QSG_sync_exit);
+        Q_QUICK_SG_PROFILE_RECORD(QQuickProfiler::SceneGraphPolishAndSync,
+                                  QQuickProfiler::SceneGraphPolishAndSyncSync);
+
+        if (!inExpose) {
+            if (w->thread->pipelinedFramesRemaining > 0) {
+                qCDebug(QSG_LOG_RENDERLOOP, "- pipeline mode (%d frames remaining)",
+                        w->thread->pipelinedFramesRemaining);
+                --w->thread->pipelinedFramesRemaining;
+            } else {
+                if (w->thread->renderCompletedSerial.load(std::memory_order_acquire) < serial)
+                    w->thread->waitCondition.wait(&w->thread->mutex, ADAPTIVE_TIMEOUT_MS);
+                if (w->thread->renderCompletedSerial.load(std::memory_order_acquire) < serial) {
+                    qCDebug(QSG_LOG_RENDERLOOP, "- render overran budget, entering pipeline mode");
+                    w->thread->pipelinedFramesRemaining = HYSTERESIS_FRAMES;
+                } else {
+                    qCDebug(QSG_LOG_RENDERLOOP, "- zero-latency frame");
+                }
+            }
+        }
     }
 
-    qCDebug(QSG_LOG_RENDERLOOP, "- unlock after sync");
-
-    if (profileFrames)
-        syncTime = timer.nsecsElapsed();
-    Q_TRACE(QSG_sync_exit);
-    Q_QUICK_SG_PROFILE_RECORD(QQuickProfiler::SceneGraphPolishAndSync,
-                              QQuickProfiler::SceneGraphPolishAndSyncSync);
     Q_TRACE(QSG_animations_entry);
 
     if (m_animation_timer == 0 && m_animation_driver->isRunning()) {
