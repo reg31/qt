@@ -11,6 +11,7 @@
 #include <QtCore/QFile>
 #include <QtCore/QDir>
 #include <atomic>
+#include <future>
 #include <variant>
 #include <deque>
 
@@ -356,6 +357,7 @@ public:
     int pipelinedFramesRemaining = 0;
 
     QSize m_lastPixelSize;
+    std::future<std::pair<QRhi *, bool>> m_rhiInitFuture;
 
 public slots:
     void sceneGraphChanged() {
@@ -825,9 +827,15 @@ void QSGRenderThread::ensureRhi()
     if (!rhi) [[unlikely]] {
         if (rhiDoomed) [[unlikely]] return;
         auto *rhiSupport = QSGRhiSupport::instance();
-        auto rhiResult = rhiSupport->createRhi(window, offscreenSurface, swRastFallbackDueToSwapchainFailure);
-        rhi = rhiResult.rhi;
-        ownRhi = rhiResult.own;
+        if (m_rhiInitFuture.valid()) {
+            auto [asyncRhi, asyncOwn] = m_rhiInitFuture.get();
+            rhi = asyncRhi;
+            ownRhi = asyncOwn;
+        } else {
+            auto rhiResult = rhiSupport->createRhi(window, offscreenSurface, swRastFallbackDueToSwapchainFailure);
+            rhi = rhiResult.rhi;
+            ownRhi = rhiResult.own;
+        }
         if (rhi) [[likely]] {
             rhiDeviceLost = false;
             rhiSampleCount = rhiSupport->chooseSampleCountForWindowWithRhi(window, rhi);
@@ -891,8 +899,25 @@ void QSGRenderThread::run()
 
     m_threadTimeBetweenRenders.start();
 
-    if (window)
-        ensureRhi();
+    // For GPU backends where device creation is thread-safe (Vulkan, Metal,
+    // D3D12), kick off driver loading immediately on a background thread.
+    // The render thread enters its event loop straight away, so it can
+    // begin processing events — including the initial polishAndSync posted
+    // by show() — while the driver loads in parallel. ensureRhi() below is
+    // the join point: if the future is already resolved the call is
+    // instantaneous; if not, the render thread waits only for the remaining
+    // time. OpenGL requires context affinity so it keeps the synchronous path.
+    if (window && QSGRhiSupport::instance()->rhiBackend() != QRhi::OpenGLES2) {
+        QQuickWindow *capturedWindow = window;
+        QOffscreenSurface *capturedSurface = offscreenSurface;
+        const bool capturedSwRast = swRastFallbackDueToSwapchainFailure;
+        m_rhiInitFuture = std::async(std::launch::async,
+            [capturedWindow, capturedSurface, capturedSwRast]() -> std::pair<QRhi *, bool> {
+                auto *rhiSupport = QSGRhiSupport::instance();
+                auto r = rhiSupport->createRhi(capturedWindow, capturedSurface, capturedSwRast);
+                return {r.rhi, r.own};
+            });
+    }
 
     while (active) [[likely]] {
 #ifdef Q_OS_DARWIN
@@ -916,6 +941,9 @@ void QSGRenderThread::run()
 
     if (rhi) [[likely]]
         rhi->makeThreadLocalNativeContextCurrent();
+
+    if (m_rhiInitFuture.valid())
+        m_rhiInitFuture.get();
 
     delete animatorDriver;
     animatorDriver = nullptr;
