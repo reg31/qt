@@ -364,7 +364,6 @@ jobs:
         if: matrix.arch == 'arm64'
         run: |
           OUTPUT_DIR=$(pwd)/qt-macos-${{ matrix.arch }}-release-${{ needs.setup.outputs.qt_branch }}
-          export CPATH=`xcrun --show-sdk-path`/usr/include
           export CMAKE_CXX_COMPILER_LAUNCHER="sccache"
           export CMAKE_C_COMPILER_LAUNCHER="sccache"
           mkdir -p build && cd build
@@ -541,7 +540,6 @@ jobs:
       - name: Configure and build for iOS
         run: | 
           OUTPUT_DIR=$(pwd)/qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
-          export CPATH=`xcrun --show-sdk-path`/usr/include
           export CMAKE_CXX_COMPILER_LAUNCHER="sccache"
           export CMAKE_C_COMPILER_LAUNCHER="sccache"
           HOST_PATH=$(pwd)/qt-macos-release-dev
