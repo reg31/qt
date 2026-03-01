@@ -1481,8 +1481,11 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
     qCDebug(QSG_LOG_RENDERLOOP, "- lock for sync");
     {
         static constexpr int HYSTERESIS_FRAMES = 5;
+        const float vsyncMs = sg->vsyncIntervalForAnimationDriver(m_animation_driver);
         const unsigned long ADAPTIVE_TIMEOUT_MS = static_cast<unsigned long>(
-            sg->vsyncIntervalForAnimationDriver(m_animation_driver) * 0.75f);
+            qMax(4.0f, vsyncMs * 0.75f));
+        const bool supportsAsyncPresent =
+            QSGRhiSupport::instance()->rhiBackend() != QRhi::OpenGLES2;
 
         QMutexLocker lock(&w->thread->mutex);
         m_lockedForSync = true;
@@ -1512,6 +1515,8 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
                 qCDebug(QSG_LOG_RENDERLOOP, "- pipeline mode (%d frames remaining)",
                         w->thread->pipelinedFramesRemaining);
                 --w->thread->pipelinedFramesRemaining;
+            } else if (!supportsAsyncPresent) {
+                qCDebug(QSG_LOG_RENDERLOOP, "- OpenGL backend: staying in pipeline mode");
             } else {
                 if (w->thread->renderCompletedSerial.load(std::memory_order_acquire) < serial)
                     w->thread->waitCondition.wait(&w->thread->mutex, ADAPTIVE_TIMEOUT_MS);
