@@ -595,6 +595,7 @@ void QSGRenderThread::sync()
     bool canSync = (rhi && windowSize.isValid());
 
     if (canSync) [[likely]] {
+        rhi->makeThreadLocalNativeContextCurrent();
         if (d->renderer) [[likely]] {
             if (d->renderer != m_connectedRenderer) {
                 if (m_connectedRenderer)
