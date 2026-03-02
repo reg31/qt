@@ -608,11 +608,8 @@ void QSGRenderThread::sync()
         d->syncSceneGraph();
     }
 
-    {
-        QMutexLocker lock(&mutex);
-        syncAcknowledgedSerial.store(currentSyncSerial, std::memory_order_relaxed);
-    }
-    waitCondition.wakeOne();
+    syncAcknowledgedSerial.store(currentSyncSerial, std::memory_order_release);
+    syncAcknowledgedSerial.notify_one();
 
     if (canSync) [[likely]]
         sgrc->endSync();
@@ -651,6 +648,8 @@ void QSGRenderThread::syncAndRender()
     const bool exposeRequested = (pendingUpdate & ExposeRequest) == ExposeRequest;
     const bool repaintRequested = (pendingUpdate & RepaintRequest);
     pendingUpdate = 0;
+    [[assume(window != nullptr)]];
+    [[assume(cd != nullptr)]];
 
     const bool animatorRunning = animatorDriver->isRunning();
     const bool hasValidSwapChain = (cd->swapchain && windowSize.isValid());
@@ -968,11 +967,9 @@ QSGContext *QSGThreadedRenderLoop::sceneGraphContext() const
 
 bool QSGThreadedRenderLoop::anyoneShowing() const
 {
-    for (const auto &w : std::as_const(m_windows)) {
-        if (w.window->isVisible() && w.window->isExposed())
-            return true;
-    }
-    return false;
+    return std::ranges::any_of(m_windows, [](const auto &w) {
+        return w.window->isVisible() && w.window->isExposed();
+    });
 }
 
 bool QSGThreadedRenderLoop::interleaveIncubation() const
@@ -1502,6 +1499,7 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
         const uint64_t serial = ++w->thread->lastPostedSyncSerial;
         w->thread->postEvent(WMSyncEvent(window, inExpose, w->forceRenderPass, scProxyData, serial));
         w->forceRenderPass = false;
+        lock.unlock();
 
         if (profileFrames)
             waitTime = timer.nsecsElapsed();
@@ -1511,8 +1509,11 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
         Q_TRACE(QSG_sync_entry);
 
         qCDebug(QSG_LOG_RENDERLOOP, "- waiting for sync");
-        while (w->thread->syncAcknowledgedSerial.load(std::memory_order_relaxed) < serial)
-            w->thread->waitCondition.wait(&w->thread->mutex);
+        uint64_t observed = w->thread->syncAcknowledgedSerial.load(std::memory_order_acquire);
+        while (observed < serial) {
+            w->thread->syncAcknowledgedSerial.wait(observed, std::memory_order_acquire);
+            observed = w->thread->syncAcknowledgedSerial.load(std::memory_order_acquire);
+        }
         m_lockedForSync = false;
         qCDebug(QSG_LOG_RENDERLOOP, "- sync done");
 
@@ -1528,8 +1529,11 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
             } else if (!supportsAsyncPresent) {
                 qCDebug(QSG_LOG_RENDERLOOP, "- OpenGL backend: staying in pipeline mode");
             } else {
-                if (w->thread->renderCompletedSerial.load(std::memory_order_relaxed) < serial)
+                if (w->thread->renderCompletedSerial.load(std::memory_order_relaxed) < serial) {
+                    lock.relock();
                     w->thread->waitCondition.wait(&w->thread->mutex, ADAPTIVE_TIMEOUT_MS);
+                    lock.unlock();
+                }
                 if (w->thread->renderCompletedSerial.load(std::memory_order_relaxed) < serial) {
                     qCDebug(QSG_LOG_RENDERLOOP, "- render overran budget, entering pipeline mode");
                     w->thread->pipelinedFramesRemaining = HYSTERESIS_FRAMES;
@@ -1582,9 +1586,9 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
 
 bool QSGThreadedRenderLoop::event(QEvent *e)
 {
-    switch ((int) e->type()) {
+    switch (std::to_underlying(e->type())) {
 
-    case QEvent::Timer: {
+    case std::to_underlying(QEvent::Timer): {
         Q_ASSERT(sg->isVSyncDependent(m_animation_driver));
         QTimerEvent *te = static_cast<QTimerEvent *>(e);
         if (te->timerId() == m_animation_timer) {
