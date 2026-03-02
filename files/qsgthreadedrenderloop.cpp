@@ -1163,7 +1163,10 @@ void QSGThreadedRenderLoop::exposureChanged(QQuickWindow *window)
             handleExposure(safeWindow);
     } else {
         Window *w = windowFor(safeWindow);
-        if (!w && safeWindow->handle()) {
+        if (!w) { {
+            if (!safeWindow->handle())
+               safeWindow->create();
+           
             qCDebug(QSG_LOG_RENDERLOOP) << "pre-warming render thread for" << safeWindow;
             auto *wd = QQuickWindowPrivate::get(safeWindow);
             auto *renderContext = wd->context;
