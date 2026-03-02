@@ -219,20 +219,24 @@ public:
     }
 
     void addEvent(QSGRenderThreadEvent e) {
-        QMutexLocker lock(&mutex);
-        m_queue.emplace_back(std::move(e));
-        if (waiting)
+        bool wake = false;
+        {
+            QMutexLocker lock(&mutex);
+            m_queue.emplace_back(std::move(e));
+            wake = waiting;
+        }
+        if (wake)
             condition.wakeOne();
     }
 
-    const std::vector<QSGRenderThreadEvent> &drain() {
+    std::vector<QSGRenderThreadEvent> &drain() {
         QMutexLocker lock(&mutex);
         m_drainBuffer.clear();
         std::swap(m_queue, m_drainBuffer);
         return m_drainBuffer;
     }
 
-    const std::vector<QSGRenderThreadEvent> &drainOrWait() {
+    std::vector<QSGRenderThreadEvent> &drainOrWait() {
         QMutexLocker lock(&mutex);
         if (m_queue.empty()) {
             waiting = true;
@@ -383,8 +387,9 @@ static void savePipelineCache(QRhi *rhi)
     if (data.isEmpty())
         return;
     const QString &path = pipelineCachePath();
+    static const QString dirPath = QFileInfo(path).absolutePath();
     QMutexLocker fileLock(pipelineCacheFileMutex());
-    QDir().mkpath(QFileInfo(path).absolutePath());
+    QDir().mkpath(dirPath);
     QFile f(path);
     if (f.open(QIODevice::WriteOnly | QIODevice::Truncate))
         f.write(data);
@@ -459,7 +464,7 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
             if (!window || e.inDestructor) {
                 qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- setting exit flag and invalidating");
                 invalidateGraphics(e.window, e.inDestructor);
-                active.store(rhi != nullptr);
+                active.store(rhi != nullptr, std::memory_order_relaxed);
                 Q_ASSERT_X(!e.inDestructor || !active, "QSGRenderThread::invalidateGraphics()", "Thread's active state is not set to false when shutting down");
                 if (sleeping)
                     stopEventProcessing = true;
@@ -799,9 +804,10 @@ void QSGRenderThread::postEvent(QSGRenderThreadEvent e)
 void QSGRenderThread::processEvents()
 {
     qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "--- begin processEvents()");
-    auto batch = eventQueue.drain();
+    auto &batch = eventQueue.drain();
     for (auto &e : batch)
         processEvent(e);
+    batch.clear();
     qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "--- done processEvents()");
 }
 
@@ -810,9 +816,10 @@ void QSGRenderThread::processEventsAndWaitForMore()
     qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "--- begin processEventsAndWaitForMore()");
     stopEventProcessing = false;
     while (!stopEventProcessing) {
-        auto batch = eventQueue.drainOrWait();
+        auto &batch = eventQueue.drainOrWait();
         for (auto &e : batch)
             processEvent(e);
+        batch.clear();
     }
     qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "--- done processEventsAndWaitForMore()");
 }
@@ -902,7 +909,7 @@ void QSGRenderThread::run()
     if (window)
         ensureRhi();
 
-    while (active) [[likely]] {
+    while (active.load(std::memory_order_relaxed)) [[likely]] {
 #ifdef Q_OS_DARWIN
         QMacAutoReleasePool frameReleasePool;
 #endif
@@ -1184,7 +1191,7 @@ void QSGThreadedRenderLoop::exposureChanged(QQuickWindow *window)
             if (auto *controller = wd->animationController.get();
                 controller->thread() != w->thread) [[unlikely]]
                 controller->moveToThread(w->thread);
-            w->thread->active.store(true);
+            w->thread->active.store(true, std::memory_order_relaxed);
             if (w->thread->thread() == QThread::currentThread()) [[unlikely]] {
                 w->thread->sgrc->moveToThread(w->thread);
                 w->thread->moveToThread(w->thread);
@@ -1234,7 +1241,7 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
         if (auto *controller = QQuickWindowPrivate::get(w->window)->animationController.get();
             controller->thread() != w->thread) [[unlikely]]
             controller->moveToThread(w->thread);
-        w->thread->active.store(true);
+        w->thread->active.store(true, std::memory_order_relaxed);
         if (w->thread->thread() == QThread::currentThread()) [[unlikely]] {
             w->thread->sgrc->moveToThread(w->thread);
             w->thread->moveToThread(w->thread);
