@@ -157,13 +157,13 @@ public:
 class WMSyncEvent : public WMWindowEvent
 {
 public:
-    WMSyncEvent(QQuickWindow *c, bool inExpose, bool force, const QRhiSwapChainProxyData &scProxyData, uint64_t serial)
+    WMSyncEvent(QQuickWindow *c, bool inExpose, bool force, QRhiSwapChainProxyData proxyData, uint64_t serial)
         : WMWindowEvent(c)
         , size(c->size())
         , dpr(float(c->effectiveDevicePixelRatio()))
         , syncInExpose(inExpose)
         , forceRenderPass(force)
-        , scProxyData(scProxyData)
+        , scProxyData(std::move(proxyData))
         , serial(serial)
     {}
     QSize size;
@@ -218,7 +218,7 @@ public:
         m_drainBuffer.reserve(8);
     }
 
-    void addEvent(QSGRenderThreadEvent e) {
+    void addEvent(QSGRenderThreadEvent &&e) {
         bool wake = false;
         {
             QMutexLocker lock(&mutex);
@@ -306,7 +306,7 @@ public:
 
     void processEventsAndWaitForMore();
     void processEvents();
-    void postEvent(QSGRenderThreadEvent e);
+    void postEvent(QSGRenderThreadEvent &&e);
 
 public:
     enum {
@@ -460,7 +460,6 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
         qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "WM_TryRelease");
         {
             QMutexLocker lock(&mutex);
-            wm->m_lockedForSync = true;
             if (!window || e.inDestructor) {
                 qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- setting exit flag and invalidating");
                 invalidateGraphics(e.window, e.inDestructor);
@@ -483,7 +482,6 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
 #endif
                 }
             }
-            wm->m_lockedForSync = false;
         }
         waitCondition.wakeOne();
         return true;
@@ -739,7 +737,7 @@ void QSGRenderThread::syncAndRender()
     if (gpuStarted && cd->renderer) [[likely]] {
         cd->renderSceneGraph();
 
-        const bool asyncPresent = QSGRhiSupport::instance()->rhiBackend() != QRhi::OpenGLES2;
+        const bool asyncPresent = rhi->backend() != QRhi::OpenGLES2;
         if (asyncPresent) {
             {
                 QMutexLocker lock(&mutex);
@@ -796,7 +794,7 @@ void QSGRenderThread::syncAndRender()
     }
 }
 
-void QSGRenderThread::postEvent(QSGRenderThreadEvent e)
+void QSGRenderThread::postEvent(QSGRenderThreadEvent &&e)
 {
     eventQueue.addEvent(std::move(e));
 }
@@ -1510,12 +1508,10 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
         const bool supportsAsyncPresent =
             QSGRhiSupport::instance()->rhiBackend() != QRhi::OpenGLES2;
 
-        QMutexLocker lock(&w->thread->mutex);
         m_lockedForSync = true;
         const uint64_t serial = ++w->thread->lastPostedSyncSerial;
         w->thread->postEvent(WMSyncEvent(window, inExpose, w->forceRenderPass, scProxyData, serial));
         w->forceRenderPass = false;
-        lock.unlock();
 
         if (profileFrames)
             waitTime = timer.nsecsElapsed();
@@ -1546,9 +1542,8 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
                 qCDebug(QSG_LOG_RENDERLOOP, "- OpenGL backend: staying in pipeline mode");
             } else {
                 if (w->thread->renderCompletedSerial.load(std::memory_order_relaxed) < serial) {
-                    lock.relock();
+                    QMutexLocker timeoutLock(&w->thread->mutex);
                     w->thread->waitCondition.wait(&w->thread->mutex, ADAPTIVE_TIMEOUT_MS);
-                    lock.unlock();
                 }
                 if (w->thread->renderCompletedSerial.load(std::memory_order_relaxed) < serial) {
                     qCDebug(QSG_LOG_RENDERLOOP, "- render overran budget, entering pipeline mode");
