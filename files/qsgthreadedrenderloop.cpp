@@ -1332,7 +1332,7 @@ void QSGThreadedRenderLoop::maybeUpdate(Window *w)
     if (current == w->thread && w->thread->rhi && w->thread->rhi->isDeviceLost())
         return;
     if (current != QCoreApplication::instance()->thread() && (current != w->thread || !m_lockedForSync)) {
-        QMetaObject::invokeMethod(this, [this, w]() { maybeUpdate(w); }, Qt::QueuedConnection);
+        qWarning() << "Updates can only be scheduled from GUI thread or from QQuickItem::updatePaintNode()";
         return;
     }
 
