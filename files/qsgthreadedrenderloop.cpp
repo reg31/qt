@@ -1322,10 +1322,7 @@ void QSGThreadedRenderLoop::maybeUpdate(QQuickWindow *window)
  */
 void QSGThreadedRenderLoop::maybeUpdate(Window *w)
 {
-    if (!QCoreApplication::instance())
-        return;
-
-    if (!w || !w->thread->isRunning())
+    if (!QCoreApplication::instance() || !w || !w->thread->isRunning() || !w->thread->active)
         return;
 
     QThread *current = QThread::currentThread();
