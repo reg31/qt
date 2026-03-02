@@ -404,14 +404,12 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
     return std::visit(overloaded {
     [&](WMObscureEvent &) {
         qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "WM_Obscure");
-        QMutexLocker lock(&mutex);
         if (window) {
             QQuickWindowPrivate::get(window)->fireAboutToStop();
             qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- window removed");
             window = nullptr;
             lastFrameValid = false;
         }
-        waitCondition.wakeOne();
         return true;
     },
     [&](WMExposedEvent &e) {
@@ -1219,7 +1217,6 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
         }
         w->thread->start();
     } else {
-        QMutexLocker lock(&w->thread->mutex);
         w->thread->postEvent(WMExposedEvent(w->window));
     }
     polishAndSync(w, true);
