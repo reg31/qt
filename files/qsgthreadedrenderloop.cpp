@@ -149,11 +149,9 @@ public:
     WMTryReleaseEvent(QQuickWindow *win, bool destroy, bool needsFallbackSurface)
         : WMWindowEvent(win)
         , inDestructor(destroy)
-        , needsFallback(needsFallbackSurface)
-    {}
+    { Q_UNUSED(needsFallbackSurface); }
 
     bool inDestructor;
-    bool needsFallback;
 };
 
 class WMSyncEvent : public WMWindowEvent
@@ -482,7 +480,7 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
         Q_ASSERT(e.window);
         Q_ASSERT(e.window == window || !window);
         QMutexLocker lock(&mutex);
-        if (e.window && rhi) {
+        if (rhi) {
             QQuickWindowPrivate *cd = QQuickWindowPrivate::get(e.window);
             cd->rhi->beginFrame(cd->swapchain);
             if (!lastFrameValid) {
@@ -515,11 +513,9 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
         qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "WM_ReleaseSwapchain");
         Q_ASSERT(e.window);
         QMutexLocker lock(&mutex);
-        if (e.window) {
-            wm->releaseSwapchain(e.window);
-            lastFrameValid = false;
-            qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- swapchain released");
-        }
+        wm->releaseSwapchain(e.window);
+        lastFrameValid = false;
+        qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- swapchain released");
         waitCondition.wakeOne();
         return true;
     }
@@ -588,7 +584,7 @@ void QSGRenderThread::invalidateGraphics(QQuickWindow *window, bool inDestructor
 void QSGRenderThread::sync(bool inExpose)
 {
     auto *d = QQuickWindowPrivate::get(window);
-    bool canSync = (rhi && windowSize.width() > 0 && windowSize.height() > 0);
+    bool canSync = (rhi && windowSize.isValid());
 
     if (canSync) [[likely]] {
         rhi->makeThreadLocalNativeContextCurrent();
@@ -1079,9 +1075,7 @@ void QSGThreadedRenderLoop::windowDestroyed(QQuickWindow *window)
     Q_ASSERT(thread->thread() == QThread::currentThread());
     delete thread;
 
-    m_windows.erase(std::remove_if(m_windows.begin(), m_windows.end(),
-                                   [window](const Window &w) { return w.window == window; }),
-                    m_windows.end());
+    std::erase_if(m_windows, [window](const Window &w) { return w.window == window; });
 
     startOrStopAnimationTimer();
 
@@ -1168,7 +1162,7 @@ void QSGThreadedRenderLoop::exposureChanged(QQuickWindow *window)
             if (auto *controller = wd->animationController.get();
                 controller->thread() != w->thread) [[unlikely]]
                 controller->moveToThread(w->thread);
-            w->thread->active = true;
+            w->thread->active.store(true);
             if (w->thread->thread() == QThread::currentThread()) [[unlikely]] {
                 w->thread->sgrc->moveToThread(w->thread);
                 w->thread->moveToThread(w->thread);
@@ -1185,7 +1179,7 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
     auto it = std::ranges::find_if(m_windows, [window](const Window &w) { return w.window == window; });
     Window *w = nullptr;
     if (it != m_windows.end()) [[likely]] {
-        w = &(*it);
+        w = &*it;
         if (!QQuickWindowPrivate::get(window)->updatesEnabled) [[unlikely]] return;
     } else {
         auto *wd = QQuickWindowPrivate::get(window);
@@ -1218,7 +1212,7 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
         if (auto *controller = QQuickWindowPrivate::get(w->window)->animationController.get();
             controller->thread() != w->thread) [[unlikely]]
             controller->moveToThread(w->thread);
-        w->thread->active = true;
+        w->thread->active.store(true);
         if (w->thread->thread() == QThread::currentThread()) [[unlikely]] {
             w->thread->sgrc->moveToThread(w->thread);
             w->thread->moveToThread(w->thread);
