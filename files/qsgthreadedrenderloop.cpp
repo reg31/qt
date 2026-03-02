@@ -45,51 +45,6 @@
 #include <QtCore/private/qcore_mac_p.h>
 #endif
 
-/*
-   Overall design:
-
-   There are two classes here. QSGThreadedRenderLoop and
-   QSGRenderThread. All communication between the two is based on
-   event passing and we have a number of custom events.
-
-   In this implementation, the render thread is never blocked and the
-   GUI thread will initiate a polishAndSync which will block and wait
-   for the render thread to pick it up and release the block only
-   after the render thread is done syncing. The reason for this
-   is:
-
-   1. Clear blocking paradigm. We only have one real "block" point
-   (polishAndSync()) and all blocking is initiated by GUI and picked
-   up by Render at specific times based on events. This makes the
-   execution deterministic.
-
-   2. Render does not have to interact with GUI. This is done so that
-   the render thread can run its own animation system which stays
-   alive even when the GUI thread is blocked doing i/o, object
-   instantiation, QPainter-painting or any other non-trivial task.
-
-   ---
-
-   There is one thread per window and one QRhi instance per thread.
-
-   ---
-
-   The render thread has affinity to the GUI thread until a window
-   is shown. From that moment and until the window is destroyed, it
-   will have affinity to the render thread. (moved back at the end
-   of run for cleanup).
-
-   ---
-
-   The render loop is active while any window is exposed. All visible
-   windows are tracked, but only exposed windows are actually added to
-   the render thread and rendered. That means that if all windows are
-   obscured, we might end up cleaning up the SG and GL context (if all
-   windows have disabled persistency). Especially for multiprocess,
-   low-end systems, this should be quite important.
-
- */
-
 QT_BEGIN_NAMESPACE
 
 Q_TRACE_POINT(qtquick, QSG_polishAndSync_entry)
@@ -104,9 +59,6 @@ Q_TRACE_POINT(qtquick, QSG_animations_exit)
 #define QSG_RT_PAD "                    (RT) %s"
 
 extern Q_GUI_EXPORT QImage qt_gl_read_framebuffer(const QSize &size, bool alpha_format, bool include_alpha);
-
-// RL: Render Loop
-// RT: Render Thread
 
 
 QSGThreadedRenderLoop::Window *QSGThreadedRenderLoop::windowFor(QQuickWindow *window)
@@ -315,6 +267,7 @@ public:
         ExposeRequest       = 0x04 | RepaintRequest | SyncRequest
     };
 
+    void ensureRhiDevice();
     void ensureRhi();
     void teardownGraphics();
     void handleDeviceLoss();
@@ -337,7 +290,7 @@ public:
 
     QElapsedTimer m_threadTimeBetweenRenders;
 
-    QQuickWindow *window; // Will be 0 when window is not exposed
+    QQuickWindow *window;
     QSize windowSize;
     float dpr = 1;
     QRhiSwapChainProxyData scProxyData;
@@ -822,6 +775,26 @@ void QSGRenderThread::processEventsAndWaitForMore()
     qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "--- done processEventsAndWaitForMore()");
 }
 
+void QSGRenderThread::ensureRhiDevice()
+{
+    if (rhi || rhiDoomed)
+        return;
+
+    auto *rhiSupport = QSGRhiSupport::instance();
+    auto rhiResult = rhiSupport->createRhi(window, offscreenSurface, swRastFallbackDueToSwapchainFailure);
+    rhi = rhiResult.rhi;
+    ownRhi = rhiResult.own;
+    if (rhi) {
+        rhiDeviceLost = false;
+        rhiSampleCount = rhiSupport->chooseSampleCountForWindowWithRhi(window, rhi);
+        rhi->makeThreadLocalNativeContextCurrent();
+        loadPipelineCache(rhi);
+    } else {
+        if (!rhiDeviceLost)
+            rhiDoomed = true;
+    }
+}
+
 void QSGRenderThread::ensureRhi()
 {
     auto *cd = QQuickWindowPrivate::get(window);
@@ -835,22 +808,10 @@ void QSGRenderThread::ensureRhi()
 
     const QSize &pixelSize = m_lastPixelSize;
 
-    if (!rhi) [[unlikely]] {
-        if (rhiDoomed) [[unlikely]] return;
-        auto *rhiSupport = QSGRhiSupport::instance();
-        auto rhiResult = rhiSupport->createRhi(window, offscreenSurface, swRastFallbackDueToSwapchainFailure);
-        rhi = rhiResult.rhi;
-        ownRhi = rhiResult.own;
-        if (rhi) [[likely]] {
-            rhiDeviceLost = false;
-            rhiSampleCount = rhiSupport->chooseSampleCountForWindowWithRhi(window, rhi);
-            rhi->makeThreadLocalNativeContextCurrent();
-            loadPipelineCache(rhi);
-        } else {
-            if (!rhiDeviceLost) [[likely]] rhiDoomed = true;
-            return;
-        }
-    }
+    ensureRhiDevice();
+
+    if (!rhi)
+        return;
 
     if (!sgrc->rhi() && pixelSize.isValid()) [[unlikely]] {
         rhi->makeThreadLocalNativeContextCurrent();
@@ -862,7 +823,7 @@ void QSGRenderThread::ensureRhi()
         sgrc->initialize(&params);
     }
 
-    if (rhi && !cd->swapchain && window->isExposed()) [[unlikely]] {
+    if (!cd->swapchain && window->isExposed()) [[unlikely]] {
         cd->rhi = rhi;
         const auto requestedFormat = window->format();
         QRhiSwapChain::Flags flags = QRhiSwapChain::UsedAsTransferSource;
@@ -905,7 +866,7 @@ void QSGRenderThread::run()
     m_threadTimeBetweenRenders.start();
 
     if (window)
-        ensureRhi();
+        ensureRhiDevice();
 
     while (active.load(std::memory_order_relaxed)) [[likely]] {
 #ifdef Q_OS_DARWIN
@@ -1048,17 +1009,6 @@ void QSGThreadedRenderLoop::startOrStopAnimationTimer()
     }
 }
 
-/*
-    Removes this window from the list of tracked windows in this
-    window manager. hide() will trigger obscure, which in turn will
-    stop rendering.
-
-    This function will be called during QWindow::close() which will
-    also destroy the QPlatformWindow so it is important that this
-    triggers handleObscurity() and that rendering for that window
-    is fully done and over with by the time this function exits.
- */
-
 void QSGThreadedRenderLoop::hide(QQuickWindow *window)
 {
     qCDebug(QSG_LOG_RENDERLOOP) << "hide()" << window;
@@ -1081,11 +1031,6 @@ void QSGThreadedRenderLoop::resize(QQuickWindow *window)
     w->psTimeSampleCount = 0;
 }
 
-/*
-    If the window is first hide it, then perform a complete cleanup
-    with releaseResources which will take down the GL context and
-    exit the rendering thread.
- */
 void QSGThreadedRenderLoop::windowDestroyed(QQuickWindow *window)
 {
     qCDebug(QSG_LOG_RENDERLOOP) << "begin windowDestroyed()" << window;
@@ -1164,12 +1109,6 @@ void QSGThreadedRenderLoop::exposureChanged(QQuickWindow *window)
     } else {
         Window *w = windowFor(safeWindow);
         if (!w) {
-            if (!safeWindow->handle())
-               safeWindow->create();
-           
-            if (!safeWindow->handle()) 
-                return;
-                
             qCDebug(QSG_LOG_RENDERLOOP) << "pre-warming render thread for" << safeWindow;
             auto *wd = QQuickWindowPrivate::get(safeWindow);
             auto *renderContext = wd->context;
@@ -1201,7 +1140,7 @@ void QSGThreadedRenderLoop::exposureChanged(QQuickWindow *window)
                 w->thread->moveToThread(w->thread);
             }
             w->thread->start();
-        } else if (w) {
+        } else {
             handleObscurity(w);
         }
     }
@@ -1258,13 +1197,6 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
     startOrStopAnimationTimer();
 }
 
-/*
-    This function posts an event to the render thread to remove the window
-    from the list of windows to render.
-
-    It also starts up the non-vsync animation tick if no more windows
-    are showing.
- */
 void QSGThreadedRenderLoop::handleObscurity(Window *w)
 {
     if (!w)
@@ -1322,10 +1254,6 @@ void QSGThreadedRenderLoop::maybeUpdate(QQuickWindow *window)
         maybeUpdate(w);
 }
 
-/*
-    Called whenever the QML scene has changed. Will post an event to
-    ourselves that a sync is needed.
- */
 void QSGThreadedRenderLoop::maybeUpdate(Window *w)
 {
     if (!QCoreApplication::instance() || !w || !w->thread->isRunning() || !w->thread->active)
@@ -1335,7 +1263,7 @@ void QSGThreadedRenderLoop::maybeUpdate(Window *w)
     if (current == w->thread && w->thread->rhi && w->thread->rhi->isDeviceLost())
         return;
     if (current != QCoreApplication::instance()->thread() && (current != w->thread || !m_lockedForSync)) {
-        qWarning() << "Updates can only be scheduled from GUI thread or from QQuickItem::updatePaintNode()";
+        QMetaObject::invokeMethod(this, [this, w]() { maybeUpdate(w); }, Qt::QueuedConnection);
         return;
     }
 
@@ -1353,11 +1281,6 @@ void QSGThreadedRenderLoop::maybeUpdate(Window *w)
     postUpdateRequest(w);
 }
 
-/*
-    Called when the QQuickWindow should be explicitly repainted. This function
-    can also be called on the render thread when the GUI thread is blocked to
-    keep render thread animations alive.
- */
 void QSGThreadedRenderLoop::update(QQuickWindow *window)
 {
     Window *w = windowFor(window);
@@ -1393,10 +1316,6 @@ void QSGThreadedRenderLoop::releaseResources(QQuickWindow *window)
         releaseResources(w, false);
 }
 
-/*
- * Release resources will post an event to the render thread to
- * free up the SG and GL resources and exists the render thread.
- */
 void QSGThreadedRenderLoop::releaseResources(Window *w, bool inDestructor)
 {
     qCDebug(QSG_LOG_RENDERLOOP) << "releaseResources()" << (inDestructor ? "in destructor" : "in api-call") << w->window;
@@ -1417,10 +1336,6 @@ void QSGThreadedRenderLoop::releaseResources(Window *w, bool inDestructor)
     }
 }
 
-
-/* Calls polish on all items, then requests synchronization with the render thread
- * and blocks until that is complete. Returns false if it aborted; otherwise true.
- */
 void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
 {
     qCDebug(QSG_LOG_RENDERLOOP) << "polishAndSync" << (inExpose ? "(in expose)" : "(normal)") << w->window;
@@ -1621,18 +1536,6 @@ bool QSGThreadedRenderLoop::event(QEvent *e)
     return QObject::event(e);
 }
 
-
-
-/*
-    Locks down GUI and performs a grab the scene graph, then returns the result.
-
-    Since the QML scene could have changed since the last time it was rendered,
-    we need to polish and sync the scene graph. This might seem superfluous, but
-     - QML changes could have triggered deleteLater() which could have removed
-       textures or other objects from the scene graph, causing render to crash.
-     - Autotests rely on grab(), setProperty(), grab(), compare behavior.
- */
-
 QImage QSGThreadedRenderLoop::grab(QQuickWindow *window)
 {
     qCDebug(QSG_LOG_RENDERLOOP) << "grab()" << window;
@@ -1667,10 +1570,6 @@ QImage QSGThreadedRenderLoop::grab(QQuickWindow *window)
     return result;
 }
 
-/*
- * Posts a new job event to the render thread.
- * Returns true if posting succeeded.
- */
 void QSGThreadedRenderLoop::postJob(QQuickWindow *window, QRunnable *job)
 {
     Window *w = windowFor(window);
