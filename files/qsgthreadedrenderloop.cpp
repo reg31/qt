@@ -454,7 +454,7 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
         if (!window || e.inDestructor) {
             qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- setting exit flag and invalidating");
             invalidateGraphics(e.window, e.inDestructor);
-            active = rhi != nullptr;
+            active.store(rhi != nullptr);
             Q_ASSERT_X(!e.inDestructor || !active, "QSGRenderThread::invalidateGraphics()", "Thread's active state is not set to false when shutting down");
             if (sleeping)
                 stopEventProcessing = true;
@@ -484,19 +484,15 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
         QMutexLocker lock(&mutex);
         if (e.window && rhi) {
             QQuickWindowPrivate *cd = QQuickWindowPrivate::get(e.window);
+            cd->rhi->beginFrame(cd->swapchain);
             if (!lastFrameValid) {
-                cd->rhi->beginFrame(cd->swapchain);
                 cd->rhi->makeThreadLocalNativeContextCurrent();
                 cd->syncSceneGraph();
                 sgrc->endSync();
                 cd->renderSceneGraph();
-                *e.image = QSGRhiSupport::instance()->grabAndBlockInCurrentFrame(rhi, cd->swapchain->currentFrameCommandBuffer());
-                cd->rhi->endFrame(cd->swapchain, QRhi::SkipPresent);
-            } else {
-                cd->rhi->beginFrame(cd->swapchain);
-                *e.image = QSGRhiSupport::instance()->grabAndBlockInCurrentFrame(rhi, cd->swapchain->currentFrameCommandBuffer());
-                cd->rhi->endFrame(cd->swapchain, QRhi::SkipPresent);
             }
+            *e.image = QSGRhiSupport::instance()->grabAndBlockInCurrentFrame(rhi, cd->swapchain->currentFrameCommandBuffer());
+            cd->rhi->endFrame(cd->swapchain, QRhi::SkipPresent);
             e.image->setDevicePixelRatio(e.window->effectiveDevicePixelRatio());
         }
         qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- waking gui to handle result");
@@ -730,7 +726,7 @@ void QSGRenderThread::syncAndRender()
     if (gpuStarted && cd->renderer) [[likely]] {
         cd->renderSceneGraph();
 
-        const bool asyncPresent = rhi && QSGRhiSupport::instance()->rhiBackend() != QRhi::OpenGLES2;
+        const bool asyncPresent = QSGRhiSupport::instance()->rhiBackend() != QRhi::OpenGLES2;
         if (asyncPresent) {
             QMutexLocker lock(&mutex);
             renderCompletedSerial.store(currentSyncSerial, std::memory_order_relaxed);
@@ -813,9 +809,6 @@ void QSGRenderThread::ensureRhi()
         return;
 
     m_lastPixelSize = pixelSize;
-
-    if (rhi && cd->swapchain && cd->swapchain->currentPixelSize() == pixelSize) [[likely]]
-        return;
 
     if (!rhi) [[unlikely]] {
         if (rhiDoomed) [[unlikely]] return;
