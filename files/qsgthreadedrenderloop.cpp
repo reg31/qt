@@ -1362,6 +1362,19 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
         return;
     }
 
+    if (w->thread->lastPostedSyncSerial > 0) {
+        uint64_t observed = w->thread->syncAcknowledgedSerial.load(std::memory_order_acquire);
+        if (observed < w->thread->lastPostedSyncSerial) {
+            qCDebug(QSG_LOG_RENDERLOOP, "- waiting for previous async sync to complete before polishing");
+            Q_TRACE(QSG_wait_entry);
+            while (observed < w->thread->lastPostedSyncSerial) {
+                w->thread->syncAcknowledgedSerial.wait(observed, std::memory_order_acquire);
+                observed = w->thread->syncAcknowledgedSerial.load(std::memory_order_acquire);
+            }
+            Q_TRACE(QSG_wait_exit);
+        }
+    }
+
     Q_TRACE(QSG_polishAndSync);
     QElapsedTimer timer;
     qint64 polishTime = 0;
@@ -1439,6 +1452,17 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
         const uint64_t serial = ++w->thread->lastPostedSyncSerial;
         w->thread->postEvent(WMSyncEvent(window, inExpose, w->forceRenderPass, scProxyData, serial));
         w->forceRenderPass = false;
+
+        if (inExpose) {
+            qCDebug(QSG_LOG_RENDERLOOP, "- inExpose: skipping sync wait for fast startup");
+            m_lockedForSync = false;
+            Q_TRACE(QSG_wait_exit);
+            Q_TRACE(QSG_sync_exit);
+            Q_TRACE(QSG_animations_exit);
+            Q_QUICK_SG_PROFILE_END(QQuickProfiler::SceneGraphPolishAndSync,
+                                   QQuickProfiler::SceneGraphPolishAndSyncAnimations);
+            return;
+        }
 
         if (profileFrames)
             waitTime = timer.nsecsElapsed();
