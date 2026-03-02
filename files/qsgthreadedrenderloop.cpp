@@ -300,6 +300,7 @@ public:
     bool guiNotifiedAboutRhiFailure = false;
     bool swRastFallbackDueToSwapchainFailure = false;
     bool lastFrameValid = false;
+    bool pipelineCacheLoaded = false;
 
     bool stopEventProcessing;
     QSGRenderThreadEventQueue eventQueue;
@@ -354,9 +355,13 @@ static void loadPipelineCache(QRhi *rhi)
     QFile f(pipelineCachePath());
     if (!f.open(QIODevice::ReadOnly))
         return;
-    const QByteArray data = f.readAll();
-    rhi->setPipelineCacheData(data);
-    qCDebug(QSG_LOG_RENDERLOOP, "RHI pipeline cache loaded (%lld bytes)", (long long)data.size());
+    if (uchar *mapped = f.map(0, f.size())) {
+        rhi->setPipelineCacheData(QByteArray::fromRawData(reinterpret_cast<const char *>(mapped), f.size()));
+        f.unmap(mapped);
+    } else {
+        rhi->setPipelineCacheData(f.readAll());
+    }
+    qCDebug(QSG_LOG_RENDERLOOP, "RHI pipeline cache loaded (%lld bytes)", (long long)f.size());
 }
 
 }
@@ -629,6 +634,11 @@ void QSGRenderThread::syncAndRender()
         sync();
     }
 
+    if (!pipelineCacheLoaded && rhi) {
+        loadPipelineCache(rhi);
+        pipelineCacheLoaded = true;
+    }
+
     if (syncRequested && !syncResultedInChanges && !exposeRequested
         && lastFrameValid && !repaintRequested && !animatorRunning) {
         qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- sync produced no changes, skipping render");
@@ -788,7 +798,6 @@ void QSGRenderThread::ensureRhiDevice()
         rhiDeviceLost = false;
         rhiSampleCount = rhiSupport->chooseSampleCountForWindowWithRhi(window, rhi);
         rhi->makeThreadLocalNativeContextCurrent();
-        loadPipelineCache(rhi);
     } else {
         if (!rhiDeviceLost)
             rhiDoomed = true;
