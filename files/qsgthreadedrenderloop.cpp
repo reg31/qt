@@ -702,8 +702,7 @@ void QSGRenderThread::syncAndRender()
             auto *cb = cd->swapchain->currentFrameCommandBuffer();
             cb->beginPass(cd->swapchain->currentFrameRenderTarget(),
                           cd->renderer->clearColor(),
-                          { 1.0f, 0 },
-                          cd->rpDescForSwapchain);
+                          { 1.0f, 0 });
             cb->endPass();
 
             m_firstFrame = false;
