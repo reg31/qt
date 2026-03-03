@@ -314,7 +314,7 @@ public:
 
     QSize m_lastPixelSize;
 
-    bool firstFrameAfterExpose = false;
+    bool m_firstFrame = false;
 
 public slots:
     void sceneGraphChanged() {
@@ -389,7 +389,7 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
         pipelinedFramesRemaining = 0;
         renderCompletedSerial.store(syncAcknowledgedSerial.load(std::memory_order_relaxed),
                                     std::memory_order_relaxed);
-        firstFrameAfterExpose = true;
+        m_firstFrame = true;
         return true;
     },
     [&](WMSyncEvent &e) {
@@ -408,6 +408,7 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
         if (e.syncInExpose) {
             qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- triggered from expose");
             pendingUpdate |= ExposeRequest;
+            m_firstFrame = true;
         }
         if (e.forceRenderPass) {
             qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- repaint regardless");
@@ -697,7 +698,7 @@ void QSGRenderThread::syncAndRender()
 
     if (gpuStarted && cd->renderer) [[likely]] {
 #ifdef Q_OS_ANDROID
-        if (firstFrameAfterExpose) {
+        if (m_firstFrame) {
             auto *cb = cd->swapchain->currentFrameCommandBuffer();
             cb->beginPass(cd->swapchain->currentFrameRenderTarget(),
                           cd->renderer->clearColor(),
@@ -705,8 +706,8 @@ void QSGRenderThread::syncAndRender()
                           cd->rpDescForSwapchain);
             cb->endPass();
 
-            firstFrameAfterExpose = false;
-            pendingUpdate |= RepaintRequest;
+            m_firstFrame = false;
+            QCoreApplication::postEvent(window, new QEvent(QEvent::Type(QQuickWindowPrivate::FullUpdateRequest)));
         } else
 #endif
         {
