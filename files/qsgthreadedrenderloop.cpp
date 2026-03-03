@@ -398,7 +398,7 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
         dpr = e.dpr;
         m_lastPixelSize = QSize(static_cast<int>(e.size.width() * e.dpr),
                                 static_cast<int>(e.size.height() * e.dpr));
-        scProxyData = e.scProxyData;
+        scProxyData = std::move(e.scProxyData);
         currentSyncSerial = e.serial;
 
         pendingUpdate |= SyncRequest;
