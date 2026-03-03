@@ -1259,8 +1259,15 @@ void QSGThreadedRenderLoop::handleUpdateRequest(QQuickWindow *window)
 void QSGThreadedRenderLoop::maybeUpdate(QQuickWindow *window)
 {
     Window *w = windowFor(window);
-    if (w)
+    if (w) {
         maybeUpdate(w);
+        return;
+    }
+    if (!window->isExposed()) [[unlikely]] {
+        if (!window->handle())
+            window->create();
+        exposureChanged(window);
+    }
 }
 
 void QSGThreadedRenderLoop::maybeUpdate(Window *w)
@@ -1293,8 +1300,14 @@ void QSGThreadedRenderLoop::maybeUpdate(Window *w)
 void QSGThreadedRenderLoop::update(QQuickWindow *window)
 {
     Window *w = windowFor(window);
-    if (!w)
+    if (!w) {
+        if (!window->isExposed()) [[unlikely]] {
+            if (!window->handle())
+                window->create();
+            exposureChanged(window);
+        }
         return;
+    }
 
     const bool isRenderThread = QThread::currentThread() == w->thread;
 
