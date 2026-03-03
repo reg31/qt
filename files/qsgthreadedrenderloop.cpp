@@ -314,6 +314,8 @@ public:
 
     QSize m_lastPixelSize;
 
+    bool firstFrameAfterExpose = false;
+
 public slots:
     void sceneGraphChanged() {
         syncResultedInChanges = true;
@@ -387,6 +389,7 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
         pipelinedFramesRemaining = 0;
         renderCompletedSerial.store(syncAcknowledgedSerial.load(std::memory_order_relaxed),
                                     std::memory_order_relaxed);
+        firstFrameAfterExpose = true;
         return true;
     },
     [&](WMSyncEvent &e) {
@@ -693,7 +696,22 @@ void QSGRenderThread::syncAndRender()
     }
 
     if (gpuStarted && cd->renderer) [[likely]] {
-        cd->renderSceneGraph();
+#ifdef Q_OS_ANDROID
+        if (firstFrameAfterExpose) {
+            auto *cb = cd->swapchain->currentFrameCommandBuffer();
+            cb->beginPass(cd->swapchain->currentFrameRenderTarget(),
+                          cd->renderer->clearColor(),
+                          { 1.0f, 0 },
+                          cd->rpDescForSwapchain);
+            cb->endPass();
+
+            firstFrameAfterExpose = false;
+            pendingUpdate |= RepaintRequest;
+        } else
+#endif
+        {
+            cd->renderSceneGraph();
+        }
 
         const bool asyncPresent = rhi->backend() != QRhi::OpenGLES2;
         if (asyncPresent) {
