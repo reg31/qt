@@ -63,11 +63,8 @@ extern Q_GUI_EXPORT QImage qt_gl_read_framebuffer(const QSize &size, bool alpha_
 
 QSGThreadedRenderLoop::Window *QSGThreadedRenderLoop::windowFor(QQuickWindow *window)
 {
-    for (auto &t : m_windows) {
-        if (t.window == window)
-            return &t;
-    }
-    return nullptr;
+    auto it = std::ranges::find(m_windows, window, &Window::window);
+    return it != m_windows.end() ? &*it : nullptr;
 }
 
 class WMWindowEvent
@@ -637,7 +634,7 @@ void QSGRenderThread::syncAndRender()
         sync();
     }
 
-    if (!pipelineCacheLoaded && rhi) {
+    if (!pipelineCacheLoaded && rhi) [[unlikely]] {
         loadPipelineCache(rhi);
         pipelineCacheLoaded = true;
     }
@@ -790,7 +787,7 @@ void QSGRenderThread::processEventsAndWaitForMore()
 
 void QSGRenderThread::ensureRhiDevice()
 {
-    if (rhi || rhiDoomed)
+    if (rhi || rhiDoomed) [[likely]]
         return;
 
     auto *rhiSupport = QSGRhiSupport::instance();
@@ -1161,7 +1158,7 @@ void QSGThreadedRenderLoop::exposureChanged(QQuickWindow *window)
 
 void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
 {
-    auto it = std::ranges::find_if(m_windows, [window](const Window &w) { return w.window == window; });
+    auto it = std::ranges::find(m_windows, window, &Window::window);
     Window *w = nullptr;
     if (it != m_windows.end()) [[likely]] {
         w = &*it;
@@ -1366,9 +1363,9 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
         return;
     }
 
-    if (w->thread->lastPostedSyncSerial > 0) {
+    if (w->thread->lastPostedSyncSerial > 0) [[likely]] {
         uint64_t observed = w->thread->syncAcknowledgedSerial.load(std::memory_order_acquire);
-        if (observed < w->thread->lastPostedSyncSerial) {
+        if (observed < w->thread->lastPostedSyncSerial) [[unlikely]] {
             qCDebug(QSG_LOG_RENDERLOOP, "- waiting for previous async sync to complete before polishing");
             Q_TRACE(QSG_wait_entry);
             while (observed < w->thread->lastPostedSyncSerial) {
@@ -1391,7 +1388,7 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
         w->psTimeAccumulator += elapsedSinceLastMs;
         w->psTimeSampleCount += 1;
         static const int PS_TIME_SAMPLE_LENGTH = 20;
-        if (w->psTimeSampleCount > PS_TIME_SAMPLE_LENGTH) {
+        if (w->psTimeSampleCount > PS_TIME_SAMPLE_LENGTH) [[unlikely]] {
             const float t = w->psTimeAccumulator / w->psTimeSampleCount;
             const float vsyncRate = sg->vsyncIntervalForAnimationDriver(m_animation_driver);
             const float threshold = vsyncRate * 0.5f;
@@ -1440,7 +1437,7 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
 
     emit window->afterAnimating();
 
-    const QRhiSwapChainProxyData scProxyData =
+    QRhiSwapChainProxyData scProxyData =
             QRhi::updateSwapChainProxyData(QSGRhiSupport::instance()->rhiBackend(), window);
 
     qCDebug(QSG_LOG_RENDERLOOP, "- lock for sync");
@@ -1454,7 +1451,7 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
 
         m_lockedForSync = true;
         const uint64_t serial = ++w->thread->lastPostedSyncSerial;
-        w->thread->postEvent(WMSyncEvent(window, inExpose, w->forceRenderPass, scProxyData, serial));
+        w->thread->postEvent(WMSyncEvent(window, inExpose, w->forceRenderPass, std::move(scProxyData), serial));
         w->forceRenderPass = false;
 
         if (inExpose && w->thread->rhiReady.load(std::memory_order_acquire)) {
