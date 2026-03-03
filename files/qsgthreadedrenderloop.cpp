@@ -634,11 +634,6 @@ void QSGRenderThread::syncAndRender()
         sync();
     }
 
-    if (!pipelineCacheLoaded && rhi) [[unlikely]] {
-        loadPipelineCache(rhi);
-        pipelineCacheLoaded = true;
-    }
-
     if (syncRequested && !syncResultedInChanges && !exposeRequested
         && lastFrameValid && !repaintRequested && !animatorRunning) {
         qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- sync produced no changes, skipping render");
@@ -798,6 +793,10 @@ void QSGRenderThread::ensureRhiDevice()
         rhiDeviceLost = false;
         rhiSampleCount = rhiSupport->chooseSampleCountForWindowWithRhi(window, rhi);
         rhi->makeThreadLocalNativeContextCurrent();
+        if (!pipelineCacheLoaded) [[unlikely]] {
+            loadPipelineCache(rhi);
+            pipelineCacheLoaded = true;
+        }
         rhiReady.store(true, std::memory_order_release);
     } else {
         if (!rhiDeviceLost)
