@@ -692,7 +692,7 @@ void QSGRenderThread::syncAndRender()
             if (QSGThreadedRenderLoop::Window *w = wm->windowFor(win))
                 w->forceRenderPass = true;
         }, Qt::QueuedConnection);
-        QCoreApplication::postEvent(window, new QEvent(QEvent::Type(QQuickWindowPrivate::FullUpdateRequest)));
+        QMetaObject::invokeMethod(window, &QQuickWindow::update, Qt::QueuedConnection);
         return;
     }
 
@@ -707,7 +707,7 @@ void QSGRenderThread::syncAndRender()
             cb->endPass();
 
             m_firstFrame = false;
-            QCoreApplication::postEvent(window, new QEvent(QEvent::Type(QQuickWindowPrivate::FullUpdateRequest)));
+            QMetaObject::invokeMethod(window, &QQuickWindow::update, Qt::QueuedConnection);
         } else
 #endif
         {
@@ -726,7 +726,7 @@ void QSGRenderThread::syncAndRender()
         if (rhi->endFrame(cd->swapchain) != QRhi::FrameOpSuccess) [[unlikely]] {
             if (rhi->isDeviceLost())
                 handleDeviceLoss();
-            QCoreApplication::postEvent(window, new QEvent(QEvent::Type(QQuickWindowPrivate::FullUpdateRequest)));
+            QMetaObject::invokeMethod(window, &QQuickWindow::update, Qt::QueuedConnection);
             lastFrameValid = false;
             if (!asyncPresent) {
                 {
