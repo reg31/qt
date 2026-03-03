@@ -301,6 +301,7 @@ public:
     bool swRastFallbackDueToSwapchainFailure = false;
     bool lastFrameValid = false;
     bool pipelineCacheLoaded = false;
+    std::atomic<bool> rhiReady{false};
 
     bool stopEventProcessing;
     QSGRenderThreadEventQueue eventQueue;
@@ -547,6 +548,7 @@ void QSGRenderThread::invalidateGraphics(QQuickWindow *window, bool inDestructor
             QSGRhiSupport::instance()->destroyRhi(rhi, dd->graphicsConfig);
         }
         rhi = nullptr;
+        rhiReady.store(false, std::memory_order_release);
         dd->rhi = nullptr;
         qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- QRhi destroyed");
     } else {
@@ -594,6 +596,7 @@ void QSGRenderThread::teardownGraphics()
         QSGRhiSupport::instance()->destroyRhi(rhi, {});
     }
     rhi = nullptr;
+    rhiReady.store(false, std::memory_order_release);
     lastFrameValid = false;
 }
 
@@ -798,6 +801,7 @@ void QSGRenderThread::ensureRhiDevice()
         rhiDeviceLost = false;
         rhiSampleCount = rhiSupport->chooseSampleCountForWindowWithRhi(window, rhi);
         rhi->makeThreadLocalNativeContextCurrent();
+        rhiReady.store(true, std::memory_order_release);
     } else {
         if (!rhiDeviceLost)
             rhiDoomed = true;
@@ -1453,8 +1457,8 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
         w->thread->postEvent(WMSyncEvent(window, inExpose, w->forceRenderPass, scProxyData, serial));
         w->forceRenderPass = false;
 
-        if (inExpose) {
-            qCDebug(QSG_LOG_RENDERLOOP, "- inExpose: skipping sync wait for fast startup");
+        if (inExpose && w->thread->rhiReady.load(std::memory_order_acquire)) {
+            qCDebug(QSG_LOG_RENDERLOOP, "- inExpose (pre-warmed): skipping sync wait for fast startup");
             m_lockedForSync = false;
             Q_TRACE(QSG_wait_exit);
             Q_TRACE(QSG_sync_exit);
