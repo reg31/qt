@@ -95,12 +95,14 @@ public:
 class WMTryReleaseEvent : public WMWindowEvent
 {
 public:
-    WMTryReleaseEvent(QQuickWindow *win, bool destroy, bool needsFallbackSurface)
+    WMTryReleaseEvent(QQuickWindow *win, bool destroy, bool needsFallbackSurface, bool *done)
         : WMWindowEvent(win)
         , inDestructor(destroy)
+        , done(done)
     { Q_UNUSED(needsFallbackSurface); }
 
     bool inDestructor;
+    bool *done;
 };
 
 class WMSyncEvent : public WMWindowEvent
@@ -127,9 +129,10 @@ public:
 class WMGrabEvent : public WMWindowEvent
 {
 public:
-    WMGrabEvent(QQuickWindow *c, QImage *result) :
-        WMWindowEvent(c), image(result) {}
+    WMGrabEvent(QQuickWindow *c, QImage *result, bool *done) :
+        WMWindowEvent(c), image(result), done(done) {}
     QImage *image;
+    bool *done;
 };
 
 class WMJobEvent : public WMWindowEvent
@@ -143,8 +146,9 @@ public:
 class WMReleaseSwapchainEvent : public WMWindowEvent
 {
 public:
-    WMReleaseSwapchainEvent(QQuickWindow *c) :
-        WMWindowEvent(c) { }
+    WMReleaseSwapchainEvent(QQuickWindow *c, bool *done) :
+        WMWindowEvent(c), done(done) { }
+    bool *done;
 };
 
 using QSGRenderThreadEvent = std::variant<
@@ -163,8 +167,8 @@ public:
     QSGRenderThreadEventQueue()
         : waiting(false)
     {
-        m_queue.reserve(8);
-        m_drainBuffer.reserve(8);
+        m_queue.reserve(2);
+        m_drainBuffer.reserve(2);
     }
 
     void addEvent(QSGRenderThreadEvent &&e) {
@@ -180,7 +184,6 @@ public:
 
     std::vector<QSGRenderThreadEvent> &drain() {
         QMutexLocker lock(&mutex);
-        m_drainBuffer.clear();
         std::swap(m_queue, m_drainBuffer);
         return m_drainBuffer;
     }
@@ -194,7 +197,6 @@ public:
             } while (m_queue.empty());
             waiting = false;
         }
-        m_drainBuffer.clear();
         std::swap(m_queue, m_drainBuffer);
         return m_drainBuffer;
     }
@@ -440,6 +442,7 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
                 }
             }
         }
+        *e.done = true;
         waitCondition.wakeOne();
         return true;
     },
@@ -464,6 +467,7 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
             }
         }
         qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- waking gui to handle result");
+        *e.done = true;
         waitCondition.wakeOne();
         return true;
     },
@@ -488,6 +492,7 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
             lastFrameValid = false;
             qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- swapchain released");
         }
+        *e.done = true;
         waitCondition.wakeOne();
         return true;
     }
@@ -1232,9 +1237,11 @@ bool QSGThreadedRenderLoop::eventFilter(QObject *watched, QEvent *event)
             if (window) {
                 Window *w = windowFor(window);
                 if (w && w->thread->isRunning()) {
+                    bool isDone = false;
                     QMutexLocker lock(&w->thread->mutex);
-                    w->thread->postEvent(WMReleaseSwapchainEvent(window));
-                    w->thread->waitCondition.wait(&w->thread->mutex);
+                    w->thread->postEvent(WMReleaseSwapchainEvent(window, &isDone));
+                    while (!isDone)
+                        w->thread->waitCondition.wait(&w->thread->mutex);
                 }
             }
         }
@@ -1280,7 +1287,12 @@ void QSGThreadedRenderLoop::maybeUpdate(Window *w)
     if (current == w->thread && w->thread->rhi && w->thread->rhi->isDeviceLost())
         return;
     if (current != QCoreApplication::instance()->thread() && (current != w->thread || !m_lockedForSync)) {
-        QMetaObject::invokeMethod(this, [this, w]() { maybeUpdate(w); }, Qt::QueuedConnection);
+        QPointer<QQuickWindow> safeWindow = w->window;
+        QMetaObject::invokeMethod(this, [this, safeWindow]() {
+            if (safeWindow)
+                if (Window *safeW = windowFor(safeWindow))
+                    maybeUpdate(safeW);
+        }, Qt::QueuedConnection);
         return;
     }
 
@@ -1348,11 +1360,14 @@ void QSGThreadedRenderLoop::releaseResources(Window *w, bool inDestructor)
         QQuickWindow *window = w->window;
 
         qCDebug(QSG_LOG_RENDERLOOP, "- posting release request to render thread");
-        w->thread->postEvent(WMTryReleaseEvent(window, inDestructor, window->handle() == nullptr));
-        w->thread->waitCondition.wait(&w->thread->mutex);
+        bool isDone = false;
+        w->thread->postEvent(WMTryReleaseEvent(window, inDestructor, window->handle() == nullptr, &isDone));
+        while (!isDone)
+            w->thread->waitCondition.wait(&w->thread->mutex);
 
         if (!w->thread->active) {
             qCDebug(QSG_LOG_RENDERLOOP) << " - waiting for render thread to exit" << w->window;
+            threadLock.unlock();
             w->thread->wait();
             qCDebug(QSG_LOG_RENDERLOOP) << " - render thread finished" << w->window;
         }
@@ -1508,7 +1523,8 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
             } else {
                 if (w->thread->renderCompletedSerial.load(std::memory_order_relaxed) < serial) {
                     QMutexLocker timeoutLock(&w->thread->mutex);
-                    w->thread->waitCondition.wait(&w->thread->mutex, ADAPTIVE_TIMEOUT_MS);
+                    if (w->thread->renderCompletedSerial.load(std::memory_order_relaxed) < serial)
+                        w->thread->waitCondition.wait(&w->thread->mutex, ADAPTIVE_TIMEOUT_MS);
                 }
                 if (w->thread->renderCompletedSerial.load(std::memory_order_relaxed) < serial) {
                     qCDebug(QSG_LOG_RENDERLOOP, "- render overran budget, entering pipeline mode");
@@ -1603,12 +1619,14 @@ QImage QSGThreadedRenderLoop::grab(QQuickWindow *window)
     m_inPolish = false;
 
     QImage result;
+    bool isDone = false;
     {
         QMutexLocker locker(&w->thread->mutex);
         m_lockedForSync = true;
         qCDebug(QSG_LOG_RENDERLOOP, "- posting grab event");
-        w->thread->postEvent(WMGrabEvent(window, &result));
-        w->thread->waitCondition.wait(&w->thread->mutex);
+        w->thread->postEvent(WMGrabEvent(window, &result, &isDone));
+        while (!isDone)
+            w->thread->waitCondition.wait(&w->thread->mutex);
         m_lockedForSync = false;
     }
 
