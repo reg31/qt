@@ -315,6 +315,7 @@ public:
     QSize m_lastPixelSize;
 
     bool m_firstFrame = false;
+    QColor m_firstFrameColor;
 
 public slots:
     void sceneGraphChanged() {
@@ -701,7 +702,7 @@ void QSGRenderThread::syncAndRender()
         if (m_firstFrame) {
             auto *cb = cd->swapchain->currentFrameCommandBuffer();
             cb->beginPass(cd->swapchain->currentFrameRenderTarget(),
-                          window->color(),
+                          m_firstFrameColor,
                           { 1.0f, 0 });
             cb->endPass();
             m_firstFrame = false;
@@ -1219,6 +1220,7 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
     } else {
         w->thread->postEvent(WMExposedEvent(w->window));
     }
+    w->thread->m_firstFrameColor = QGuiApplication::palette().color(QPalette::Window);
     polishAndSync(w, true);
     startOrStopAnimationTimer();
 }
