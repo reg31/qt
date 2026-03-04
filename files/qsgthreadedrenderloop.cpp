@@ -314,8 +314,6 @@ public:
 
     QSize m_lastPixelSize;
 
-    bool m_firstFrame = false;
-    QColor m_firstFrameColor;
 
 public slots:
     void sceneGraphChanged() {
@@ -390,7 +388,6 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
         pipelinedFramesRemaining = 0;
         renderCompletedSerial.store(syncAcknowledgedSerial.load(std::memory_order_relaxed),
                                     std::memory_order_relaxed);
-        m_firstFrame = true;
         return true;
     },
     [&](WMSyncEvent &e) {
@@ -409,7 +406,6 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
         if (e.syncInExpose) {
             qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- triggered from expose");
             pendingUpdate |= ExposeRequest;
-            m_firstFrame = true;
         }
         if (e.forceRenderPass) {
             qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- repaint regardless");
@@ -698,20 +694,7 @@ void QSGRenderThread::syncAndRender()
     }
 
     if (gpuStarted && cd->renderer) [[likely]] {
-#if defined(Q_OS_ANDROID)
-        if (m_firstFrame) {
-            auto *cb = cd->swapchain->currentFrameCommandBuffer();
-            cb->beginPass(cd->swapchain->currentFrameRenderTarget(),
-                          m_firstFrameColor,
-                          { 1.0f, 0 });
-            cb->endPass();
-            m_firstFrame = false;
-            QMetaObject::invokeMethod(window, &QQuickWindow::update, Qt::QueuedConnection);
-        } else
-#endif
-        {
-            cd->renderSceneGraph();
-        }
+        cd->renderSceneGraph();
 
         const bool asyncPresent = rhi->backend() != QRhi::OpenGLES2;
         if (asyncPresent) {
@@ -1220,7 +1203,6 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
     } else {
         w->thread->postEvent(WMExposedEvent(w->window));
     }
-    w->thread->m_firstFrameColor = QGuiApplication::palette().color(QPalette::Window);
     polishAndSync(w, true);
     startOrStopAnimationTimer();
 }
