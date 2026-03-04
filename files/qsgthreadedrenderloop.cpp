@@ -698,44 +698,19 @@ void QSGRenderThread::syncAndRender()
 
     if (gpuStarted && cd->renderer) [[likely]] {
 #if defined(Q_OS_ANDROID)
-        std::vector<std::pair<QSGNode *, QSGNode *>> hiddenNodes;
         if (m_firstFrame) {
-            QSGNode *rootNode = cd->renderer->rootNode();
-            if (rootNode) {
-                QSGNode *contentNode = rootNode->firstChild();
-                if (contentNode) {
-                    QSGNode *sibling = contentNode->nextSibling();
-                    while (sibling) {
-                        QSGNode *next = sibling->nextSibling();
-                        rootNode->removeChildNode(sibling);
-                        hiddenNodes.push_back({rootNode, sibling});
-                        sibling = next;
-                    }
-                    QSGNode *bgNode = contentNode->firstChild();
-                    if (bgNode) {
-                        QSGNode *node = bgNode->nextSibling();
-                        while (node) {
-                            QSGNode *next = node->nextSibling();
-                            contentNode->removeChildNode(node);
-                            hiddenNodes.push_back({contentNode, node});
-                            node = next;
-                        }
-                    }
-                }
-            }
-        }
-#endif
-
-        cd->renderSceneGraph();
-
-#if defined(Q_OS_ANDROID)
-        if (m_firstFrame) {
-            for (const auto &[parent, node] : hiddenNodes)
-                parent->appendChildNode(node);
+            auto *cb = cd->swapchain->currentFrameCommandBuffer();
+            cb->beginPass(cd->swapchain->currentFrameRenderTarget(),
+                          window->color(),
+                          { 1.0f, 0 });
+            cb->endPass();
             m_firstFrame = false;
             QMetaObject::invokeMethod(window, &QQuickWindow::update, Qt::QueuedConnection);
-        }
+        } else
 #endif
+        {
+            cd->renderSceneGraph();
+        }
 
         const bool asyncPresent = rhi->backend() != QRhi::OpenGLES2;
         if (asyncPresent) {
