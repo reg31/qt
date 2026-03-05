@@ -299,11 +299,6 @@ jobs:
         arch: [x86_64, arm64]
         build_type: [release]
     steps:
-      - name: Setup xcode
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: latest-stable
-
       - name: Checkout Qt
         uses: actions/checkout@v6
         with:
@@ -491,11 +486,6 @@ jobs:
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.9
         
-      - name: Setup xcode
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: latest-stable
-      
       - name: Initialize Qt submodules
         run: perl init-repository ${{ env.INIT_FLAGS }}
 
