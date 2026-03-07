@@ -1,8 +1,3 @@
-// Copyright (C) 2016 The Qt Company Ltd.
-// Copyright (C) 2016 Jolla Ltd, author: <gunnar.sletta@jollamobile.com>
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
-
-
 #include <QtCore/QMutex>
 #include <QtCore/QWaitCondition>
 #include <QtCore/QAnimationDriver>
@@ -364,6 +359,13 @@ static void loadPipelineCache(QRhi *rhi)
     }
     qCDebug(QSG_LOG_RENDERLOOP, "RHI pipeline cache loaded (%lld bytes)", (long long)f.size());
 }
+
+thread_local bool t_inPolishAndSync = false;
+
+struct PolishAndSyncGuard {
+    PolishAndSyncGuard() { t_inPolishAndSync = true; }
+    ~PolishAndSyncGuard() { t_inPolishAndSync = false; }
+};
 
 }
 
@@ -1254,14 +1256,20 @@ bool QSGThreadedRenderLoop::eventFilter(QObject *watched, QEvent *event)
 
 void QSGThreadedRenderLoop::handleUpdateRequest(QQuickWindow *window)
 {
-    QPointer<QQuickWindow> safeWindow = window;
-    QMetaObject::invokeMethod(this, [this, safeWindow]() {
-        if (!safeWindow) return;
-        if (!QQuickWindowPrivate::get(safeWindow)->updatesEnabled) return;
-        Window *w = windowFor(safeWindow);
-        if (w)
-            polishAndSync(w);
-    }, Qt::QueuedConnection);
+    if (!window)
+        return;
+
+    if (!QQuickWindowPrivate::get(window)->updatesEnabled)
+        return;
+
+    if (t_inPolishAndSync) {
+        if (Window *w = windowFor(window))
+            postUpdateRequest(w);
+        return;
+    }
+
+    if (Window *w = windowFor(window))
+        polishAndSync(w);
 }
 
 void QSGThreadedRenderLoop::maybeUpdate(QQuickWindow *window)
@@ -1376,6 +1384,8 @@ void QSGThreadedRenderLoop::releaseResources(Window *w, bool inDestructor)
 
 void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
 {
+    PolishAndSyncGuard guard;
+
     qCDebug(QSG_LOG_RENDERLOOP) << "polishAndSync" << (inExpose ? "(in expose)" : "(normal)") << w->window;
 
     QQuickWindow *window = w->window;
