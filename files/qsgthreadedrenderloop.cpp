@@ -1267,26 +1267,46 @@ void QSGThreadedRenderLoop::handleUpdateRequest(QQuickWindow *window)
         return;
 
     // Pre-warm the render thread during QML initialization, before the window
-    // is ever exposed. Guarded by two conditions:
+    // is ever exposed. Two-tier strategy:
     //
-    //   1. Non-OpenGL backends only: modern APIs (Vulkan, Metal, D3D) decouple
-    //      device and surface creation, so a QRhi device can be created against
-    //      an offscreen surface and later paired with a real swapchain. OpenGL
-    //      however couples context validity to the pixel format of the native
-    //      window; pre-warming on an offscreen surface risks producing a context
-    //      incompatible with the real window, causing recreation or glitches.
+    //   Tier 1 (all backends including OpenGL): maybeUpdate() spins up the
+    //   render thread and runs ensureRhiDevice(), which initialises the RHI
+    //   and loads the pipeline cache from disk. Saves thread creation latency
+    //   (10-30ms on embedded) and cache I/O for everyone.
     //
-    //   2. std::once_flag: guarantees exactly one pre-warm per application
-    //      lifetime regardless of how many hidden windows or Loaders trigger
-    //      update requests during QML parsing, preventing redundant render
-    //      thread and GPU resource allocation for secondary windows.
+    //   Tier 2 (non-OpenGL only): a deferred polishAndSync() drives
+    //   syncSceneGraph() on the render thread, compiling shaders and uploading
+    //   geometry entirely in the background. Skipped for OpenGL because its
+    //   context is coupled to the native window pixel format — attempting a
+    //   sync against the offscreen surface risks producing an incompatible
+    //   context that Qt must tear down and recreate on show(), erasing all
+    //   warmup gains and causing a stutter.
+    //
+    //   std::once_flag: exactly one pre-warm per application lifetime,
+    //   regardless of how many hidden windows or Loaders fire update requests
+    //   during QML parsing.
+    //
+    //   Note: if AA_ShareOpenGLContexts is set in main.cpp, resources compiled
+    //   in the shared context survive across context boundaries, making Tier 2
+    //   safe for OpenGL too — but we do not assume that here.
     auto tryPreWarm = [this, window]() {
         static std::once_flag s_preWarmFlag;
-        if (QSGRhiSupport::instance()->rhiBackend() != QRhi::OpenGLES2) {
-            std::call_once(s_preWarmFlag, [this, window]() {
-                maybeUpdate(window);
-            });
-        }
+        std::call_once(s_preWarmFlag, [this, window]() {
+            // Tier 1: everyone gets thread + RHI init + pipeline cache.
+            maybeUpdate(window);
+
+            // Tier 2: modern APIs only get full scene graph sync.
+            const bool supportsAsyncPresent =
+                QSGRhiSupport::instance()->rhiBackend() != QRhi::OpenGLES2;
+            if (supportsAsyncPresent) {
+                QPointer<QQuickWindow> safeWindow(window);
+                QMetaObject::invokeMethod(this, [this, safeWindow]() {
+                    if (safeWindow)
+                        if (Window *w = windowFor(safeWindow))
+                            polishAndSync(w);
+                }, Qt::QueuedConnection);
+            }
+        });
     };
 
     if (t_inPolishAndSync) {
