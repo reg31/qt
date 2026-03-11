@@ -1296,14 +1296,18 @@ void QSGThreadedRenderLoop::handleUpdateRequest(QQuickWindow *window)
             maybeUpdate(window);
 
             // Tier 2: modern APIs only get full scene graph sync.
-            const bool supportsAsyncPresent =
-                QSGRhiSupport::instance()->rhiBackend() != QRhi::OpenGLES2;
+            const bool supportsAsyncPresent = QSGRhiSupport::instance()->rhiBackend() != QRhi::OpenGLES2;
             if (supportsAsyncPresent) {
                 QPointer<QQuickWindow> safeWindow(window);
                 QMetaObject::invokeMethod(this, [this, safeWindow]() {
-                    if (safeWindow)
-                        if (Window *w = windowFor(safeWindow))
-                            polishAndSync(w);
+                    if (!safeWindow)
+                        return;
+                    
+                    Window *w = windowFor(safeWindow);
+                    if (!w || safeWindow->isExposed())
+                        return;
+
+                    polishAndSync(w);
                 }, Qt::QueuedConnection);
             }
         });
