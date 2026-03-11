@@ -1266,14 +1266,41 @@ void QSGThreadedRenderLoop::handleUpdateRequest(QQuickWindow *window)
     if (!QQuickWindowPrivate::get(window)->updatesEnabled)
         return;
 
+    // Pre-warm the render thread during QML initialization, before the window
+    // is ever exposed. Guarded by two conditions:
+    //
+    //   1. Non-OpenGL backends only: modern APIs (Vulkan, Metal, D3D) decouple
+    //      device and surface creation, so a QRhi device can be created against
+    //      an offscreen surface and later paired with a real swapchain. OpenGL
+    //      however couples context validity to the pixel format of the native
+    //      window; pre-warming on an offscreen surface risks producing a context
+    //      incompatible with the real window, causing recreation or glitches.
+    //
+    //   2. std::once_flag: guarantees exactly one pre-warm per application
+    //      lifetime regardless of how many hidden windows or Loaders trigger
+    //      update requests during QML parsing, preventing redundant render
+    //      thread and GPU resource allocation for secondary windows.
+    auto tryPreWarm = [this, window]() {
+        static std::once_flag s_preWarmFlag;
+        if (QSGRhiSupport::instance()->rhiBackend() != QRhi::OpenGLES2) {
+            std::call_once(s_preWarmFlag, [this, window]() {
+                maybeUpdate(window);
+            });
+        }
+    };
+
     if (t_inPolishAndSync) {
         if (Window *w = windowFor(window))
             postUpdateRequest(w);
+        else
+            tryPreWarm();
         return;
     }
 
     if (Window *w = windowFor(window))
         polishAndSync(w);
+    else
+        tryPreWarm();
 }
 
 void QSGThreadedRenderLoop::maybeUpdate(QQuickWindow *window)
