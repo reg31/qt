@@ -2,6 +2,7 @@
 // Copyright (C) 2016 Jolla Ltd, author: <gunnar.sletta@jollamobile.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
+
 #include <QtCore/QMutex>
 #include <QtCore/QWaitCondition>
 #include <QtCore/QAnimationDriver>
@@ -363,28 +364,6 @@ static void loadPipelineCache(QRhi *rhi)
     }
     qCDebug(QSG_LOG_RENDERLOOP, "RHI pipeline cache loaded (%lld bytes)", (long long)f.size());
 }
-
-thread_local bool t_inPolishAndSync = false;
-
-struct PolishAndSyncGuard {
-    PolishAndSyncGuard() { t_inPolishAndSync = true; }
-    ~PolishAndSyncGuard() { t_inPolishAndSync = false; }
-};
-
-struct TraceGuard {
-    bool waitOpen = false;
-    bool syncOpen = false;
-    bool animationsOpen = false;
-    bool profileOpen = false;
-
-    ~TraceGuard() {
-        if (waitOpen)       Q_TRACE(QSG_wait_exit);
-        if (syncOpen)       Q_TRACE(QSG_sync_exit);
-        if (animationsOpen) Q_TRACE(QSG_animations_exit);
-        if (profileOpen)    Q_QUICK_SG_PROFILE_END(QQuickProfiler::SceneGraphPolishAndSync,
-                                                    QQuickProfiler::SceneGraphPolishAndSyncAnimations);
-    }
-};
 
 }
 
@@ -1275,46 +1254,14 @@ bool QSGThreadedRenderLoop::eventFilter(QObject *watched, QEvent *event)
 
 void QSGThreadedRenderLoop::handleUpdateRequest(QQuickWindow *window)
 {
-    if (!window)
-        return;
-
-    if (!QQuickWindowPrivate::get(window)->updatesEnabled)
-        return;
-
-    auto tryPreWarm = [this, window]() {
-        static std::once_flag s_preWarmFlag;
-        std::call_once(s_preWarmFlag, [this, window]() {
-            maybeUpdate(window);
-
-            const bool supportsAsyncPresent = QSGRhiSupport::instance()->rhiBackend() != QRhi::OpenGLES2;
-            if (supportsAsyncPresent) {
-                QPointer<QQuickWindow> safeWindow(window);
-                QMetaObject::invokeMethod(this, [this, safeWindow]() {
-                    if (!safeWindow)
-                        return;
-                    Window *w = windowFor(safeWindow);
-                    if (!w || safeWindow->isExposed())
-                        return;
-                    if (!w->thread->rhiReady.load(std::memory_order_acquire))
-                        return;
-                    polishAndSync(w);
-                }, Qt::QueuedConnection);
-            }
-        });
-    };
-
-    if (t_inPolishAndSync) {
-        if (Window *w = windowFor(window))
-            postUpdateRequest(w);
-        else
-            tryPreWarm();
-        return;
-    }
-
-    if (Window *w = windowFor(window))
-        polishAndSync(w);
-    else
-        tryPreWarm();
+    QPointer<QQuickWindow> safeWindow = window;
+    QMetaObject::invokeMethod(this, [this, safeWindow]() {
+        if (!safeWindow) return;
+        if (!QQuickWindowPrivate::get(safeWindow)->updatesEnabled) return;
+        Window *w = windowFor(safeWindow);
+        if (w)
+            polishAndSync(w);
+    }, Qt::QueuedConnection);
 }
 
 void QSGThreadedRenderLoop::maybeUpdate(QQuickWindow *window)
@@ -1429,8 +1376,6 @@ void QSGThreadedRenderLoop::releaseResources(Window *w, bool inDestructor)
 
 void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
 {
-    PolishAndSyncGuard guard;
-
     qCDebug(QSG_LOG_RENDERLOOP) << "polishAndSync" << (inExpose ? "(in expose)" : "(normal)") << w->window;
 
     QQuickWindow *window = w->window;
@@ -1459,16 +1404,18 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
         }
     }
 
-    Q_TRACE(QSG_polishAndSync_entry);
-    TraceGuard tg;
-    tg.profileOpen = true;
-
+    Q_TRACE(QSG_polishAndSync);
     QElapsedTimer timer;
     qint64 polishTime = 0;
     qint64 waitTime = 0;
     qint64 syncTime = 0;
 
     const qint64 elapsedSinceLastMs = w->timeBetweenPolishAndSyncs.restart();
+
+    if (elapsedSinceLastMs > 500) {
+        w->psTimeAccumulator = 0.0f;
+        w->psTimeSampleCount = 0;
+    }
 
     if (!w->badVSync && w->actualWindowFormat.swapInterval() != 0 && sg->isVSyncDependent(m_animation_driver)) {
         w->psTimeAccumulator += elapsedSinceLastMs;
@@ -1519,7 +1466,6 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
     }
 
     Q_TRACE(QSG_wait_entry);
-    tg.waitOpen = true;
     w->updateDuringSync = false;
 
     emit window->afterAnimating();
@@ -1544,17 +1490,20 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
         if (inExpose && w->thread->rhiReady.load(std::memory_order_acquire)) {
             qCDebug(QSG_LOG_RENDERLOOP, "- inExpose (pre-warmed): skipping sync wait for fast startup");
             m_lockedForSync = false;
+            Q_TRACE(QSG_wait_exit);
+            Q_TRACE(QSG_sync_exit);
+            Q_TRACE(QSG_animations_exit);
+            Q_QUICK_SG_PROFILE_END(QQuickProfiler::SceneGraphPolishAndSync,
+                                   QQuickProfiler::SceneGraphPolishAndSyncAnimations);
             return;
         }
 
         if (profileFrames)
             waitTime = timer.nsecsElapsed();
         Q_TRACE(QSG_wait_exit);
-        tg.waitOpen = false;
         Q_QUICK_SG_PROFILE_RECORD(QQuickProfiler::SceneGraphPolishAndSync,
                                   QQuickProfiler::SceneGraphPolishAndSyncWait);
         Q_TRACE(QSG_sync_entry);
-        tg.syncOpen = true;
 
         qCDebug(QSG_LOG_RENDERLOOP, "- waiting for sync");
         uint64_t observed = w->thread->syncAcknowledgedSerial.load(std::memory_order_acquire);
@@ -1566,7 +1515,6 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
         qCDebug(QSG_LOG_RENDERLOOP, "- sync done");
 
         Q_TRACE(QSG_sync_exit);
-        tg.syncOpen = false;
         Q_QUICK_SG_PROFILE_RECORD(QQuickProfiler::SceneGraphPolishAndSync,
                                   QQuickProfiler::SceneGraphPolishAndSyncSync);
 
@@ -1596,7 +1544,6 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
     if (profileFrames)
         syncTime = timer.nsecsElapsed();
     Q_TRACE(QSG_animations_entry);
-    tg.animationsOpen = true;
 
     if (m_animation_timer == 0 && m_animation_driver->isRunning()) {
         auto advanceAnimations = [this, window = QPointer(window)] {
@@ -1630,11 +1577,8 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
     }
 
     Q_TRACE(QSG_animations_exit);
-    tg.animationsOpen = false;
-    tg.profileOpen = false;
     Q_QUICK_SG_PROFILE_END(QQuickProfiler::SceneGraphPolishAndSync,
                            QQuickProfiler::SceneGraphPolishAndSyncAnimations);
-    Q_TRACE(QSG_polishAndSync_exit);
 }
 
 bool QSGThreadedRenderLoop::event(QEvent *e)
