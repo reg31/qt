@@ -14,8 +14,9 @@
 #include <variant>
 
 #if QT_CONFIG(concurrent)
-#include <QtConcurrent/QtConcurrent>
+#include <QtConcurrent>
 #endif
+
 #include <vector>
 
 #include <QtGui/QGuiApplication>
