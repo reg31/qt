@@ -112,6 +112,8 @@ jobs:
           set -e
           echo "Downloading experimental changes  ..."
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgthreadedrenderloop.cpp -o qtdeclarative/src/quick/scenegraph/qsgthreadedrenderloop.cpp
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgbatchrenderer.cpp -o qtdeclarative/src/quick/scenegraph/coreapi/qsgbatchrenderer.cpp
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgbatchrenderer_p.h -o qtdeclarative/src/quick/scenegraph/coreapi/qsgbatchrenderer_p.h
           echo "Download completed  ..."
           
       - name: Configure
@@ -250,6 +252,8 @@ jobs:
           set -e
           echo "Downloading experimental changes  ..."
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgthreadedrenderloop.cpp -o qtdeclarative/src/quick/scenegraph/qsgthreadedrenderloop.cpp
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgbatchrenderer.cpp -o qtdeclarative/src/quick/scenegraph/coreapi/qsgbatchrenderer.cpp
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgbatchrenderer_p.h -o qtdeclarative/src/quick/scenegraph/coreapi/qsgbatchrenderer_p.h
           echo "Download completed  ..."
           
       - name: Configure Android Qt
@@ -345,6 +349,8 @@ jobs:
           set -e
           echo "Downloading experimental changes  ..."
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgthreadedrenderloop.cpp -o qtdeclarative/src/quick/scenegraph/qsgthreadedrenderloop.cpp
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgbatchrenderer.cpp -o qtdeclarative/src/quick/scenegraph/coreapi/qsgbatchrenderer.cpp
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgbatchrenderer_p.h -o qtdeclarative/src/quick/scenegraph/coreapi/qsgbatchrenderer_p.h
           echo "Download completed  ..."
 
       - name: Download prebuilt Qt Host (cross-compile only)
@@ -518,6 +524,8 @@ jobs:
           set -e
           echo "Downloading experimental changes  ..."
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgthreadedrenderloop.cpp -o qtdeclarative/src/quick/scenegraph/qsgthreadedrenderloop.cpp
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgbatchrenderer.cpp -o qtdeclarative/src/quick/scenegraph/coreapi/qsgbatchrenderer.cpp
+          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgbatchrenderer_p.h -o qtdeclarative/src/quick/scenegraph/coreapi/qsgbatchrenderer_p.h
           echo "Download completed  ..."
       
       - name: Download prebuilt Qt Host
