@@ -23,6 +23,11 @@
 #include <algorithm>
 #include <numeric>
 
+#if QT_CONFIG(concurrent)
+#include <QtConcurrent/QtConcurrentRun>
+#include <QtCore/QFutureSynchronizer>
+#endif
+
 QT_BEGIN_NAMESPACE
 
 namespace QSGBatchRenderer
@@ -555,6 +560,10 @@ private:
     int m_opacityChange;
 
     QMatrix4x4 m_identityMatrix;
+
+#if QT_CONFIG(concurrent)
+    int m_parallelRootThreshold;
+#endif
 };
 
 struct GraphicsState
