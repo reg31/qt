@@ -12,6 +12,10 @@
 #include <QtCore/QDir>
 #include <atomic>
 #include <variant>
+
+#if QT_CONFIG(concurrent)
+#include <QtConcurrent/QtConcurrent>
+#endif
 #include <vector>
 
 #include <QtGui/QGuiApplication>
@@ -316,6 +320,9 @@ public:
 
     QSize m_lastPixelSize;
 
+#if QT_CONFIG(concurrent)
+    QFuture<QByteArray> m_pipelineCacheFuture;
+#endif
 
 public slots:
     void sceneGraphChanged() {
@@ -351,18 +358,20 @@ static void savePipelineCache(QRhi *rhi)
     qCDebug(QSG_LOG_RENDERLOOP, "RHI pipeline cache saved (%lld bytes)", (long long)data.size());
 }
 
-static void loadPipelineCache(QRhi *rhi)
+static QByteArray readPipelineCacheData()
 {
+    QMutexLocker fileLock(pipelineCacheFileMutex());
     QFile f(pipelineCachePath());
     if (!f.open(QIODevice::ReadOnly))
-        return;
+        return {};
+    QByteArray data;
     if (uchar *mapped = f.map(0, f.size())) {
-        rhi->setPipelineCacheData(QByteArray::fromRawData(reinterpret_cast<const char *>(mapped), f.size()));
+        data = QByteArray(reinterpret_cast<const char *>(mapped), f.size());
         f.unmap(mapped);
     } else {
-        rhi->setPipelineCacheData(f.readAll());
+        data = f.readAll();
     }
-    qCDebug(QSG_LOG_RENDERLOOP, "RHI pipeline cache loaded (%lld bytes)", (long long)f.size());
+    return data;
 }
 
 }
@@ -800,8 +809,24 @@ void QSGRenderThread::ensureRhiDevice()
         rhiSampleCount = rhiSupport->chooseSampleCountForWindowWithRhi(window, rhi);
         rhi->makeThreadLocalNativeContextCurrent();
         if (!pipelineCacheLoaded) [[unlikely]] {
-            loadPipelineCache(rhi);
+#if QT_CONFIG(concurrent)
+            m_pipelineCacheFuture = QtConcurrent::run(readPipelineCacheData);
+#endif
             pipelineCacheLoaded = true;
+        }
+        if (!sgrc->rhi()) {
+            const QSize pixelSize = m_lastPixelSize.isValid()
+                ? m_lastPixelSize
+                : QSize(static_cast<int>(windowSize.width() * dpr),
+                        static_cast<int>(windowSize.height() * dpr));
+            if (pixelSize.isValid()) {
+                QSGDefaultRenderContext::InitParams params;
+                params.rhi = rhi;
+                params.sampleCount = rhiSampleCount;
+                params.initialSurfacePixelSize = pixelSize;
+                params.maybeSurface = window;
+                sgrc->initialize(&params);
+            }
         }
         rhiReady.store(true, std::memory_order_release);
     } else {
@@ -827,6 +852,17 @@ void QSGRenderThread::ensureRhi()
 
     if (!rhi)
         return;
+
+#if QT_CONFIG(concurrent)
+    if (m_pipelineCacheFuture.isValid()) {
+        const QByteArray data = m_pipelineCacheFuture.result();
+        if (!data.isEmpty()) {
+            rhi->setPipelineCacheData(data);
+            qCDebug(QSG_LOG_RENDERLOOP, "RHI pipeline cache loaded (%lld bytes)", (long long)data.size());
+        }
+        m_pipelineCacheFuture = {};
+    }
+#endif
 
     if (!sgrc->rhi() && pixelSize.isValid()) [[unlikely]] {
         rhi->makeThreadLocalNativeContextCurrent();
