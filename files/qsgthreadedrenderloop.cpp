@@ -235,6 +235,10 @@ public:
 #if defined(Q_OS_QNX) || defined(Q_OS_INTEGRITY)
         setStackSize(1024 * 1024);
 #endif
+#if QT_CONFIG(concurrent)
+        m_pipelineCacheFuture = QtConcurrent::run(readPipelineCacheData);
+        pipelineCacheLoaded = true;
+#endif
     }
 
     ~QSGRenderThread()
@@ -303,7 +307,6 @@ public:
     bool guiNotifiedAboutRhiFailure = false;
     bool swRastFallbackDueToSwapchainFailure = false;
     bool lastFrameValid = false;
-    bool pipelineCacheLoaded = false;
     std::atomic<bool> rhiReady{false};
 
     bool stopEventProcessing;
@@ -808,12 +811,6 @@ void QSGRenderThread::ensureRhiDevice()
         rhiDeviceLost = false;
         rhiSampleCount = rhiSupport->chooseSampleCountForWindowWithRhi(window, rhi);
         rhi->makeThreadLocalNativeContextCurrent();
-        if (!pipelineCacheLoaded) [[unlikely]] {
-#if QT_CONFIG(concurrent)
-            m_pipelineCacheFuture = QtConcurrent::run(readPipelineCacheData);
-#endif
-            pipelineCacheLoaded = true;
-        }
         if (!sgrc->rhi()) {
             const QSize pixelSize = m_lastPixelSize.isValid()
                 ? m_lastPixelSize
