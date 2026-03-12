@@ -1302,11 +1302,11 @@ void QSGThreadedRenderLoop::handleUpdateRequest(QQuickWindow *window)
                 QMetaObject::invokeMethod(this, [this, safeWindow]() {
                     if (!safeWindow)
                         return;
-                    
                     Window *w = windowFor(safeWindow);
                     if (!w || safeWindow->isExposed())
                         return;
-
+                    if (!w->thread->rhiReady.load(std::memory_order_acquire))
+                        return;
                     polishAndSync(w);
                 }, Qt::QueuedConnection);
             }
