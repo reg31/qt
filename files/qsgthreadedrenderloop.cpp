@@ -12,11 +12,6 @@
 #include <QtCore/QDir>
 #include <atomic>
 #include <variant>
-
-#if QT_CONFIG(concurrent)
-#include <QtConcurrent>
-#endif
-
 #include <vector>
 
 #include <QtGui/QGuiApplication>
@@ -236,10 +231,6 @@ public:
 #if defined(Q_OS_QNX) || defined(Q_OS_INTEGRITY)
         setStackSize(1024 * 1024);
 #endif
-#if QT_CONFIG(concurrent)
-        m_pipelineCacheFuture = QtConcurrent::run(readPipelineCacheData);
-        pipelineCacheLoaded = true;
-#endif
     }
 
     ~QSGRenderThread()
@@ -308,6 +299,7 @@ public:
     bool guiNotifiedAboutRhiFailure = false;
     bool swRastFallbackDueToSwapchainFailure = false;
     bool lastFrameValid = false;
+    bool pipelineCacheLoaded = false;
     std::atomic<bool> rhiReady{false};
 
     bool stopEventProcessing;
@@ -323,10 +315,6 @@ public:
     int pipelinedFramesRemaining = 0;
 
     QSize m_lastPixelSize;
-
-#if QT_CONFIG(concurrent)
-    QFuture<QByteArray> m_pipelineCacheFuture;
-#endif
 
 public slots:
     void sceneGraphChanged() {
@@ -362,20 +350,18 @@ static void savePipelineCache(QRhi *rhi)
     qCDebug(QSG_LOG_RENDERLOOP, "RHI pipeline cache saved (%lld bytes)", (long long)data.size());
 }
 
-static QByteArray readPipelineCacheData()
+static void loadPipelineCache(QRhi *rhi)
 {
-    QMutexLocker fileLock(pipelineCacheFileMutex());
     QFile f(pipelineCachePath());
     if (!f.open(QIODevice::ReadOnly))
-        return {};
-    QByteArray data;
+        return;
     if (uchar *mapped = f.map(0, f.size())) {
-        data = QByteArray(reinterpret_cast<const char *>(mapped), f.size());
+        rhi->setPipelineCacheData(QByteArray::fromRawData(reinterpret_cast<const char *>(mapped), f.size()));
         f.unmap(mapped);
     } else {
-        data = f.readAll();
+        rhi->setPipelineCacheData(f.readAll());
     }
-    return data;
+    qCDebug(QSG_LOG_RENDERLOOP, "RHI pipeline cache loaded (%lld bytes)", (long long)f.size());
 }
 
 }
@@ -812,6 +798,10 @@ void QSGRenderThread::ensureRhiDevice()
         rhiDeviceLost = false;
         rhiSampleCount = rhiSupport->chooseSampleCountForWindowWithRhi(window, rhi);
         rhi->makeThreadLocalNativeContextCurrent();
+        if (!pipelineCacheLoaded) [[unlikely]] {
+            loadPipelineCache(rhi);
+            pipelineCacheLoaded = true;
+        }
         if (!sgrc->rhi()) {
             const QSize pixelSize = m_lastPixelSize.isValid()
                 ? m_lastPixelSize
@@ -850,17 +840,6 @@ void QSGRenderThread::ensureRhi()
 
     if (!rhi)
         return;
-
-#if QT_CONFIG(concurrent)
-    if (m_pipelineCacheFuture.isValid()) {
-        const QByteArray data = m_pipelineCacheFuture.result();
-        if (!data.isEmpty()) {
-            rhi->setPipelineCacheData(data);
-            qCDebug(QSG_LOG_RENDERLOOP, "RHI pipeline cache loaded (%lld bytes)", (long long)data.size());
-        }
-        m_pipelineCacheFuture = {};
-    }
-#endif
 
     if (!sgrc->rhi() && pixelSize.isValid()) [[unlikely]] {
         rhi->makeThreadLocalNativeContextCurrent();
