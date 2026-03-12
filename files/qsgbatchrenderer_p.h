@@ -24,8 +24,7 @@
 #include <numeric>
 
 #if QT_CONFIG(concurrent)
-#include <QtConcurrent/QtConcurrentRun>
-#include <QtCore/QFutureSynchronizer>
+#include <QtConcurrent>
 #endif
 
 QT_BEGIN_NAMESPACE
