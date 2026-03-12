@@ -371,6 +371,21 @@ struct PolishAndSyncGuard {
     ~PolishAndSyncGuard() { t_inPolishAndSync = false; }
 };
 
+struct TraceGuard {
+    bool waitOpen = false;
+    bool syncOpen = false;
+    bool animationsOpen = false;
+    bool profileOpen = false;
+
+    ~TraceGuard() {
+        if (waitOpen)       Q_TRACE(QSG_wait_exit);
+        if (syncOpen)       Q_TRACE(QSG_sync_exit);
+        if (animationsOpen) Q_TRACE(QSG_animations_exit);
+        if (profileOpen)    Q_QUICK_SG_PROFILE_END(QQuickProfiler::SceneGraphPolishAndSync,
+                                                    QQuickProfiler::SceneGraphPolishAndSyncAnimations);
+    }
+};
+
 }
 
 bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
@@ -1266,36 +1281,11 @@ void QSGThreadedRenderLoop::handleUpdateRequest(QQuickWindow *window)
     if (!QQuickWindowPrivate::get(window)->updatesEnabled)
         return;
 
-    // Pre-warm the render thread during QML initialization, before the window
-    // is ever exposed. Two-tier strategy:
-    //
-    //   Tier 1 (all backends including OpenGL): maybeUpdate() spins up the
-    //   render thread and runs ensureRhiDevice(), which initialises the RHI
-    //   and loads the pipeline cache from disk. Saves thread creation latency
-    //   (10-30ms on embedded) and cache I/O for everyone.
-    //
-    //   Tier 2 (non-OpenGL only): a deferred polishAndSync() drives
-    //   syncSceneGraph() on the render thread, compiling shaders and uploading
-    //   geometry entirely in the background. Skipped for OpenGL because its
-    //   context is coupled to the native window pixel format — attempting a
-    //   sync against the offscreen surface risks producing an incompatible
-    //   context that Qt must tear down and recreate on show(), erasing all
-    //   warmup gains and causing a stutter.
-    //
-    //   std::once_flag: exactly one pre-warm per application lifetime,
-    //   regardless of how many hidden windows or Loaders fire update requests
-    //   during QML parsing.
-    //
-    //   Note: if AA_ShareOpenGLContexts is set in main.cpp, resources compiled
-    //   in the shared context survive across context boundaries, making Tier 2
-    //   safe for OpenGL too — but we do not assume that here.
     auto tryPreWarm = [this, window]() {
         static std::once_flag s_preWarmFlag;
         std::call_once(s_preWarmFlag, [this, window]() {
-            // Tier 1: everyone gets thread + RHI init + pipeline cache.
             maybeUpdate(window);
 
-            // Tier 2: modern APIs only get full scene graph sync.
             const bool supportsAsyncPresent = QSGRhiSupport::instance()->rhiBackend() != QRhi::OpenGLES2;
             if (supportsAsyncPresent) {
                 QPointer<QQuickWindow> safeWindow(window);
@@ -1469,7 +1459,10 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
         }
     }
 
-    Q_TRACE(QSG_polishAndSync);
+    Q_TRACE(QSG_polishAndSync_entry);
+    TraceGuard tg;
+    tg.profileOpen = true;
+
     QElapsedTimer timer;
     qint64 polishTime = 0;
     qint64 waitTime = 0;
@@ -1526,6 +1519,7 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
     }
 
     Q_TRACE(QSG_wait_entry);
+    tg.waitOpen = true;
     w->updateDuringSync = false;
 
     emit window->afterAnimating();
@@ -1550,20 +1544,17 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
         if (inExpose && w->thread->rhiReady.load(std::memory_order_acquire)) {
             qCDebug(QSG_LOG_RENDERLOOP, "- inExpose (pre-warmed): skipping sync wait for fast startup");
             m_lockedForSync = false;
-            Q_TRACE(QSG_wait_exit);
-            Q_TRACE(QSG_sync_exit);
-            Q_TRACE(QSG_animations_exit);
-            Q_QUICK_SG_PROFILE_END(QQuickProfiler::SceneGraphPolishAndSync,
-                                   QQuickProfiler::SceneGraphPolishAndSyncAnimations);
             return;
         }
 
         if (profileFrames)
             waitTime = timer.nsecsElapsed();
         Q_TRACE(QSG_wait_exit);
+        tg.waitOpen = false;
         Q_QUICK_SG_PROFILE_RECORD(QQuickProfiler::SceneGraphPolishAndSync,
                                   QQuickProfiler::SceneGraphPolishAndSyncWait);
         Q_TRACE(QSG_sync_entry);
+        tg.syncOpen = true;
 
         qCDebug(QSG_LOG_RENDERLOOP, "- waiting for sync");
         uint64_t observed = w->thread->syncAcknowledgedSerial.load(std::memory_order_acquire);
@@ -1575,6 +1566,7 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
         qCDebug(QSG_LOG_RENDERLOOP, "- sync done");
 
         Q_TRACE(QSG_sync_exit);
+        tg.syncOpen = false;
         Q_QUICK_SG_PROFILE_RECORD(QQuickProfiler::SceneGraphPolishAndSync,
                                   QQuickProfiler::SceneGraphPolishAndSyncSync);
 
@@ -1604,6 +1596,7 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
     if (profileFrames)
         syncTime = timer.nsecsElapsed();
     Q_TRACE(QSG_animations_entry);
+    tg.animationsOpen = true;
 
     if (m_animation_timer == 0 && m_animation_driver->isRunning()) {
         auto advanceAnimations = [this, window = QPointer(window)] {
@@ -1637,8 +1630,11 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
     }
 
     Q_TRACE(QSG_animations_exit);
+    tg.animationsOpen = false;
+    tg.profileOpen = false;
     Q_QUICK_SG_PROFILE_END(QQuickProfiler::SceneGraphPolishAndSync,
                            QQuickProfiler::SceneGraphPolishAndSyncAnimations);
+    Q_TRACE(QSG_polishAndSync_exit);
 }
 
 bool QSGThreadedRenderLoop::event(QEvent *e)
