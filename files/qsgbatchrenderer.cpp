@@ -354,6 +354,9 @@ Updater::Updater(Renderer *r)
     : renderer(r)
     , m_roots(32)
     , m_rootMatrices(8)
+#if QT_CONFIG(concurrent)
+    , m_parallelRootThreshold(qt_sg_envInt("QSG_UPDATER_PARALLEL_THRESHOLD", 8))
+#endif
 {
     m_roots.add(0);
     m_combined_matrix_stack.add(&m_identityMatrix);
@@ -500,9 +503,19 @@ void Updater::visitTransformNode(Node *n)
 
         if (!n->becameBatchRoot && m_added == 0 && m_force_update == 0 && m_opacityChange == 0 && dirty && (n->dirtyState & ~QSGNode::DirtyMatrix) == 0) {
             BatchRootInfo *info = renderer->batchRootInfo(n);
-            for (QSet<Node *>::const_iterator it = info->subRoots.constBegin();
-                 it != info->subRoots.constEnd(); ++it) {
-                updateRootTransforms(*it, n, tn->combinedMatrix());
+            const QMatrix4x4 combined = tn->combinedMatrix();
+#if QT_CONFIG(concurrent)
+            if (info->subRoots.size() >= m_parallelRootThreshold) {
+                QFutureSynchronizer<void> sync;
+                for (Node *subRoot : std::as_const(info->subRoots))
+                    sync.addFuture(QtConcurrent::run([this, subRoot, n, combined]() {
+                        updateRootTransforms(subRoot, n, combined);
+                    }));
+            } else
+#endif
+            {
+                for (Node *subRoot : std::as_const(info->subRoots))
+                    updateRootTransforms(subRoot, n, combined);
             }
             return;
         }
