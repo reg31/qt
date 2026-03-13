@@ -820,10 +820,10 @@ void QSGRenderThread::ensureRhiDevice()
         rhiReady.store(true, std::memory_order_seq_cst);
         rhiReady.notify_all();
         if (deferredFirstExpose.exchange(false, std::memory_order_seq_cst)) {
-            QMetaObject::invokeMethod(wm, [wm = this->wm, win = this->window]() {
-                if (win && win->isExposed())
-                    if (Window *w = wm->windowFor(win))
-                        wm->polishAndSync(w, true);
+            QPointer<QQuickWindow> safeWindow(window);
+            QMetaObject::invokeMethod(wm, [wm = this->wm, safeWindow]() {
+                if (safeWindow)
+                    wm->exposureChanged(safeWindow);
             }, Qt::QueuedConnection);
         }
     } else {
