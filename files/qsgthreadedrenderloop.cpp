@@ -9,6 +9,8 @@
 #include <QtCore/QTimer>
 #include <QtCore/QStandardPaths>
 #include <QtCore/QFile>
+#include <QtCore/QSaveFile>
+#include <QtCore/QPointer>
 #include <QtCore/QDir>
 #include <atomic>
 #include <variant>
