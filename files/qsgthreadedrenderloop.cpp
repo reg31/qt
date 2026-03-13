@@ -818,7 +818,6 @@ void QSGRenderThread::ensureRhiDevice()
             }
         }
         rhiReady.store(true, std::memory_order_seq_cst);
-        rhiReady.notify_all();
         if (deferredFirstExpose.exchange(false, std::memory_order_seq_cst)) {
             QPointer<QQuickWindow> safeWindow(window);
             QMetaObject::invokeMethod(wm, [wm = this->wm, safeWindow]() {
