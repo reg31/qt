@@ -21,6 +21,7 @@
 
 #include <rhi/qrhi.h>
 #include <algorithm>
+#include <memory>
 #include <numeric>
 
 QT_BEGIN_NAMESPACE
@@ -352,10 +353,10 @@ struct StencilClipState
     StencilClipState() : drawCalls(1) { }
 
     bool updateStencilBuffer = false;
-    QRhiShaderResourceBindings *srb = nullptr;
-    QRhiBuffer *vbuf = nullptr;
-    QRhiBuffer *ibuf = nullptr;
-    QRhiBuffer *ubuf = nullptr;
+    std::unique_ptr<QRhiShaderResourceBindings> srb;
+    std::unique_ptr<QRhiBuffer> vbuf;
+    std::unique_ptr<QRhiBuffer> ibuf;
+    std::unique_ptr<QRhiBuffer> ubuf;
 
     struct StencilDrawCall {
         int stencilRef;
@@ -957,17 +958,10 @@ void StencilClipState::reset()
 {
     updateStencilBuffer = false;
 
-    delete srb;
-    srb = nullptr;
-
-    delete vbuf;
-    vbuf = nullptr;
-
-    delete ibuf;
-    ibuf = nullptr;
-
-    delete ubuf;
-    ubuf = nullptr;
+    srb.reset();
+    vbuf.reset();
+    ibuf.reset();
+    ubuf.reset();
 
     drawCalls.reset();
 }
