@@ -354,9 +354,6 @@ Updater::Updater(Renderer *r)
     : renderer(r)
     , m_roots(32)
     , m_rootMatrices(8)
-#if QT_CONFIG(concurrent)
-    , m_parallelRootThreshold(qt_sg_envInt("QSG_UPDATER_PARALLEL_THRESHOLD", 8))
-#endif
 {
     m_roots.add(0);
     m_combined_matrix_stack.add(&m_identityMatrix);
@@ -504,19 +501,8 @@ void Updater::visitTransformNode(Node *n)
         if (!n->becameBatchRoot && m_added == 0 && m_force_update == 0 && m_opacityChange == 0 && dirty && (n->dirtyState & ~QSGNode::DirtyMatrix) == 0) {
             BatchRootInfo *info = renderer->batchRootInfo(n);
             const QMatrix4x4 combined = tn->combinedMatrix();
-#if QT_CONFIG(concurrent)
-            if (info->subRoots.size() >= m_parallelRootThreshold) {
-                QFutureSynchronizer<void> sync;
-                for (Node *subRoot : std::as_const(info->subRoots))
-                    sync.addFuture(QtConcurrent::run([this, subRoot, n, combined]() {
-                        updateRootTransforms(subRoot, n, combined);
-                    }));
-            } else
-#endif
-            {
-                for (Node *subRoot : std::as_const(info->subRoots))
-                    updateRootTransforms(subRoot, n, combined);
-            }
+            for (Node *subRoot : std::as_const(info->subRoots))
+                updateRootTransforms(subRoot, n, combined);
             return;
         }
 
@@ -2228,7 +2214,7 @@ QRhiGraphicsPipeline *Renderer::buildStencilPipeline(const Batch *batch, bool fi
     ps->setShaderStages({ QRhiShaderStage(QRhiShaderStage::Vertex, m_stencilClipCommon.vs),
                           QRhiShaderStage(QRhiShaderStage::Fragment, m_stencilClipCommon.fs) });
     ps->setVertexInputLayout(m_stencilClipCommon.inputLayout);
-    ps->setShaderResourceBindings(batch->stencilClipState.srb);
+    ps->setShaderResourceBindings(batch->stencilClipState.srb.get());
     ps->setRenderPassDescriptor(renderTarget().rpDesc);
 
     if (!ps->create()) {
@@ -2334,7 +2320,7 @@ void Renderer::updateClipState(const QSGClipNode *clipList, Batch *batch)
     if (clipType & ClipState::StencilClip) {
         bool rebuildVBuf = false;
         if (!batch->stencilClipState.vbuf) {
-            batch->stencilClipState.vbuf = m_rhi->newBuffer(QRhiBuffer::Dynamic, QRhiBuffer::VertexBuffer, totalVSize);
+            batch->stencilClipState.vbuf.reset(m_rhi->newBuffer(QRhiBuffer::Dynamic, QRhiBuffer::VertexBuffer, totalVSize));
             rebuildVBuf = true;
         } else if (batch->stencilClipState.vbuf->size() < totalVSize) {
             batch->stencilClipState.vbuf->setSize(totalVSize);
@@ -2343,8 +2329,7 @@ void Renderer::updateClipState(const QSGClipNode *clipList, Batch *batch)
         if (rebuildVBuf) {
             if (!batch->stencilClipState.vbuf->create()) {
                 qWarning("Failed to build stencil clip vertex buffer");
-                delete batch->stencilClipState.vbuf;
-                batch->stencilClipState.vbuf = nullptr;
+                batch->stencilClipState.vbuf.reset();
                 return;
             }
         }
@@ -2352,7 +2337,7 @@ void Renderer::updateClipState(const QSGClipNode *clipList, Batch *batch)
         if (totalISize) {
             bool rebuildIBuf = false;
             if (!batch->stencilClipState.ibuf) {
-                batch->stencilClipState.ibuf = m_rhi->newBuffer(QRhiBuffer::Dynamic, QRhiBuffer::IndexBuffer, totalISize);
+                batch->stencilClipState.ibuf.reset(m_rhi->newBuffer(QRhiBuffer::Dynamic, QRhiBuffer::IndexBuffer, totalISize));
                 rebuildIBuf = true;
             } else if (batch->stencilClipState.ibuf->size() < totalISize) {
                 batch->stencilClipState.ibuf->setSize(totalISize);
@@ -2361,8 +2346,7 @@ void Renderer::updateClipState(const QSGClipNode *clipList, Batch *batch)
             if (rebuildIBuf) {
                 if (!batch->stencilClipState.ibuf->create()) {
                     qWarning("Failed to build stencil clip index buffer");
-                    delete batch->stencilClipState.ibuf;
-                    batch->stencilClipState.ibuf = nullptr;
+                    batch->stencilClipState.ibuf.reset();
                     return;
                 }
             }
@@ -2370,7 +2354,7 @@ void Renderer::updateClipState(const QSGClipNode *clipList, Batch *batch)
 
         bool rebuildUBuf = false;
         if (!batch->stencilClipState.ubuf) {
-            batch->stencilClipState.ubuf = m_rhi->newBuffer(QRhiBuffer::Dynamic, QRhiBuffer::UniformBuffer, totalUSize);
+            batch->stencilClipState.ubuf.reset(m_rhi->newBuffer(QRhiBuffer::Dynamic, QRhiBuffer::UniformBuffer, totalUSize));
             rebuildUBuf = true;
         } else if (batch->stencilClipState.ubuf->size() < totalUSize) {
             batch->stencilClipState.ubuf->setSize(totalUSize);
@@ -2379,21 +2363,19 @@ void Renderer::updateClipState(const QSGClipNode *clipList, Batch *batch)
         if (rebuildUBuf) {
             if (!batch->stencilClipState.ubuf->create()) {
                 qWarning("Failed to build stencil clip uniform buffer");
-                delete batch->stencilClipState.ubuf;
-                batch->stencilClipState.ubuf = nullptr;
+                batch->stencilClipState.ubuf.reset();
                 return;
             }
         }
 
         if (!batch->stencilClipState.srb) {
-            batch->stencilClipState.srb = m_rhi->newShaderResourceBindings();
+            batch->stencilClipState.srb.reset(m_rhi->newShaderResourceBindings());
             const QRhiShaderResourceBinding ubufBinding = QRhiShaderResourceBinding::uniformBufferWithDynamicOffset(
-                        0, QRhiShaderResourceBinding::VertexStage, batch->stencilClipState.ubuf, StencilClipUbufSize);
+                        0, QRhiShaderResourceBinding::VertexStage, batch->stencilClipState.ubuf.get(), StencilClipUbufSize);
             batch->stencilClipState.srb->setBindings({ ubufBinding });
             if (!batch->stencilClipState.srb->create()) {
                 qWarning("Failed to build stencil clip srb");
-                delete batch->stencilClipState.srb;
-                batch->stencilClipState.srb = nullptr;
+                batch->stencilClipState.srb.reset();
                 return;
             }
         }
@@ -2439,10 +2421,10 @@ void Renderer::updateClipState(const QSGClipNode *clipList, Batch *batch)
             if (clip->matrix())
                 matrixYUpNDC *= *clip->matrix();
 
-            m_resourceUpdates->updateDynamicBuffer(batch->stencilClipState.ubuf, drawCall.ubufOffset, 64, matrixYUpNDC.constData());
-            m_resourceUpdates->updateDynamicBuffer(batch->stencilClipState.vbuf, drawCall.vbufOffset, vertexByteSize, g->vertexData());
+            m_resourceUpdates->updateDynamicBuffer(batch->stencilClipState.ubuf.get(), drawCall.ubufOffset, 64, matrixYUpNDC.constData());
+            m_resourceUpdates->updateDynamicBuffer(batch->stencilClipState.vbuf.get(), drawCall.vbufOffset, vertexByteSize, g->vertexData());
             if (indexByteSize)
-                m_resourceUpdates->updateDynamicBuffer(batch->stencilClipState.ibuf, drawCall.ibufOffset, indexByteSize, g->indexData());
+                m_resourceUpdates->updateDynamicBuffer(batch->stencilClipState.ibuf.get(), drawCall.ibufOffset, indexByteSize, g->indexData());
 
 
             drawCall.stencilRef = firstStencilClipInBatch ? m_currentClipState.stencilRef + 1 : m_currentClipState.stencilRef;
@@ -2489,7 +2471,7 @@ void Renderer::enqueueStencilDraw(const Batch *batch)
     const int count = batch->stencilClipState.drawCalls.size();
     for (int i = 0; i < count; ++i) {
         const StencilClipState::StencilDrawCall &drawCall(batch->stencilClipState.drawCalls.at(i));
-        QRhiShaderResourceBindings *srb = batch->stencilClipState.srb;
+        QRhiShaderResourceBindings *srb = batch->stencilClipState.srb.get();
         QRhiCommandBuffer::DynamicOffset ubufOffset(0, drawCall.ubufOffset);
         if (i == 0) {
             cb->setGraphicsPipeline(m_stencilClipCommon.replacePs);
@@ -2501,10 +2483,10 @@ void Renderer::enqueueStencilDraw(const Batch *batch)
 
         cb->setShaderResources(srb, 1, &ubufOffset);
         cb->setStencilRef(drawCall.stencilRef);
-        const QRhiCommandBuffer::VertexInput vbufBinding(batch->stencilClipState.vbuf, drawCall.vbufOffset);
+        const QRhiCommandBuffer::VertexInput vbufBinding(batch->stencilClipState.vbuf.get(), drawCall.vbufOffset);
         if (drawCall.indexCount) {
             cb->setVertexInput(0, 1, &vbufBinding,
-                               batch->stencilClipState.ibuf, drawCall.ibufOffset, drawCall.indexFormat);
+                               batch->stencilClipState.ibuf.get(), drawCall.ibufOffset, drawCall.indexFormat);
             cb->drawIndexed(drawCall.indexCount);
         } else {
             cb->setVertexInput(0, 1, &vbufBinding);
