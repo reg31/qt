@@ -123,7 +123,7 @@ public:
             page = pages.back();
         }
 
-        m_freePage = 0;
+        m_freePage = std::min(m_freePage, static_cast<int>(pageIndex));
     }
 
     void release(Type *t)
@@ -599,10 +599,9 @@ struct GraphicsPipelineStateKey
     } extra;
     static GraphicsPipelineStateKey create(const GraphicsState &state,
                                            const ShaderManagerShader *sms,
-                                           const QRhiRenderPassDescriptor *rpDesc,
+                                           const QList<quint32> &rtDesc,
                                            const QRhiShaderResourceBindings *srb)
     {
-        const QList<quint32> rtDesc = rpDesc->serializedFormat();
         const QList<quint32> srbDesc = srb->serializedLayoutDescription();
         return { state, sms, rtDesc, srbDesc, { qHash(rtDesc), qHash(srbDesc) } };
     }
@@ -883,6 +882,7 @@ private:
     QStack<GraphicsState> m_gstateStack;
     QHash<QSGSamplerDescription, QRhiSampler *> m_samplers;
     QRhiTexture *m_dummyTexture = nullptr;
+    QList<quint32> m_currentRpDescFormat;
 
     struct StencilClipCommonData {
         QRhiGraphicsPipeline *replacePs = nullptr;
