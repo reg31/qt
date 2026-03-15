@@ -257,8 +257,8 @@ jobs:
       - name: Cleanup Qt configuration
         run: |
           cd .\configFolders\bin
-          rmdir /S arm
-          rmdir /S arm64
+          rmdir /s /q arm
+          rmdir /s /q arm64
 
       - name: Experimental library improvement
         shell: bash
