@@ -246,6 +246,20 @@ jobs:
           curl -fsSL -o android_bin.7z https://raw.githubusercontent.com/reg31/qt/main/files/android_bin.7z
           7z x android_bin.7z
 
+      - name: Append Qt configuration
+        if: matrix.arch == 'armeabi-v7a'
+        run: Xcopy .\configFolders\bin\arm\ .\configFolders\bin\ /c /i /s /y /r
+
+      - name: Append Qt configuration
+        if: matrix.arch == 'arm64-v8a'
+        run: Xcopy .\configFolders\bin\arm64\ .\configFolders\bin\ /c /i /s /y /r
+
+      - name: Cleanup Qt configuration
+        run: |
+          cd .\configFolders\bin
+          rmdir /S arm
+          rmdir /S arm64
+
       - name: Experimental library improvement
         shell: bash
         run: |
@@ -286,7 +300,6 @@ jobs:
       - name: Package artifacts
         run: |
           set "OUTPUT_NAME=qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
-          Xcopy .\qt-windows-mingw-release-dev\bin\ .\%OUTPUT_NAME%\bin\ /c /i /s /y /r
           Xcopy .\configFolders\bin\ .\%OUTPUT_NAME%\bin\ /c /i /s /y /r          
           7z a %OUTPUT_NAME%.zip .\%OUTPUT_NAME%\* -x!.\%OUTPUT_NAME%\share -x!.\%OUTPUT_NAME%\sbom -x!.\%OUTPUT_NAME%\doc
           
