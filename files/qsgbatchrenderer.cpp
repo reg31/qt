@@ -1662,16 +1662,16 @@ void Renderer::prepareOpaqueBatches()
         const QSGGeometry *gj = gnj->geometry();
         const QSGMaterial *mi = gni->activeMaterial();
         const QSGMaterial *mj = gnj->activeMaterial();
-        return gni->clipList() == gnj->clipList()
+        return mi->type() == mj->type()
+            && gni->clipList() == gnj->clipList()
+            && gi->attributes() == gj->attributes()
             && gi->drawingMode() == gj->drawingMode()
             && (gi->lineWidth() == gj->lineWidth()
                 || (gi->drawingMode() != QSGGeometry::DrawLines
                     && gi->drawingMode() != QSGGeometry::DrawLineStrip))
-            && gi->attributes() == gj->attributes()
             && gi->indexType() == gj->indexType()
-            && gni->inheritedOpacity() == gnj->inheritedOpacity()
-            && mi->type() == mj->type()
             && mi->viewCount() == mj->viewCount()
+            && gni->inheritedOpacity() == gnj->inheritedOpacity()
             && mi->compare(mj) == 0;
     };
 
@@ -1754,15 +1754,15 @@ void Renderer::prepareAlphaBatches()
         const QSGGeometry *gj = gnj->geometry();
         const QSGMaterial *mi = gni->activeMaterial();
         const QSGMaterial *mj = gnj->activeMaterial();
-        return gni->clipList() == gnj->clipList()
+        return mi->type() == mj->type()
+            && gni->clipList() == gnj->clipList()
+            && gi->attributes() == gj->attributes()
             && gi->drawingMode() == gj->drawingMode()
             && (gi->drawingMode() != QSGGeometry::DrawLines
                 || (gi->lineWidth() == gj->lineWidth() && gi->lineWidth() == 1.0f))
-            && gi->attributes() == gj->attributes()
             && gi->indexType() == gj->indexType()
-            && gni->inheritedOpacity() == gnj->inheritedOpacity()
-            && mi->type() == mj->type()
             && mi->viewCount() == mj->viewCount()
+            && gni->inheritedOpacity() == gnj->inheritedOpacity()
             && mi->compare(mj) == 0;
     };
 
@@ -2516,7 +2516,7 @@ bool Renderer::ensurePipelineState(Element *e, const ShaderManager::Shader *sms,
 {
 
 
-    const GraphicsPipelineStateKey k = GraphicsPipelineStateKey::create(m_gstate, sms, renderTarget().rpDesc, e->srb);
+    const GraphicsPipelineStateKey k = GraphicsPipelineStateKey::create(m_gstate, sms, m_currentRpDescFormat, e->srb);
 
 
     auto it = m_shaderManager->pipelineCache.constFind(k);
@@ -3470,6 +3470,8 @@ void Renderer::prepareRenderPass(RenderPassContext *ctx)
 
     ctx->valid = true;
 
+    m_currentRpDescFormat = renderTarget().rpDesc->serializedFormat();
+
     if (Q_UNLIKELY(debug_dump())) {
         qDebug("\n");
         QSGNodeDumper::dump(rootNode());
@@ -3977,16 +3979,25 @@ bool operator!=(const GraphicsState &a, const GraphicsState &b) noexcept
 
 size_t qHash(const GraphicsState &s, size_t seed) noexcept
 {
-    seed ^= std::rotl(seed, 7) + s.depthTest;
+    seed ^= std::rotl(seed,  7) + s.depthTest;
     seed ^= std::rotl(seed, 11) + s.depthWrite;
     seed ^= std::rotl(seed, 13) + s.depthFunc;
     seed ^= std::rotl(seed, 17) + s.blending;
     seed ^= std::rotl(seed, 19) + s.srcColor;
-    seed ^= std::rotl(seed, 23) + s.cullMode;
-    seed ^= std::rotl(seed, 29) + s.usesScissor;
-    seed ^= std::rotl(seed, 31) + s.stencilTest;
-    seed ^= std::rotl(seed, 37) + s.sampleCount;
-    seed ^= std::rotl(seed, 41) + s.multiViewCount;
+    seed ^= std::rotl(seed, 23) + s.dstColor;
+    seed ^= std::rotl(seed, 29) + s.srcAlpha;
+    seed ^= std::rotl(seed, 31) + s.dstAlpha;
+    seed ^= std::rotl(seed, 37) + s.opColor;
+    seed ^= std::rotl(seed, 41) + s.opAlpha;
+    seed ^= std::rotl(seed, 43) + s.colorWrite;
+    seed ^= std::rotl(seed, 47) + s.cullMode;
+    seed ^= std::rotl(seed, 53) + s.usesScissor;
+    seed ^= std::rotl(seed, 59) + s.stencilTest;
+    seed ^= std::rotl(seed, 61) + s.sampleCount;
+    seed ^= std::rotl(seed, 67) + s.drawMode;
+    seed ^= std::rotl(seed, 71) + std::bit_cast<quint32>(s.lineWidth);
+    seed ^= std::rotl(seed, 73) + s.polygonMode;
+    seed ^= std::rotl(seed, 79) + s.multiViewCount;
     return seed;
 }
 
