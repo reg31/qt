@@ -3989,7 +3989,7 @@ size_t qHash(const GraphicsState &s, size_t seed) noexcept
     seed ^= std::rotl(seed, 31) + s.dstAlpha;
     seed ^= std::rotl(seed, 37) + s.opColor;
     seed ^= std::rotl(seed, 41) + s.opAlpha;
-    seed ^= std::rotl(seed, 43) + s.colorWrite;
+    seed ^= std::rotl(seed, 43) + s.colorWrite.toInt();
     seed ^= std::rotl(seed, 47) + s.cullMode;
     seed ^= std::rotl(seed, 53) + s.usesScissor;
     seed ^= std::rotl(seed, 59) + s.stencilTest;
