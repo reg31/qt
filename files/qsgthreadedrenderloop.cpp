@@ -12,6 +12,7 @@
 #include <QtCore/QSaveFile>
 #include <QtCore/QPointer>
 #include <QtCore/QDir>
+#include <QtCore/QThreadPool>
 #include <atomic>
 #include <variant>
 #include <vector>
@@ -338,30 +339,55 @@ static const QString &pipelineCachePath()
 
 Q_GLOBAL_STATIC(QMutex, pipelineCacheFileMutex)
 
+static QByteArray g_pipelineCacheData;
+static bool g_pipelineCachePreloaded = false;
+
+static void preloadPipelineCacheAsync()
+{
+    QThreadPool::globalInstance()->start([]() {
+        QMutexLocker fileLock(pipelineCacheFileMutex());
+        if (g_pipelineCachePreloaded)
+            return;
+        QFile f(pipelineCachePath());
+        if (f.open(QIODevice::ReadOnly))
+            g_pipelineCacheData = f.readAll();
+        g_pipelineCachePreloaded = true;
+    });
+}
+
 static void savePipelineCache(QRhi *rhi)
 {
     const QByteArray data = rhi->pipelineCacheData();
     if (data.isEmpty())
         return;
-    const QString &path = pipelineCachePath();
-    static const QString dirPath = QFileInfo(path).absolutePath();
-    QMutexLocker fileLock(pipelineCacheFileMutex());
-    QDir().mkpath(dirPath);
-    QSaveFile f(path);
-    if (f.open(QIODevice::WriteOnly)) {
-        f.write(data);
-        f.commit();
-    }
-    qCDebug(QSG_LOG_RENDERLOOP, "RHI pipeline cache saved (%lld bytes)", (long long)data.size());
+    const QString path = pipelineCachePath();
+    const QString dirPath = QFileInfo(path).absolutePath();
+    QThreadPool::globalInstance()->start([data, path, dirPath]() {
+        QMutexLocker fileLock(pipelineCacheFileMutex());
+        QDir().mkpath(dirPath);
+        QSaveFile f(path);
+        if (f.open(QIODevice::WriteOnly)) {
+            f.write(data);
+            f.commit();
+        }
+        qCDebug(QSG_LOG_RENDERLOOP, "RHI pipeline cache saved (%lld bytes)", (long long)data.size());
+    });
 }
 
 static void loadPipelineCache(QRhi *rhi)
 {
-    QMutexLocker fileLock(pipelineCacheFileMutex());
-    QFile f(pipelineCachePath());
-    if (!f.open(QIODevice::ReadOnly))
-        return;
-    const QByteArray data = f.readAll();
+    QByteArray data;
+    {
+        QMutexLocker fileLock(pipelineCacheFileMutex());
+        if (g_pipelineCachePreloaded) {
+            data = g_pipelineCacheData;
+        } else {
+            QFile f(pipelineCachePath());
+            if (f.open(QIODevice::ReadOnly))
+                data = f.readAll();
+            g_pipelineCachePreloaded = true;
+        }
+    }
     if (!data.isEmpty())
         rhi->setPipelineCacheData(data);
     qCDebug(QSG_LOG_RENDERLOOP, "RHI pipeline cache loaded (%lld bytes)", (long long)data.size());
@@ -911,7 +937,7 @@ void QSGRenderThread::run()
         QMacAutoReleasePool frameReleasePool;
 #endif
         processEvents();
-        QCoreApplication::sendPostedEvents(nullptr, 0);
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
 
         if (window) [[likely]] {
             ensureRhi();
@@ -942,6 +968,8 @@ QSGThreadedRenderLoop::QSGThreadedRenderLoop()
     : sg(QSGContext::createDefaultContext())
     , m_animation_timer(0)
 {
+    preloadPipelineCacheAsync();
+
     m_animation_driver = sg->createAnimationDriver(this);
 
     connect(m_animation_driver, &QAnimationDriver::started, this, &QSGThreadedRenderLoop::animationStarted);
@@ -1290,13 +1318,11 @@ bool QSGThreadedRenderLoop::eventFilter(QObject *watched, QEvent *event)
 void QSGThreadedRenderLoop::handleUpdateRequest(QQuickWindow *window)
 {
     QPointer<QQuickWindow> safeWindow = window;
-    QMetaObject::invokeMethod(this, [this, safeWindow]() {
-        if (!safeWindow) return;
-        if (!QQuickWindowPrivate::get(safeWindow)->updatesEnabled) return;
-        Window *w = windowFor(safeWindow);
-        if (w)
-            polishAndSync(w);
-    }, Qt::QueuedConnection);
+    if (!safeWindow) return;
+    if (!QQuickWindowPrivate::get(safeWindow)->updatesEnabled) return;
+    Window *w = windowFor(safeWindow);
+    if (w)
+        polishAndSync(w);
 }
 
 void QSGThreadedRenderLoop::maybeUpdate(QQuickWindow *window)
