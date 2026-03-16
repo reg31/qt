@@ -669,7 +669,7 @@ void QSGRenderThread::syncAndRender()
     }
 
     if (syncRequested && !syncResultedInChanges && !exposeRequested
-        && lastFrameValid && !repaintRequested && !animatorRunning) {
+        && lastFrameValid && !repaintRequested && !animatorRunning && !animatorDriver->isRunning()) {
         qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- sync produced no changes, skipping render");
         {
             QMutexLocker lock(&mutex);
@@ -752,7 +752,7 @@ void QSGRenderThread::syncAndRender()
             }
         } else {
             lastFrameValid = true;
-            if (animatorRunning)
+            if (animatorDriver->isRunning())
                 pendingUpdate |= RepaintRequest;
             if (!asyncPresent) {
                 {
