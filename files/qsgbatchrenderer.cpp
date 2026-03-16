@@ -2761,7 +2761,7 @@ void Renderer::updateMaterialDynamicData(ShaderManager::Shader *sms,
     if (pd->ubufBinding >= 0) {
         bool changed = false;
         {
-            QScopedValueRollback<const QByteArray *> uniformDataRollback(m_current_uniform_data, &pd->masterUniformData);
+            QScopedValueRollback<QByteArray *> uniformDataRollback(m_current_uniform_data, &pd->masterUniformData);
             changed = shader->updateUniformData(renderState, material, m_currentMaterial);
         }
 
