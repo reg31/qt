@@ -13,6 +13,8 @@
 #include <QtCore/QPointer>
 #include <QtCore/QDir>
 #include <QtCore/QThreadPool>
+#include <QtCore/QScopedValueRollback>
+#include <QtCore/QAtomicScopedValueRollback>
 #include <atomic>
 #include <variant>
 #include <vector>
@@ -59,7 +61,7 @@ Q_TRACE_POINT(qtquick, QSG_syncAndRender_exit)
 Q_TRACE_POINT(qtquick, QSG_animations_entry)
 Q_TRACE_POINT(qtquick, QSG_animations_exit)
 
-#define QSG_RT_PAD "                    (RT) %s"
+constexpr char QSG_RT_PAD[] = "                    (RT) %s";
 
 extern Q_GUI_EXPORT QImage qt_gl_read_framebuffer(const QSize &size, bool alpha_format, bool include_alpha);
 
@@ -170,8 +172,8 @@ public:
     QSGRenderThreadEventQueue()
         : waiting(false)
     {
-        m_queue.reserve(4);
-        m_drainBuffer.reserve(4);
+        m_queue.reserve(InitialQueueCapacity);
+        m_drainBuffer.reserve(InitialQueueCapacity);
     }
 
     void addEvent(QSGRenderThreadEvent &&e) {
@@ -232,7 +234,7 @@ public:
     {
         sgrc = static_cast<QSGDefaultRenderContext *>(renderContext);
 #if defined(Q_OS_QNX) || defined(Q_OS_INTEGRITY)
-        setStackSize(1024 * 1024);
+        setStackSize(RenderThreadStackSize);
 #endif
     }
 
@@ -263,11 +265,9 @@ public:
     void postEvent(QSGRenderThreadEvent &&e);
 
 public:
-    enum {
-        SyncRequest         = 0x01,
-        RepaintRequest      = 0x02,
-        ExposeRequest       = 0x04 | RepaintRequest | SyncRequest
-    };
+    static constexpr uint SyncRequest    = 0x01;
+    static constexpr uint RepaintRequest = 0x02;
+    static constexpr uint ExposeRequest  = 0x04 | RepaintRequest | SyncRequest;
 
     void ensureRhiDevice();
     void ensureRhi();
@@ -283,7 +283,7 @@ public:
     QAnimationDriver *animatorDriver;
 
     uint pendingUpdate;
-    bool sleeping;
+    std::atomic<bool> sleeping;
 
     std::atomic<bool> active;
 
@@ -306,7 +306,7 @@ public:
     std::atomic<bool> rhiReady{false};
     std::atomic<bool> deferredFirstExpose{false};
 
-    bool stopEventProcessing;
+    std::atomic<bool> stopEventProcessing;
     QSGRenderThreadEventQueue eventQueue;
 
     bool syncResultedInChanges;
@@ -329,6 +329,12 @@ public slots:
 namespace {
 template<class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
 template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
+
+static constexpr int RenderThreadStackSize = 1024 * 1024;
+static constexpr std::size_t InitialQueueCapacity = 4;
+static constexpr qint64 PSTimeResetThresholdMs = 500;
+static constexpr float AdaptiveTimeoutFraction = 0.75f;
+static constexpr float AdaptiveTimeoutMinMs = 4.0f;
 
 static const QString &pipelineCachePath()
 {
@@ -660,8 +666,8 @@ void QSGRenderThread::syncAndRender()
 
     if (animatorRunning) [[unlikely]] {
         cd->animationController->lock();
+        const auto animatorUnlock = qScopeGuard([&cd]{ cd->animationController->unlock(); });
         animatorDriver->advance();
-        cd->animationController->unlock();
     }
 
     if (syncRequested) [[likely]] {
@@ -946,9 +952,8 @@ void QSGRenderThread::run()
         }
 
         if (active && (pendingUpdate == 0 || !window)) [[unlikely]] {
-            sleeping = true;
+            QAtomicScopedValueRollback<bool> sleepRollback(sleeping, true);
             processEventsAndWaitForMore();
-            sleeping = false;
         }
     }
 
@@ -1473,7 +1478,7 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
 
     const qint64 elapsedSinceLastMs = w->timeBetweenPolishAndSyncs.restart();
 
-    if (elapsedSinceLastMs > 500) {
+    if (elapsedSinceLastMs > PSTimeResetThresholdMs) {
         w->psTimeAccumulator = 0.0f;
         w->psTimeSampleCount = 0;
     }
@@ -1481,7 +1486,7 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
     if (!w->badVSync && w->actualWindowFormat.swapInterval() != 0 && sg->isVSyncDependent(m_animation_driver)) {
         w->psTimeAccumulator += elapsedSinceLastMs;
         w->psTimeSampleCount += 1;
-        static const int PS_TIME_SAMPLE_LENGTH = 20;
+        constexpr int PS_TIME_SAMPLE_LENGTH = 20;
         if (w->psTimeSampleCount > PS_TIME_SAMPLE_LENGTH) [[unlikely]] {
             const float t = w->psTimeAccumulator / w->psTimeSampleCount;
             const float vsyncRate = sg->vsyncIntervalForAnimationDriver(m_animation_driver);
@@ -1511,9 +1516,10 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
     Q_TRACE(QSG_polishItems_entry);
 
     QQuickWindowPrivate *d = QQuickWindowPrivate::get(window);
-    m_inPolish = true;
-    d->polishItems();
-    m_inPolish = false;
+    {
+        QScopedValueRollback<bool> polishRollback(m_inPolish, true);
+        d->polishItems();
+    }
 
     if (profileFrames)
         polishTime = timer.nsecsElapsed();
@@ -1539,18 +1545,17 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
         static constexpr int HYSTERESIS_FRAMES = 5;
         const float vsyncMs = sg->vsyncIntervalForAnimationDriver(m_animation_driver);
         const unsigned long ADAPTIVE_TIMEOUT_MS = static_cast<unsigned long>(
-            qMax(4.0f, vsyncMs * 0.75f));
+            qMax(AdaptiveTimeoutMinMs, vsyncMs * AdaptiveTimeoutFraction));
         const bool supportsAsyncPresent =
             QSGRhiSupport::instance()->rhiBackend() != QRhi::OpenGLES2;
 
-        m_lockedForSync = true;
+        QScopedValueRollback<bool> syncRollback(m_lockedForSync, true);
         const uint64_t serial = ++w->thread->lastPostedSyncSerial;
         w->thread->postEvent(WMSyncEvent(window, inExpose, w->forceRenderPass, std::move(scProxyData), serial));
         w->forceRenderPass = false;
 
         if (inExpose && w->thread->rhiReady.load(std::memory_order_acquire)) {
             qCDebug(QSG_LOG_RENDERLOOP, "- inExpose (pre-warmed): skipping sync wait for fast startup");
-            m_lockedForSync = false;
             Q_TRACE(QSG_wait_exit);
             Q_TRACE(QSG_sync_exit);
             Q_TRACE(QSG_animations_exit);
@@ -1680,20 +1685,20 @@ QImage QSGThreadedRenderLoop::grab(QQuickWindow *window)
 
     qCDebug(QSG_LOG_RENDERLOOP, "- polishing items");
     QQuickWindowPrivate *d = QQuickWindowPrivate::get(window);
-    m_inPolish = true;
-    d->polishItems();
-    m_inPolish = false;
+    {
+        QScopedValueRollback<bool> polishRollback(m_inPolish, true);
+        d->polishItems();
+    }
 
     QImage result;
     bool isDone = false;
     {
         QMutexLocker locker(&w->thread->mutex);
-        m_lockedForSync = true;
+        QScopedValueRollback<bool> syncRollback(m_lockedForSync, true);
         qCDebug(QSG_LOG_RENDERLOOP, "- posting grab event");
         w->thread->postEvent(WMGrabEvent(window, &result, &isDone));
         while (!isDone)
             w->thread->waitCondition.wait(&w->thread->mutex);
-        m_lockedForSync = false;
     }
 
     qCDebug(QSG_LOG_RENDERLOOP, "- grab complete");
