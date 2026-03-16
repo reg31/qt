@@ -63,6 +63,9 @@ Q_TRACE_POINT(qtquick, QSG_animations_exit)
 
 constexpr char QSG_RT_PAD[] = "                    (RT) %s";
 
+static constexpr std::size_t InitialQueueCapacity = 4;
+static constexpr int RenderThreadStackSize = 1024 * 1024;
+
 extern Q_GUI_EXPORT QImage qt_gl_read_framebuffer(const QSize &size, bool alpha_format, bool include_alpha);
 
 
@@ -330,8 +333,6 @@ namespace {
 template<class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
 template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
 
-static constexpr int RenderThreadStackSize = 1024 * 1024;
-static constexpr std::size_t InitialQueueCapacity = 4;
 static constexpr qint64 PSTimeResetThresholdMs = 500;
 static constexpr float AdaptiveTimeoutFraction = 0.75f;
 static constexpr float AdaptiveTimeoutMinMs = 4.0f;
