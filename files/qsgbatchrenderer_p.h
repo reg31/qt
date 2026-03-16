@@ -29,7 +29,7 @@ QT_BEGIN_NAMESPACE
 namespace QSGBatchRenderer
 {
 
-#define QSG_RENDERER_COORD_LIMIT 1000000.0f
+constexpr float QSG_RENDERER_COORD_LIMIT = 1000000.0f;
 
 struct Vec;
 struct Rect;
@@ -747,12 +747,10 @@ protected:
     void endRenderPass(RenderPassContext *ctx);
 
 private:
-    enum RebuildFlag {
-        BuildRenderListsForTaggedRoots      = 0x0001,
-        BuildRenderLists                    = 0x0002,
-        BuildBatches                        = 0x0004,
-        FullRebuild                         = 0xffff
-    };
+    static constexpr uint BuildRenderListsForTaggedRoots = 0x0001;
+    static constexpr uint BuildRenderLists               = 0x0002;
+    static constexpr uint BuildBatches                   = 0x0004;
+    static constexpr uint FullRebuild                    = 0xffff;
 
     friend class Updater;
     friend class RhiVisualizer;
