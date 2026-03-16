@@ -17,6 +17,8 @@
 #include "qsgmaterialshader_p.h"
 
 #include "qsgrhivisualizer_p.h"
+#include <QtCore/QScopeGuard>
+#include <QtCore/QScopedValueRollback>
 
 #include <algorithm>
 #include <array>
@@ -50,7 +52,7 @@ DECLARE_DEBUG_VAR(noclip)
 #define QSGNODE_TRAVERSE(NODE) for (QSGNode *child = NODE->firstChild(); child; child = child->nextSibling())
 #define SHADOWNODE_TRAVERSE(NODE) for (Node *child = NODE->firstChild(); child; child = child->sibling())
 
-static inline int size_of_type(int type)
+constexpr inline int size_of_type(int type)
 {
     static constexpr std::array<int, 11> sizes = {
         sizeof(char),
@@ -74,16 +76,16 @@ static bool isTranslate(const QMatrix4x4 &m) { return m.flags() <= QMatrix4x4::T
 static bool isScale(const QMatrix4x4 &m) { return m.flags() <= QMatrix4x4::Scale; }
 static bool is2DSafe(const QMatrix4x4 &m) { return m.flags() < QMatrix4x4::Rotation; }
 
-const float OPAQUE_LIMIT                = 0.999f;
+constexpr float OPAQUE_LIMIT                = 0.999f;
 
-const uint DYNAMIC_VERTEX_INDEX_BUFFER_THRESHOLD = 4;
-const int VERTEX_BUFFER_BINDING = 0;
-const int ZORDER_BUFFER_BINDING = VERTEX_BUFFER_BINDING + 1;
+constexpr uint DYNAMIC_VERTEX_INDEX_BUFFER_THRESHOLD = 4;
+constexpr int VERTEX_BUFFER_BINDING = 0;
+constexpr int ZORDER_BUFFER_BINDING = VERTEX_BUFFER_BINDING + 1;
 
-const float VIEWPORT_MIN_DEPTH = 0.0f;
-const float VIEWPORT_MAX_DEPTH = 1.0f;
+constexpr float VIEWPORT_MIN_DEPTH = 0.0f;
+constexpr float VIEWPORT_MAX_DEPTH = 1.0f;
 
-const quint32 DEFAULT_BUFFER_POOL_SIZE_LIMIT = 2 * 1024 * 1024;
+constexpr quint32 DEFAULT_BUFFER_POOL_SIZE_LIMIT = 2 * 1024 * 1024;
 
 template <class Int>
 [[nodiscard]] inline Int aligned(Int v, Int byteAlign)
@@ -371,10 +373,10 @@ void Updater::updateStates(QSGNode *n)
     Node *sn = renderer->m_nodes.value(n, 0);
     Q_ASSERT(sn);
 
-    if (Q_UNLIKELY(debug_roots()))
+    if (debug_roots()) [[unlikely]]
         qsg_dumpShadowRoots(sn);
 
-    if (Q_UNLIKELY(debug_build())) {
+    if (debug_build()) [[unlikely]] {
         qDebug("Updater::updateStates()");
         if (sn->dirtyState & (QSGNode::DirtyNodeAdded << 16))
             qDebug(" - nodes have been added");
@@ -386,7 +388,7 @@ void Updater::updateStates(QSGNode *n)
             qDebug(" - forceupdate");
     }
 
-    if (Q_UNLIKELY(renderer->m_visualizer->mode() == Visualizer::VisualizeChanges))
+    if (renderer->m_visualizer->mode() == Visualizer::VisualizeChanges) [[unlikely]]
         renderer->m_visualizer->visualizeChangesPrepare(sn);
 
     visitNode(sn);
@@ -442,19 +444,21 @@ void Updater::visitClipNode(Node *n)
         renderer->registerBatchRoot(n, m_roots.last());
 
     cn->setRendererClipList(m_current_clip);
-    m_current_clip = cn;
+    QScopedValueRollback<const QSGClipNode *> clipRollback(m_current_clip, cn);
+
     m_roots << n;
     m_rootMatrices.add(m_rootMatrices.last() * *m_combined_matrix_stack.last());
     extra->matrix = m_rootMatrices.last();
     cn->setRendererMatrix(&extra->matrix);
     m_combined_matrix_stack << &m_identityMatrix;
 
-    SHADOWNODE_TRAVERSE(n) visitNode(child);
+    const auto cleanupGuard = qScopeGuard([this]() {
+        m_rootMatrices.pop_back();
+        m_combined_matrix_stack.pop_back();
+        m_roots.pop_back();
+    });
 
-    m_current_clip = cn->clipList();
-    m_rootMatrices.pop_back();
-    m_combined_matrix_stack.pop_back();
-    m_roots.pop_back();
+    SHADOWNODE_TRAVERSE(n) visitNode(child);
 }
 
 void Updater::visitOpacityNode(Node *n)
@@ -465,6 +469,8 @@ void Updater::visitOpacityNode(Node *n)
     on->setCombinedOpacity(combined);
     m_opacity_stack.add(combined);
 
+    const auto popGuard = qScopeGuard([this] { m_opacity_stack.pop_back(); });
+
     if (m_added == 0 && n->dirtyState & QSGNode::DirtyOpacity) {
         bool was = n->isOpaque;
         bool is = on->opacity() > OPAQUE_LIMIT;
@@ -472,16 +478,13 @@ void Updater::visitOpacityNode(Node *n)
             renderer->m_rebuild = Renderer::FullRebuild;
             n->isOpaque = is;
         }
-        ++m_opacityChange;
+        QScopedValueRollback<int> opacityRollback(m_opacityChange, m_opacityChange + 1);
         SHADOWNODE_TRAVERSE(n) visitNode(child);
-        --m_opacityChange;
     } else {
         if (m_added > 0)
             n->isOpaque = on->opacity() > OPAQUE_LIMIT;
         SHADOWNODE_TRAVERSE(n) visitNode(child);
     }
-
-    m_opacity_stack.pop_back();
 }
 
 void Updater::visitTransformNode(Node *n)
@@ -525,16 +528,18 @@ void Updater::visitTransformNode(Node *n)
     if (dirty)
         ++m_transformChange;
 
-    SHADOWNODE_TRAVERSE(n) visitNode(child);
+    const auto cleanupGuard = qScopeGuard([this, dirty, popMatrixStack, popRootStack]() {
+        if (dirty)
+            --m_transformChange;
+        if (popMatrixStack)
+            m_combined_matrix_stack.pop_back();
+        if (popRootStack) {
+            m_roots.pop_back();
+            m_rootMatrices.pop_back();
+        }
+    });
 
-    if (dirty)
-        --m_transformChange;
-    if (popMatrixStack)
-        m_combined_matrix_stack.pop_back();
-    if (popRootStack) {
-        m_roots.pop_back();
-        m_rootMatrices.pop_back();
-    }
+    SHADOWNODE_TRAVERSE(n) visitNode(child);
 }
 
 void Updater::visitGeometryNode(Node *n)
@@ -855,7 +860,7 @@ Renderer::Renderer(QSGDefaultRenderContext *ctx, QSGRendererInterface::RenderMod
     m_srbPoolThreshold = qt_sg_envInt("QSG_RENDERER_SRB_POOL_THRESHOLD", 1024);
     m_bufferPoolSizeLimit = qt_sg_envInt("QSG_RENDERER_BUFFER_POOL_LIMIT", DEFAULT_BUFFER_POOL_SIZE_LIMIT);
 
-    if (Q_UNLIKELY(debug_build() || debug_render() || debug_pools())) {
+    if (debug_build() || debug_render() || debug_pools()) [[unlikely]] {
         qDebug("Batch thresholds: nodes: %d vertices: %d srb pool: %d buffer pool: %d",
                m_batchNodeThreshold, m_batchVertexThreshold, m_srbPoolThreshold, m_bufferPoolSizeLimit);
     }
@@ -1276,7 +1281,7 @@ void Renderer::nodeWasRemoved(Node *node)
 
 void Renderer::turnNodeIntoBatchRoot(Node *node)
 {
-    if (Q_UNLIKELY(debug_change())) qDebug(" - new batch root");
+    if (debug_change()) [[unlikely]] qDebug(" - new batch root");
     m_rebuild |= FullRebuild;
     node->isBatchRoot = true;
     node->becameBatchRoot = true;
@@ -1298,7 +1303,7 @@ void Renderer::turnNodeIntoBatchRoot(Node *node)
 void Renderer::nodeChanged(QSGNode *node, QSGNode::DirtyState state)
 {
 #ifndef QT_NO_DEBUG_OUTPUT
-    if (Q_UNLIKELY(debug_change())) {
+    if (debug_change()) [[unlikely]] {
         QDebug debug = qDebug();
         debug << "dirty:";
         if (state & QSGNode::DirtyGeometry)
@@ -1556,21 +1561,24 @@ void Renderer::buildRenderListsForTaggedRoots()
     m_opaqueRenderList.reset();
     m_alphaRenderList.reset();
     int maxRenderOrder = m_nextRenderOrder;
-    m_partialRebuild = true;
 
-    for (QSet<Node *>::const_iterator it = m_taggedRoots.constBegin();
-         it != m_taggedRoots.constEnd(); ++it) {
-        Node *root = *it;
-        BatchRootInfo *i = batchRootInfo(root);
-        if ((!i->parentRoot || !m_taggedRoots.contains(i->parentRoot))
-             && !nodeUpdater()->isNodeBlocked(root->sgNode, rootNode())) {
-            m_nextRenderOrder = i->firstOrder;
-            m_partialRebuildRoot = root->sgNode;
-            buildRenderLists(root->sgNode);
+    {
+        QScopedValueRollback<bool> partialRebuildRollback(m_partialRebuild, true);
+        QScopedValueRollback<QSGNode *> partialRebuildRootRollback(m_partialRebuildRoot);
+
+        for (QSet<Node *>::const_iterator it = m_taggedRoots.constBegin();
+             it != m_taggedRoots.constEnd(); ++it) {
+            Node *root = *it;
+            BatchRootInfo *i = batchRootInfo(root);
+            if ((!i->parentRoot || !m_taggedRoots.contains(i->parentRoot))
+                 && !nodeUpdater()->isNodeBlocked(root->sgNode, rootNode())) {
+                m_nextRenderOrder = i->firstOrder;
+                m_partialRebuildRoot = root->sgNode;
+                buildRenderLists(root->sgNode);
+            }
         }
     }
-    m_partialRebuild = false;
-    m_partialRebuildRoot = nullptr;
+
     m_taggedRoots.clear();
     m_nextRenderOrder = qMax(m_nextRenderOrder, maxRenderOrder);
 
@@ -1868,7 +1876,7 @@ static inline float calculateElementZOrder(const Element *e, qreal zRange)
 
 void Renderer::uploadMergedElement(Element *e, int vaOffset, char **vertexData, char **zData, char **indexData, void *iBasePtr, int *indexCount)
 {
-    if (Q_UNLIKELY(debug_upload())) qDebug() << "  - uploading element:" << e << e->node << (void *) *vertexData << (qintptr) (*zData - *vertexData) << (qintptr) (*indexData - *vertexData);
+    if (debug_upload()) [[unlikely]] qDebug() << "  - uploading element:" << e << e->node << (void *) *vertexData << (qintptr) (*zData - *vertexData) << (qintptr) (*indexData - *vertexData);
     QSGGeometry *g = e->node->geometry();
 
     const QMatrix4x4 &localx = *e->node->matrix();
@@ -1950,17 +1958,17 @@ void Renderer::uploadBatch(Batch *b)
 {
 
     if (!b->needsUpload) {
-        if (Q_UNLIKELY(debug_upload())) qDebug() << " Batch:" << b << "already uploaded...";
+        if (debug_upload()) [[unlikely]] qDebug() << " Batch:" << b << "already uploaded...";
         return;
     }
 
     if (!b->first) {
-        if (Q_UNLIKELY(debug_upload())) qDebug() << " Batch:" << b << "is invalid...";
+        if (debug_upload()) [[unlikely]] qDebug() << " Batch:" << b << "is invalid...";
         return;
     }
 
     if (b->isRenderNode) {
-        if (Q_UNLIKELY(debug_upload())) qDebug() << " Batch: " << b << "is a render node...";
+        if (debug_upload()) [[unlikely]] qDebug() << " Batch: " << b << "is a render node...";
         return;
     }
 
@@ -2022,7 +2030,7 @@ void Renderer::uploadBatch(Batch *b)
     map(&b->ibo, ibufferSize, true);
     map(&b->vbo, bufferSize);
 
-    if (Q_UNLIKELY(debug_upload())) qDebug() << " - batch" << b << " first:" << b->first << " root:"
+    if (debug_upload()) [[unlikely]] qDebug() << " - batch" << b << " first:" << b->first << " root:"
                                              << b->root << " merged:" << b->merged << " positionAttribute" << b->positionAttribute
                                              << " vbo:" << b->vbo.buf << ":" << b->vbo.size;
 
@@ -2101,7 +2109,7 @@ void Renderer::uploadBatch(Batch *b)
         }
     }
 #ifndef QT_NO_DEBUG_OUTPUT
-    if (Q_UNLIKELY(debug_upload())) {
+    if (debug_upload()) [[unlikely]] {
         const char *vd = b->vbo.data;
         qDebug() << "  -- Vertex Data, count:" << b->vertexCount << " - " << g->sizeOfVertex() << "bytes/vertex";
         for (int i=0; i<b->vertexCount; ++i) {
@@ -2168,12 +2176,12 @@ void Renderer::uploadBatch(Batch *b)
     unmap(&b->vbo);
     unmap(&b->ibo, true);
 
-    if (Q_UNLIKELY(debug_upload() || debug_pools()))
+    if (debug_upload() || debug_pools()) [[unlikely]]
         qDebug() << "  --- vertex/index buffers unmapped, batch upload completed... vbo pool size" << m_vboPoolCost << "ibo pool size" << m_iboPoolCost;
 
     b->needsUpload = false;
 
-    if (Q_UNLIKELY(debug_render()))
+    if (debug_render()) [[unlikely]]
         b->uploadedThisFrame = true;
 }
 
@@ -2232,7 +2240,7 @@ void Renderer::updateClipState(const QSGClipNode *clipList, Batch *batch)
 
     Q_ASSERT(m_rhi);
     batch->stencilClipState.updateStencilBuffer = false;
-    if (clipList == m_currentClipState.clipList || Q_UNLIKELY(debug_noclip())) {
+    if (clipList == m_currentClipState.clipList || debug_noclip()) {
         applyClipStateToGraphicsState();
         batch->clipState = m_currentClipState;
         return;
@@ -2751,9 +2759,11 @@ void Renderer::updateMaterialDynamicData(ShaderManager::Shader *sms,
     QVarLengthArray<QRhiShaderResourceBinding, 8> bindings;
 
     if (pd->ubufBinding >= 0) {
-        m_current_uniform_data = &pd->masterUniformData;
-        const bool changed = shader->updateUniformData(renderState, material, m_currentMaterial);
-        m_current_uniform_data = nullptr;
+        bool changed = false;
+        {
+            QScopedValueRollback<const QByteArray *> uniformDataRollback(m_current_uniform_data, &pd->masterUniformData);
+            changed = shader->updateUniformData(renderState, material, m_currentMaterial);
+        }
 
         if (changed || !batch->ubufDataValid) {
             if (directUpdatePtr)
@@ -2961,7 +2971,7 @@ bool Renderer::prepareRenderMergedBatch(Batch *batch, PreparedRenderBatch *rende
     Q_ASSERT(e);
 
 #ifndef QT_NO_DEBUG_OUTPUT
-    if (Q_UNLIKELY(debug_render())) {
+    if (debug_render()) [[unlikely]] {
         QDebug debug = qDebug();
         debug << " -"
               << batch
@@ -3049,6 +3059,10 @@ bool Renderer::prepareRenderMergedBatch(Batch *batch, PreparedRenderBatch *rende
 
     bool pendingGStatePop = false;
     updateMaterialStaticData(sms, renderState, material, batch, &pendingGStatePop);
+    const auto gstatePopGuard = qScopeGuard([this, &pendingGStatePop]() {
+        if (pendingGStatePop)
+            m_gstate = m_gstateStack.pop();
+    });
 
     // beginFullDynamicBufferUpdateForCurrentFrame returns null when the backend
     // cannot provide a direct CPU pointer (e.g. device-local-only memory).
@@ -3056,20 +3070,19 @@ bool Renderer::prepareRenderMergedBatch(Batch *batch, PreparedRenderBatch *rende
     // updateDynamicBuffer in that case. Removing the slotCount == 0 guard
     // activates the zero-copy path on every backend that supports it, not
     // only those with persistently-mapped (slotCount == 0) buffers.
-    char *directUpdatePtr = batch->ubuf->beginFullDynamicBufferUpdateForCurrentFrame();
-
-    updateMaterialDynamicData(sms, renderState, material, batch, e, 0, ubufSize, directUpdatePtr);
-
-    if (directUpdatePtr)
-        batch->ubuf->endFullDynamicBufferUpdateForCurrentFrame();
+    {
+        char *directUpdatePtr = batch->ubuf->beginFullDynamicBufferUpdateForCurrentFrame();
+        const auto directUpdateGuard = qScopeGuard([batch, directUpdatePtr]() {
+            if (directUpdatePtr)
+                batch->ubuf->endFullDynamicBufferUpdateForCurrentFrame();
+        });
+        updateMaterialDynamicData(sms, renderState, material, batch, e, 0, ubufSize, directUpdatePtr);
+    }
 
     m_gstate.drawMode = QSGGeometry::DrawingMode(g->drawingMode());
     m_gstate.lineWidth = g->lineWidth();
 
     const bool hasPipeline = ensurePipelineState(e, sms);
-
-    if (pendingGStatePop)
-        m_gstate = m_gstateStack.pop();
 
     if (!hasPipeline)
         return false;
@@ -3152,7 +3165,7 @@ bool Renderer::prepareRenderUnmergedBatch(Batch *batch, PreparedRenderBatch *ren
     Element *e = batch->first;
     Q_ASSERT(e);
 
-    if (Q_UNLIKELY(debug_render())) {
+    if (debug_render()) [[unlikely]] {
         qDebug() << " -"
                  << batch
                  << (batch->uploadedThisFrame ? "[  upload]" : "[retained]")
@@ -3235,6 +3248,10 @@ bool Renderer::prepareRenderUnmergedBatch(Batch *batch, PreparedRenderBatch *ren
     bool pendingGStatePop = false;
     updateMaterialStaticData(sms, renderState,
                              material, batch, &pendingGStatePop);
+    const auto gstatePopGuard = qScopeGuard([this, &pendingGStatePop]() {
+        if (pendingGStatePop)
+            m_gstate = m_gstateStack.pop();
+    });
 
     int ubufOffset = 0;
     QRhiGraphicsPipeline *ps = nullptr;
@@ -3245,74 +3262,68 @@ bool Renderer::prepareRenderUnmergedBatch(Batch *batch, PreparedRenderBatch *ren
     // slotCount == 0 guard so the direct-map path activates on all backends
     // that support it. The null fallback in updateMaterialDynamicData is
     // the safety net for device-local-only memory.
-    char *directUpdatePtr = batch->ubuf->beginFullDynamicBufferUpdateForCurrentFrame();
+    {
+        char *directUpdatePtr = batch->ubuf->beginFullDynamicBufferUpdateForCurrentFrame();
+        const auto directUpdateGuard = qScopeGuard([batch, directUpdatePtr]() {
+            if (directUpdatePtr)
+                batch->ubuf->endFullDynamicBufferUpdateForCurrentFrame();
+        });
 
-    while (e) {
-        gn = e->node;
+        while (e) {
+            gn = e->node;
 
-        m_current_model_view_matrix = rootMatrix * *gn->matrix();
-        m_current_determinant = m_current_model_view_matrix.determinant();
+            m_current_model_view_matrix = rootMatrix * *gn->matrix();
+            m_current_determinant = m_current_model_view_matrix.determinant();
 
-        const int viewCount = projectionMatrixCount();
-        m_current_projection_matrix.resize(viewCount);
-        for (int viewIndex = 0; viewIndex < viewCount; ++viewIndex)
-            m_current_projection_matrix[viewIndex] = projectionMatrix(viewIndex);
+            const int viewCount = projectionMatrixCount();
+            m_current_projection_matrix.resize(viewCount);
+            for (int viewIndex = 0; viewIndex < viewCount; ++viewIndex)
+                m_current_projection_matrix[viewIndex] = projectionMatrix(viewIndex);
 
-        m_current_projection_matrix_native_ndc.resize(projectionMatrixWithNativeNDCCount());
-        for (int viewIndex = 0; viewIndex < projectionMatrixWithNativeNDCCount(); ++viewIndex)
-            m_current_projection_matrix_native_ndc[viewIndex] = projectionMatrixWithNativeNDC(viewIndex);
+            m_current_projection_matrix_native_ndc.resize(projectionMatrixWithNativeNDCCount());
+            for (int viewIndex = 0; viewIndex < projectionMatrixWithNativeNDCCount(); ++viewIndex)
+                m_current_projection_matrix_native_ndc[viewIndex] = projectionMatrixWithNativeNDC(viewIndex);
 
-        if (useDepthBuffer()) {
+            if (useDepthBuffer()) {
 
-            m_current_projection_matrix[0](2, 2) = m_zRange;
-            m_current_projection_matrix[0](2, 3) = calculateElementZOrder(e, m_zRange);
-        }
+                m_current_projection_matrix[0](2, 2) = m_zRange;
+                m_current_projection_matrix[0](2, 3) = calculateElementZOrder(e, m_zRange);
+            }
 
-        QSGMaterialShader::RenderState renderState = state(QSGMaterialShader::RenderState::DirtyStates(int(dirty)));
-        updateMaterialDynamicData(sms, renderState, material, batch, e, ubufOffset, ubufSize, directUpdatePtr);
+            QSGMaterialShader::RenderState renderState = state(QSGMaterialShader::RenderState::DirtyStates(int(dirty)));
+            updateMaterialDynamicData(sms, renderState, material, batch, e, ubufOffset, ubufSize, directUpdatePtr);
 
-        ubufOffset += aligned(ubufSize, m_ubufAlignment);
+            ubufOffset += aligned(ubufSize, m_ubufAlignment);
 
-        const QSGGeometry::DrawingMode prevDrawMode = m_gstate.drawMode;
-        const float prevLineWidth = m_gstate.lineWidth;
-        m_gstate.drawMode = QSGGeometry::DrawingMode(g->drawingMode());
-        m_gstate.lineWidth = g->lineWidth();
+            const QSGGeometry::DrawingMode prevDrawMode = m_gstate.drawMode;
+            const float prevLineWidth = m_gstate.lineWidth;
+            m_gstate.drawMode = QSGGeometry::DrawingMode(g->drawingMode());
+            m_gstate.lineWidth = g->lineWidth();
 
-
-        if (!ps || m_gstate.drawMode != prevDrawMode || m_gstate.lineWidth != prevLineWidth || pendingGStatePop) {
-            if (!ensurePipelineState(e, sms)) {
-                if (pendingGStatePop)
+            if (!ps || m_gstate.drawMode != prevDrawMode || m_gstate.lineWidth != prevLineWidth || pendingGStatePop) {
+                if (!ensurePipelineState(e, sms))
+                    return false;
+                ps = e->ps;
+                if (m_renderMode == QSGRendererInterface::RenderMode3D) {
+                    m_gstateStack.push(m_gstate);
+                    setStateForDepthPostPass();
+                    ensurePipelineState(e, sms, true);
                     m_gstate = m_gstateStack.pop();
-                return false;
+                    depthPostPassPs = e->depthPostPassPs;
+                }
+            } else {
+                e->ps = ps;
+                if (m_renderMode == QSGRendererInterface::RenderMode3D)
+                    e->depthPostPassPs = depthPostPassPs;
             }
-            ps = e->ps;
-            if (m_renderMode == QSGRendererInterface::RenderMode3D) {
-                m_gstateStack.push(m_gstate);
-                setStateForDepthPostPass();
-                ensurePipelineState(e, sms, true);
-                m_gstate = m_gstateStack.pop();
-                depthPostPassPs = e->depthPostPassPs;
-            }
-        } else {
-            e->ps = ps;
-            if (m_renderMode == QSGRendererInterface::RenderMode3D)
-                e->depthPostPassPs = depthPostPassPs;
+
+            m_currentMaterial = material;
+
+            dirty &= ~QSGMaterialShader::RenderState::DirtyOpacity;
+
+            e = e->nextInBatch;
         }
-
-
-        m_currentMaterial = material;
-
-
-        dirty &= ~QSGMaterialShader::RenderState::DirtyOpacity;
-
-        e = e->nextInBatch;
     }
-
-    if (directUpdatePtr)
-        batch->ubuf->endFullDynamicBufferUpdateForCurrentFrame();
-
-    if (pendingGStatePop)
-        m_gstate = m_gstateStack.pop();
 
     batch->ubufDataValid = true;
 
@@ -3472,7 +3483,7 @@ void Renderer::prepareRenderPass(RenderPassContext *ctx)
 
     m_currentRpDescFormat = renderTarget().rpDesc->serializedFormat();
 
-    if (Q_UNLIKELY(debug_dump())) {
+    if (debug_dump()) [[unlikely]] {
         qDebug("\n");
         QSGNodeDumper::dump(rootNode());
     }
@@ -3484,7 +3495,7 @@ void Renderer::prepareRenderPass(RenderPassContext *ctx)
     ctx->timeUploadOpaque = 0;
     ctx->timeUploadAlpha = 0;
 
-    if (Q_UNLIKELY(debug_render() || debug_build())) {
+    if (debug_render() || debug_build()) [[unlikely]] {
         QByteArray type("rebuild:");
         if (m_rebuild == 0)
             type += " none";
@@ -3513,7 +3524,7 @@ void Renderer::prepareRenderPass(RenderPassContext *ctx)
             buildRenderListsForTaggedRoots();
         m_rebuild |= BuildBatches;
 
-        if (Q_UNLIKELY(debug_build())) {
+        if (debug_build()) [[unlikely]] {
             qDebug("Opaque render lists %s:", (complete ? "(complete)" : "(partial)"));
             for (int i=0; i<m_opaqueRenderList.size(); ++i) {
                 Element *e = m_opaqueRenderList.at(i);
@@ -3526,7 +3537,7 @@ void Renderer::prepareRenderPass(RenderPassContext *ctx)
             }
         }
     }
-    if (Q_UNLIKELY(debug_render())) ctx->timeRenderLists = ctx->timer.restart();
+    if (debug_render()) [[unlikely]] ctx->timeRenderLists = ctx->timer.restart();
 
     for (int i=0; i<m_opaqueBatches.size(); ++i)
         m_opaqueBatches.at(i)->cleanupRemovedElements();
@@ -3539,11 +3550,11 @@ void Renderer::prepareRenderPass(RenderPassContext *ctx)
 
     if (m_rebuild & BuildBatches) {
         prepareOpaqueBatches();
-        if (Q_UNLIKELY(debug_render())) ctx->timePrepareOpaque = ctx->timer.restart();
+        if (debug_render()) [[unlikely]] ctx->timePrepareOpaque = ctx->timer.restart();
         prepareAlphaBatches();
-        if (Q_UNLIKELY(debug_render())) ctx->timePrepareAlpha = ctx->timer.restart();
+        if (debug_render()) [[unlikely]] ctx->timePrepareAlpha = ctx->timer.restart();
 
-        if (Q_UNLIKELY(debug_build())) {
+        if (debug_build()) [[unlikely]] {
             qDebug("Opaque Batches:");
             for (int i=0; i<m_opaqueBatches.size(); ++i) {
                 Batch *b = m_opaqueBatches.at(i);
@@ -3562,7 +3573,7 @@ void Renderer::prepareRenderPass(RenderPassContext *ctx)
             }
         }
     } else {
-        if (Q_UNLIKELY(debug_render())) ctx->timePrepareOpaque = ctx->timePrepareAlpha = ctx->timer.restart();
+        if (debug_render()) [[unlikely]] ctx->timePrepareOpaque = ctx->timePrepareAlpha = ctx->timer.restart();
     }
 
 
@@ -3585,27 +3596,27 @@ void Renderer::prepareRenderPass(RenderPassContext *ctx)
                  : 0;
     }
 
-    if (Q_UNLIKELY(debug_render())) ctx->timeSorting = ctx->timer.restart();
+    if (debug_render()) [[unlikely]] ctx->timeSorting = ctx->timer.restart();
 
 
     m_vertexUploadPool.reset();
     m_indexUploadPool.reset();
 
-    if (Q_UNLIKELY(debug_upload())) qDebug("Uploading Opaque Batches:");
+    if (debug_upload()) [[unlikely]] qDebug("Uploading Opaque Batches:");
     for (int i=0; i<m_opaqueBatches.size(); ++i) {
         Batch *b = m_opaqueBatches.at(i);
         uploadBatch(b);
     }
-    if (Q_UNLIKELY(debug_render())) ctx->timeUploadOpaque = ctx->timer.restart();
+    if (debug_render()) [[unlikely]] ctx->timeUploadOpaque = ctx->timer.restart();
 
-    if (Q_UNLIKELY(debug_upload())) qDebug("Uploading Alpha Batches:");
+    if (debug_upload()) [[unlikely]] qDebug("Uploading Alpha Batches:");
     for (int i=0; i<m_alphaBatches.size(); ++i) {
         Batch *b = m_alphaBatches.at(i);
         uploadBatch(b);
     }
-    if (Q_UNLIKELY(debug_render())) ctx->timeUploadAlpha = ctx->timer.restart();
+    if (debug_render()) [[unlikely]] ctx->timeUploadAlpha = ctx->timer.restart();
 
-    if (Q_UNLIKELY(debug_render())) {
+    if (debug_render()) [[unlikely]] {
         qDebug().nospace() << "Rendering:" << Qt::endl
                            << " -> Opaque: " << qsg_countNodesInBatches(m_opaqueBatches) << " nodes in " << m_opaqueBatches.size() << " batches..." << Qt::endl
                            << " -> Alpha: " << qsg_countNodesInBatches(m_alphaBatches) << " nodes in " << m_alphaBatches.size() << " batches...";
@@ -3648,7 +3659,7 @@ void Renderer::prepareRenderPass(RenderPassContext *ctx)
     m_gstate.multiViewCount = renderTarget().multiViewCount;
 
     ctx->opaqueRenderBatches.clear();
-    if (Q_LIKELY(renderOpaque)) {
+    if (renderOpaque) [[likely]] {
         for (int i = 0, ie = m_opaqueBatches.size(); i != ie; ++i) {
             Batch *b = m_opaqueBatches.at(i);
             PreparedRenderBatch renderBatch;
@@ -3672,7 +3683,7 @@ void Renderer::prepareRenderPass(RenderPassContext *ctx)
     }
 
     ctx->alphaRenderBatches.clear();
-    if (Q_LIKELY(renderAlpha)) {
+    if (renderAlpha) [[likely]] {
         for (int i = 0, ie = m_alphaBatches.size(); i != ie; ++i) {
             Batch *b = m_alphaBatches.at(i);
             PreparedRenderBatch renderBatch;
@@ -3770,7 +3781,7 @@ void Renderer::recordRenderPass(RenderPassContext *ctx)
 
     cb->debugMarkEnd();
 
-    if (Q_UNLIKELY(debug_render())) {
+    if (debug_render()) [[unlikely]] {
         qDebug(" -> times: build: %d, prepare(opaque/alpha): %d/%d, sorting: %d, upload(opaque/alpha): %d/%d, record rendering: %d",
                (int) ctx->timeRenderLists,
                (int) ctx->timePrepareOpaque, (int) ctx->timePrepareAlpha,
@@ -3809,7 +3820,7 @@ struct RenderNodeState : public QSGRenderNode::RenderState
 
 bool Renderer::prepareRhiRenderNode(Batch *batch, PreparedRenderBatch *renderBatch)
 {
-    if (Q_UNLIKELY(debug_render()))
+    if (debug_render()) [[unlikely]]
         qDebug() << " -" << batch << "rendernode";
 
     const int viewCount = projectionMatrixCount();
