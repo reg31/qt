@@ -1396,6 +1396,8 @@ void Renderer::nodeChanged(QSGNode *node, QSGNode::DirtyState state)
                 } else {
                     b->needsUpload = true;
                 }
+            } else if (gn->geometry()->vertexCount() > 0) {
+                m_rebuild |= BuildBatches;
             }
         }
     }
