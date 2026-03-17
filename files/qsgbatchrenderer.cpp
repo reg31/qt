@@ -1391,13 +1391,13 @@ void Renderer::nodeChanged(QSGNode *node, QSGNode::DirtyState state)
             e->boundsComputed = false;
             Batch *b = e->batch;
             if (b) {
-                if (!e->batch->geometryWasChanged(gn) || !e->batch->isOpaque) {
+                if (gn->geometry()->vertexCount() == 0 || !e->batch->geometryWasChanged(gn) || !e->batch->isOpaque) {
                     invalidateBatchAndOverlappingRenderOrders(e->batch);
                 } else {
                     b->needsUpload = true;
                 }
             } else if (gn->geometry()->vertexCount() > 0) {
-                m_rebuild |= BuildBatches;
+                m_rebuild |= FullRebuild;
             }
         }
     }
@@ -1412,8 +1412,8 @@ void Renderer::nodeChanged(QSGNode *node, QSGNode::DirtyState state)
             } else if (e->batch) {
                 if (e->batch->isMaterialCompatible(e) == BatchBreaksOnCompare)
                     invalidateBatchAndOverlappingRenderOrders(e->batch);
-            } else {
-                m_rebuild |= Renderer::BuildBatches;
+            } else if (static_cast<QSGGeometryNode *>(node)->geometry()->vertexCount() > 0) {
+                m_rebuild |= FullRebuild;
             }
         }
     }
