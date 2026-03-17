@@ -1194,6 +1194,7 @@ void Renderer::nodeWasAdded(QSGNode *node, Node *shadowParent)
     if (node->type() == QSGNode::GeometryNodeType) {
         snode->data = m_elementAllocator.allocate();
         snode->element()->setNode(static_cast<QSGGeometryNode *>(node));
+        m_rebuild |= FullRebuild;
 
     } else if (node->type() == QSGNode::ClipNodeType) {
         snode->data = new ClipBatchRootInfo;
@@ -1242,7 +1243,7 @@ void Renderer::nodeWasRemoved(Node *node)
                 e->batch->needsUpload = true;
                 e->batch->needsPurge = true;
             }
-
+            m_rebuild |= FullRebuild;
         }
 
     } else if (node->type() == QSGNode::ClipNodeType) {
@@ -1335,9 +1336,7 @@ void Renderer::nodeChanged(QSGNode *node, QSGNode::DirtyState state)
     if (state & QSGNode::DirtySubtreeBlocked) {
         Node *sn = m_nodes.value(node);
 
-
-        if (state & QSGNode::DirtyOpacity)
-            m_rebuild |= FullRebuild;
+        m_rebuild |= FullRebuild;
 
         bool blocked = node->isSubtreeBlocked();
         if (blocked && sn) {
