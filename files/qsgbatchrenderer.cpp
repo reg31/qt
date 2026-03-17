@@ -1397,12 +1397,7 @@ void Renderer::nodeChanged(QSGNode *node, QSGNode::DirtyState state)
                     b->needsUpload = true;
                 }
             } else if (gn->geometry()->vertexCount() > 0) {
-                if (e->root) {
-                    m_taggedRoots.insert(e->root);
-                    m_rebuild |= BuildRenderListsForTaggedRoots;
-                } else {
-                    m_rebuild |= BuildRenderLists;
-                }
+                m_rebuild |= BuildBatches;
             }
         }
     }
@@ -1418,12 +1413,7 @@ void Renderer::nodeChanged(QSGNode *node, QSGNode::DirtyState state)
                 if (e->batch->isMaterialCompatible(e) == BatchBreaksOnCompare)
                     invalidateBatchAndOverlappingRenderOrders(e->batch);
             } else if (static_cast<QSGGeometryNode *>(node)->geometry()->vertexCount() > 0) {
-                if (e->root) {
-                    m_taggedRoots.insert(e->root);
-                    m_rebuild |= BuildRenderListsForTaggedRoots;
-                } else {
-                    m_rebuild |= BuildRenderLists;
-                }
+                m_rebuild |= Renderer::BuildBatches;
             }
         }
     }
