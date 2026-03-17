@@ -196,7 +196,12 @@ QRhiGraphicsPipeline::Topology qsg_topology(int geomDrawMode, QRhi *rhi)
         break;
     case QSGGeometry::DrawTriangleFan:
     {
-        static const bool triangleFanSupported = rhi->isFeatureSupported(QRhi::TriangleFanTopology);
+        static bool triangleFanSupported = false;
+        static bool triangleFanSupportChecked = false;
+        if (!triangleFanSupportChecked) {
+            triangleFanSupportChecked = true;
+            triangleFanSupported = rhi->isFeatureSupported(QRhi::TriangleFanTopology);
+        }
         if (triangleFanSupported) {
             topology = QRhiGraphicsPipeline::TriangleFan;
             break;
@@ -1070,13 +1075,10 @@ void Renderer::unmap(Buffer *buffer, bool isIndexBuf)
             m_resourceUpdates->uploadStaticBuffer(buffer->buf, 0, buffer->size, buffer->data);
             buffer->nonDynamicChangeCount += 1;
         } else {
-            // fullDynamicBufferUpdateForCurrentFrame selects the correct
-            // per-frame slot on multi-buffered backends and writes directly
-            // into the persistent mapping on single-copy backends. It is the
-            // right call for all FramesInFlight counts and avoids the staging
-            // copy that updateDynamicBuffer would queue through the resource
-            // update batch.
-            buffer->buf->fullDynamicBufferUpdateForCurrentFrame(buffer->data, buffer->size);
+            if (m_rhi->resourceLimit(QRhi::FramesInFlight) == 1)
+                buffer->buf->fullDynamicBufferUpdateForCurrentFrame(buffer->data, buffer->size);
+            else
+                m_resourceUpdates->updateDynamicBuffer(buffer->buf, 0, buffer->size, buffer->data);
         }
     }
     if (m_visualizer->mode() == Visualizer::VisualizeNothing)
@@ -3074,14 +3076,10 @@ bool Renderer::prepareRenderMergedBatch(Batch *batch, PreparedRenderBatch *rende
             m_gstate = m_gstateStack.pop();
     });
 
-    // beginFullDynamicBufferUpdateForCurrentFrame returns null when the backend
-    // cannot provide a direct CPU pointer (e.g. device-local-only memory).
-    // The null check inside updateMaterialDynamicData falls back to
-    // updateDynamicBuffer in that case. Removing the slotCount == 0 guard
-    // activates the zero-copy path on every backend that supports it, not
-    // only those with persistently-mapped (slotCount == 0) buffers.
     {
-        char *directUpdatePtr = batch->ubuf->beginFullDynamicBufferUpdateForCurrentFrame();
+        char *directUpdatePtr = nullptr;
+        if (batch->ubuf->nativeBuffer().slotCount == 0)
+            directUpdatePtr = batch->ubuf->beginFullDynamicBufferUpdateForCurrentFrame();
         const auto directUpdateGuard = qScopeGuard([batch, directUpdatePtr]() {
             if (directUpdatePtr)
                 batch->ubuf->endFullDynamicBufferUpdateForCurrentFrame();
@@ -3268,12 +3266,10 @@ bool Renderer::prepareRenderUnmergedBatch(Batch *batch, PreparedRenderBatch *ren
     QRhiGraphicsPipeline *depthPostPassPs = nullptr;
     e = batch->first;
 
-    // Same zero-copy rationale as prepareRenderMergedBatch: remove the
-    // slotCount == 0 guard so the direct-map path activates on all backends
-    // that support it. The null fallback in updateMaterialDynamicData is
-    // the safety net for device-local-only memory.
     {
-        char *directUpdatePtr = batch->ubuf->beginFullDynamicBufferUpdateForCurrentFrame();
+        char *directUpdatePtr = nullptr;
+        if (batch->ubuf->nativeBuffer().slotCount == 0)
+            directUpdatePtr = batch->ubuf->beginFullDynamicBufferUpdateForCurrentFrame();
         const auto directUpdateGuard = qScopeGuard([batch, directUpdatePtr]() {
             if (directUpdatePtr)
                 batch->ubuf->endFullDynamicBufferUpdateForCurrentFrame();
