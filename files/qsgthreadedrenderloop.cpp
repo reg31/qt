@@ -1520,17 +1520,6 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
     }
     Q_QUICK_SG_PROFILE_START(QQuickProfiler::SceneGraphPolishAndSync);
 
-    if (m_animation_timer == 0 && m_animation_driver->isRunning()) {
-        qCDebug(QSG_LOG_RENDERLOOP, "- advancing animations");
-        m_animation_driver->advance();
-        emit timeToIncubate();
-        if (w && w->thread)
-            w->thread->pendingUpdate.fetch_or(QSGRenderThread::SyncRequest,
-                                              std::memory_order_relaxed);
-        if (window)
-            window->requestUpdate();
-    }
-
     Q_TRACE(QSG_polishItems_entry);
 
     QQuickWindowPrivate *d = QQuickWindowPrivate::get(window);
@@ -1630,7 +1619,15 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
     Q_TRACE(QSG_animations_entry);
 
     if (m_animation_timer == 0 && m_animation_driver->isRunning()) {
-        // next frame handled by window->requestUpdate() above.
+        qCDebug(QSG_LOG_RENDERLOOP, "- advancing animations");
+        m_animation_driver->advance();
+        qCDebug(QSG_LOG_RENDERLOOP, "- animations done");
+        emit timeToIncubate();
+        if (w && w->thread)
+            w->thread->pendingUpdate.fetch_or(QSGRenderThread::SyncRequest,
+                                              std::memory_order_relaxed);
+        if (window)
+            window->requestUpdate();
     } else if (w->updateDuringSync) {
         postUpdateRequest(w);
     }
