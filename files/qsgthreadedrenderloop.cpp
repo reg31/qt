@@ -15,6 +15,7 @@
 #include <QtCore/QThreadPool>
 #include <QtCore/QScopedValueRollback>
 #include <QtCore/QAtomicScopedValueRollback>
+#include <QtCore/QScopeGuard>
 #include <atomic>
 #include <variant>
 #include <vector>
@@ -257,10 +258,10 @@ public:
 
     void requestRepaint()
     {
-        if (sleeping)
-            stopEventProcessing = true;
+        if (sleeping.load(std::memory_order_relaxed))
+            stopEventProcessing.store(true, std::memory_order_relaxed);
         if (window)
-            pendingUpdate |= RepaintRequest;
+            pendingUpdate.fetch_or(RepaintRequest, std::memory_order_relaxed);
     }
 
     void processEventsAndWaitForMore();
@@ -285,7 +286,7 @@ public:
 
     QAnimationDriver *animatorDriver;
 
-    uint pendingUpdate;
+    std::atomic<uint> pendingUpdate;
     std::atomic<bool> sleeping;
 
     std::atomic<bool> active;
@@ -429,8 +430,8 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
     },
     [&](WMSyncEvent &e) {
         qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "WM_RequestSync");
-        if (sleeping)
-            stopEventProcessing = true;
+        if (sleeping.load(std::memory_order_relaxed))
+            stopEventProcessing.store(true, std::memory_order_relaxed);
         window = e.window;
         windowSize = e.size;
         dpr = e.dpr;
@@ -439,15 +440,16 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
         scProxyData = std::move(e.scProxyData);
         currentSyncSerial = e.serial;
 
-        pendingUpdate |= SyncRequest;
+        uint flags = SyncRequest;
         if (e.syncInExpose) {
             qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- triggered from expose");
-            pendingUpdate |= ExposeRequest;
+            flags |= ExposeRequest;
         }
         if (e.forceRenderPass) {
             qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- repaint regardless");
-            pendingUpdate |= RepaintRequest;
+            flags |= RepaintRequest;
         }
+        pendingUpdate.fetch_or(flags, std::memory_order_relaxed);
         return true;
     },
     [&](WMTryReleaseEvent &e) {
@@ -651,32 +653,32 @@ void QSGRenderThread::handleDeviceLoss()
 void QSGRenderThread::syncAndRender()
 {
     auto *cd = QQuickWindowPrivate::get(window);
-    const bool syncRequested = (pendingUpdate & SyncRequest);
-    const bool exposeRequested = (pendingUpdate & ExposeRequest) == ExposeRequest;
-    const bool repaintRequested = (pendingUpdate & RepaintRequest);
-    pendingUpdate = 0;
+    const uint currentUpdate = pendingUpdate.exchange(0, std::memory_order_relaxed);
+    const bool syncRequested = (currentUpdate & SyncRequest);
+    const bool exposeRequested = (currentUpdate & ExposeRequest) == ExposeRequest;
+    const bool repaintRequested = (currentUpdate & RepaintRequest);
+
     [[assume(window != nullptr)]];
     [[assume(cd != nullptr)]];
 
-    const bool animatorRunning = animatorDriver->isRunning();
     const bool hasValidSwapChain = (cd->swapchain && windowSize.isValid());
 
     if (hasValidSwapChain && !rhi->isRecordingFrame()) [[likely]] {
         rhi->makeThreadLocalNativeContextCurrent();
     }
 
-    if (animatorRunning) [[unlikely]] {
+    if (syncRequested) [[likely]] {
+        sync();
+    }
+
+    if (animatorDriver->isRunning()) [[unlikely]] {
         cd->animationController->lock();
         const auto animatorUnlock = qScopeGuard([&cd]{ cd->animationController->unlock(); });
         animatorDriver->advance();
     }
 
-    if (syncRequested) [[likely]] {
-        sync();
-    }
-
     if (syncRequested && !syncResultedInChanges && !exposeRequested
-        && lastFrameValid && !repaintRequested && !animatorRunning && !animatorDriver->isRunning()) {
+        && lastFrameValid && !repaintRequested && !animatorDriver->isRunning()) {
         qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- sync produced no changes, skipping render");
         {
             QMutexLocker lock(&mutex);
@@ -760,7 +762,7 @@ void QSGRenderThread::syncAndRender()
         } else {
             lastFrameValid = true;
             if (animatorDriver->isRunning())
-                pendingUpdate |= RepaintRequest;
+                pendingUpdate.fetch_or(RepaintRequest, std::memory_order_relaxed);
             if (!asyncPresent) {
                 {
                     QMutexLocker lock(&mutex);
@@ -811,8 +813,8 @@ void QSGRenderThread::processEvents()
 void QSGRenderThread::processEventsAndWaitForMore()
 {
     qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "--- begin processEventsAndWaitForMore()");
-    stopEventProcessing = false;
-    while (!stopEventProcessing) {
+    stopEventProcessing.store(false, std::memory_order_relaxed);
+    while (!stopEventProcessing.load(std::memory_order_relaxed)) {
         auto &batch = eventQueue.drainOrWait();
         for (auto &e : batch)
             processEvent(e);
@@ -948,13 +950,14 @@ void QSGRenderThread::run()
 
         if (window) [[likely]] {
             ensureRhi();
-            if (pendingUpdate != 0 || animatorDriver->isRunning())
+            if (pendingUpdate.load(std::memory_order_relaxed) != 0 || animatorDriver->isRunning())
                 syncAndRender();
         }
 
-        if (active && (pendingUpdate == 0 || !window)) [[unlikely]] {
-            QAtomicScopedValueRollback<bool> sleepRollback(sleeping, true);
+        if (active.load(std::memory_order_relaxed) && (pendingUpdate.load(std::memory_order_relaxed) == 0 || !window)) [[unlikely]] {
+            sleeping.store(true, std::memory_order_relaxed);
             processEventsAndWaitForMore();
+            sleeping.store(false, std::memory_order_relaxed);
         }
     }
 
