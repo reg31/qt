@@ -3,8 +3,6 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 
-#include <QtCore/QMutex>
-#include <QtCore/QWaitCondition>
 #include <QtCore/QAnimationDriver>
 #include <QtCore/QTimer>
 #include <QtCore/QStandardPaths>
@@ -17,6 +15,8 @@
 #include <QtCore/QAtomicScopedValueRollback>
 #include <QtCore/QScopeGuard>
 #include <atomic>
+#include <condition_variable>
+#include <mutex>
 #include <variant>
 #include <vector>
 
@@ -174,46 +174,35 @@ class QSGRenderThreadEventQueue
 {
 public:
     QSGRenderThreadEventQueue()
-        : waiting(false)
     {
         m_queue.reserve(InitialQueueCapacity);
         m_drainBuffer.reserve(InitialQueueCapacity);
     }
 
     void addEvent(QSGRenderThreadEvent &&e) {
-        bool wake = false;
         {
-            QMutexLocker lock(&mutex);
+            std::unique_lock lock(m_mutex);
             m_queue.emplace_back(std::move(e));
-            wake = waiting;
         }
-        if (wake)
-            condition.wakeOne();
+        m_condition.notify_one();
     }
 
     std::vector<QSGRenderThreadEvent> &drain() {
-        QMutexLocker lock(&mutex);
+        std::unique_lock lock(m_mutex);
         std::swap(m_queue, m_drainBuffer);
         return m_drainBuffer;
     }
 
     std::vector<QSGRenderThreadEvent> &drainOrWait() {
-        QMutexLocker lock(&mutex);
-        if (m_queue.empty()) {
-            waiting = true;
-            do {
-                condition.wait(&mutex);
-            } while (m_queue.empty());
-            waiting = false;
-        }
+        std::unique_lock lock(m_mutex);
+        m_condition.wait(lock, [this] { return !m_queue.empty(); });
         std::swap(m_queue, m_drainBuffer);
         return m_drainBuffer;
     }
 
 private:
-    QMutex mutex;
-    QWaitCondition condition;
-    bool waiting;
+    std::mutex m_mutex;
+    std::condition_variable m_condition;
     std::vector<QSGRenderThreadEvent> m_queue;
     std::vector<QSGRenderThreadEvent> m_drainBuffer;
 };
@@ -291,8 +280,8 @@ public:
 
     std::atomic<bool> active;
 
-    QMutex mutex;
-    QWaitCondition waitCondition;
+    std::mutex mutex;
+    std::condition_variable_any renderCompletedCv;
 
     QElapsedTimer m_threadTimeBetweenRenders;
 
@@ -345,7 +334,7 @@ static const QString &pipelineCachePath()
     return path;
 }
 
-Q_GLOBAL_STATIC(QMutex, pipelineCacheFileMutex)
+static std::mutex pipelineCacheFileMutex;
 
 static QByteArray g_pipelineCacheData;
 static bool g_pipelineCachePreloaded = false;
@@ -353,7 +342,7 @@ static bool g_pipelineCachePreloaded = false;
 static void preloadPipelineCacheAsync()
 {
     QThreadPool::globalInstance()->start([]() {
-        QMutexLocker fileLock(pipelineCacheFileMutex());
+        std::lock_guard fileLock(pipelineCacheFileMutex);
         if (g_pipelineCachePreloaded)
             return;
         QFile f(pipelineCachePath());
@@ -365,13 +354,15 @@ static void preloadPipelineCacheAsync()
 
 static void savePipelineCache(QRhi *rhi)
 {
-    const QByteArray data = rhi->pipelineCacheData();
+    QByteArray data = rhi->pipelineCacheData();
     if (data.isEmpty())
         return;
-    const QString path = pipelineCachePath();
-    const QString dirPath = QFileInfo(path).absolutePath();
-    QThreadPool::globalInstance()->start([data, path, dirPath]() {
-        QMutexLocker fileLock(pipelineCacheFileMutex());
+    QString path = pipelineCachePath();
+    QString dirPath = QFileInfo(path).absolutePath();
+    QThreadPool::globalInstance()->start([data = std::move(data),
+                                          path = std::move(path),
+                                          dirPath = std::move(dirPath)]() {
+        std::lock_guard fileLock(pipelineCacheFileMutex);
         QDir().mkpath(dirPath);
         QSaveFile f(path);
         if (f.open(QIODevice::WriteOnly)) {
@@ -386,9 +377,9 @@ static void loadPipelineCache(QRhi *rhi)
 {
     QByteArray data;
     {
-        QMutexLocker fileLock(pipelineCacheFileMutex());
+        std::lock_guard fileLock(pipelineCacheFileMutex);
         if (g_pipelineCachePreloaded) {
-            data = g_pipelineCacheData;
+            data = std::move(g_pipelineCacheData);
         } else {
             QFile f(pipelineCachePath());
             if (f.open(QIODevice::ReadOnly))
@@ -396,9 +387,11 @@ static void loadPipelineCache(QRhi *rhi)
             g_pipelineCachePreloaded = true;
         }
     }
-    if (!data.isEmpty())
-        rhi->setPipelineCacheData(data);
-    qCDebug(QSG_LOG_RENDERLOOP, "RHI pipeline cache loaded (%lld bytes)", (long long)data.size());
+    if (!data.isEmpty()) {
+        const auto size = data.size();
+        rhi->setPipelineCacheData(std::move(data));
+        qCDebug(QSG_LOG_RENDERLOOP, "RHI pipeline cache loaded (%lld bytes)", (long long)size);
+    }
 }
 
 }
@@ -455,11 +448,11 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
     [&](WMTryReleaseEvent &e) {
         qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "WM_TryRelease");
         {
-            QMutexLocker lock(&mutex);
+            std::unique_lock lock(mutex);
             if (!window || e.inDestructor) {
                 qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- setting exit flag and invalidating");
                 invalidateGraphics(e.window, e.inDestructor);
-                active.store(rhi != nullptr, std::memory_order_relaxed);
+                active.store(rhi != nullptr, std::memory_order_release);
                 Q_ASSERT_X(!e.inDestructor || !active, "QSGRenderThread::invalidateGraphics()", "Thread's active state is not set to false when shutting down");
                 if (sleeping)
                     stopEventProcessing = true;
@@ -488,7 +481,7 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
         Q_ASSERT(e.window);
         Q_ASSERT(e.window == window || !window);
         {
-            QMutexLocker lock(&mutex);
+            std::unique_lock lock(mutex);
             if (rhi) {
                 QQuickWindowPrivate *cd = QQuickWindowPrivate::get(e.window);
                 cd->rhi->makeThreadLocalNativeContextCurrent();
@@ -524,7 +517,7 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
         qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "WM_ReleaseSwapchain");
         Q_ASSERT(e.window);
         {
-            QMutexLocker lock(&mutex);
+            std::unique_lock lock(mutex);
             wm->releaseSwapchain(e.window);
             lastFrameValid = false;
             qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- swapchain released");
@@ -680,11 +673,8 @@ void QSGRenderThread::syncAndRender()
     if (syncRequested && !syncResultedInChanges && !exposeRequested
         && lastFrameValid && !(repaintRequested || animatorDriver->isRunning())) {
         qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- sync produced no changes, skipping render");
-        {
-            QMutexLocker lock(&mutex);
-            renderCompletedSerial.store(currentSyncSerial, std::memory_order_relaxed);
-        }
-        waitCondition.wakeOne();
+        renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
+        renderCompletedSerial.notify_one();
         return;
     }
 
@@ -740,11 +730,9 @@ void QSGRenderThread::syncAndRender()
 
         const bool asyncPresent = rhi->backend() != QRhi::OpenGLES2;
         if (asyncPresent) {
-            {
-                QMutexLocker lock(&mutex);
-                renderCompletedSerial.store(currentSyncSerial, std::memory_order_relaxed);
-            }
-            waitCondition.wakeOne();
+            renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
+            renderCompletedSerial.notify_one();
+            renderCompletedCv.notify_one();
         }
 
         if (rhi->endFrame(cd->swapchain) != QRhi::FrameOpSuccess) [[unlikely]] {
@@ -753,22 +741,16 @@ void QSGRenderThread::syncAndRender()
             QMetaObject::invokeMethod(window, &QQuickWindow::update, Qt::QueuedConnection);
             lastFrameValid = false;
             if (!asyncPresent) {
-                {
-                    QMutexLocker lock(&mutex);
-                    renderCompletedSerial.store(currentSyncSerial, std::memory_order_relaxed);
-                }
-                waitCondition.wakeOne();
+                renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
+                renderCompletedSerial.notify_one();
             }
         } else {
             lastFrameValid = true;
             if (animatorDriver->isRunning())
                 pendingUpdate.fetch_or(RepaintRequest, std::memory_order_relaxed);
             if (!asyncPresent) {
-                {
-                    QMutexLocker lock(&mutex);
-                    renderCompletedSerial.store(currentSyncSerial, std::memory_order_relaxed);
-                }
-                waitCondition.wakeOne();
+                renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
+                renderCompletedSerial.notify_one();
             }
         }
 
@@ -776,22 +758,16 @@ void QSGRenderThread::syncAndRender()
     } else if (gpuStarted) {
         rhi->endFrame(cd->swapchain, QRhi::SkipPresent);
         lastFrameValid = false;
-        {
-            QMutexLocker lock(&mutex);
-            renderCompletedSerial.store(currentSyncSerial, std::memory_order_relaxed);
-        }
-        waitCondition.wakeOne();
+        renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
+        renderCompletedSerial.notify_one();
     }
 
     if (hasValidSwapChain) [[likely]]
         emit window->afterFrameEnd();
 
     if (!gpuStarted) {
-        {
-            QMutexLocker lock(&mutex);
-            renderCompletedSerial.store(currentSyncSerial, std::memory_order_relaxed);
-        }
-        waitCondition.wakeOne();
+        renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
+        renderCompletedSerial.notify_one();
     }
 }
 
@@ -941,7 +917,7 @@ void QSGRenderThread::run()
     if (window)
         ensureRhiDevice();
 
-    while (active.load(std::memory_order_relaxed)) [[likely]] {
+    while (active.load(std::memory_order_acquire)) [[likely]] {
 #ifdef Q_OS_DARWIN
         QMacAutoReleasePool frameReleasePool;
 #endif
@@ -958,7 +934,7 @@ void QSGRenderThread::run()
         if (shouldSleep && animatorDriver && animatorDriver->isRunning() && window)
             shouldSleep = false;
 
-        if (active.load(std::memory_order_relaxed) && (shouldSleep || !window)) [[unlikely]] {
+        if (active.load(std::memory_order_acquire) && (shouldSleep || !window)) [[unlikely]] {
             sleeping.store(true, std::memory_order_relaxed);
             processEventsAndWaitForMore();
             sleeping.store(false, std::memory_order_relaxed);
@@ -1057,20 +1033,21 @@ void QSGThreadedRenderLoop::startOrStopAnimationTimer()
     if (!animationsRunning && m_animation_timer == 0)
         return;
 
-    int exposedWindows = 0;
-    int unthrottledWindows = 0;
-    int badVSync = 0;
-    const Window *theOne = nullptr;
-    for (const auto &w : m_windows) {
+    struct WindowStats { int exposed = 0; int unthrottled = 0; int badVSync = 0; Window *theOne = nullptr; };
+    auto stats = std::ranges::fold_left(m_windows, WindowStats{}, [](WindowStats s, auto &w) {
         if (w.window->isVisible() && w.window->isExposed()) {
-            ++exposedWindows;
-            theOne = &w;
-            if (w.actualWindowFormat.swapInterval() == 0)
-                ++unthrottledWindows;
-            if (w.badVSync)
-                ++badVSync;
+            ++s.exposed;
+            s.theOne = &w;
+            if (w.actualWindowFormat.swapInterval() == 0) ++s.unthrottled;
+            if (w.badVSync) ++s.badVSync;
         }
-    }
+        return s;
+    });
+
+    const int exposedWindows    = stats.exposed;
+    const int unthrottledWindows = stats.unthrottled;
+    const int badVSync          = stats.badVSync;
+    Window *theOne              = stats.theOne;
 
     const bool canUseVSyncBasedAnimation = exposedWindows == 1 && unthrottledWindows == 0 && badVSync == 0;
 
@@ -1080,7 +1057,7 @@ void QSGThreadedRenderLoop::startOrStopAnimationTimer()
         killTimer(m_animation_timer);
         m_animation_timer = 0;
         if (animationsRunning)
-            postUpdateRequest(const_cast<Window *>(theOne));
+            postUpdateRequest(theOne);
     } else if (m_animation_timer == 0 && !canUseVSyncBasedAnimation && animationsRunning) {
         qCDebug(QSG_LOG_RENDERLOOP, "*** Starting system (not vsync-based) animation timer (exposedWindows=%d unthrottledWindows=%d badVSync=%d)",
                 exposedWindows, unthrottledWindows, badVSync);
@@ -1213,7 +1190,7 @@ void QSGThreadedRenderLoop::exposureChanged(QQuickWindow *window)
             if (auto *controller = wd->animationController.get();
                 controller->thread() != w->thread) [[unlikely]]
                 controller->moveToThread(w->thread);
-            w->thread->active.store(true, std::memory_order_relaxed);
+            w->thread->active.store(true, std::memory_order_release);
             if (w->thread->thread() == QThread::currentThread()) [[unlikely]] {
                 w->thread->sgrc->moveToThread(w->thread);
                 w->thread->moveToThread(w->thread);
@@ -1263,7 +1240,7 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
         if (auto *controller = QQuickWindowPrivate::get(w->window)->animationController.get();
             controller->thread() != w->thread) [[unlikely]]
             controller->moveToThread(w->thread);
-        w->thread->active.store(true, std::memory_order_relaxed);
+        w->thread->active.store(true, std::memory_order_release);
         if (w->thread->thread() == QThread::currentThread()) [[unlikely]] {
             w->thread->sgrc->moveToThread(w->thread);
             w->thread->moveToThread(w->thread);
@@ -1352,7 +1329,7 @@ void QSGThreadedRenderLoop::maybeUpdate(QQuickWindow *window)
 
 void QSGThreadedRenderLoop::maybeUpdate(Window *w)
 {
-    if (!QCoreApplication::instance() || !w || !w->thread->isRunning() || !w->thread->active)
+    if (!QCoreApplication::instance() || !w || !w->thread->isRunning() || !w->thread->active.load(std::memory_order_acquire))
         return;
 
     QThread *current = QThread::currentThread();
@@ -1427,8 +1404,8 @@ void QSGThreadedRenderLoop::releaseResources(Window *w, bool inDestructor)
 {
     qCDebug(QSG_LOG_RENDERLOOP) << "releaseResources()" << (inDestructor ? "in destructor" : "in api-call") << w->window;
 
-    QMutexLocker threadLock(&w->thread->mutex);
-    if (w->thread->isRunning() && w->thread->active) {
+    std::unique_lock threadLock(w->thread->mutex);
+    if (w->thread->isRunning() && w->thread->active.load(std::memory_order_acquire)) {
         QQuickWindow *window = w->window;
 
         qCDebug(QSG_LOG_RENDERLOOP, "- posting release request to render thread");
@@ -1438,7 +1415,7 @@ void QSGThreadedRenderLoop::releaseResources(Window *w, bool inDestructor)
         isDone.wait(false, std::memory_order_acquire);
         threadLock.relock();
 
-        if (!w->thread->active) {
+        if (!w->thread->active.load(std::memory_order_acquire)) {
             qCDebug(QSG_LOG_RENDERLOOP) << " - waiting for render thread to exit" << w->window;
             threadLock.unlock();
             w->thread->wait();
@@ -1552,8 +1529,8 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
     {
         static constexpr int HYSTERESIS_FRAMES = 5;
         const float vsyncMs = sg->vsyncIntervalForAnimationDriver(m_animation_driver);
-        const unsigned long ADAPTIVE_TIMEOUT_MS = static_cast<unsigned long>(
-            qMax(AdaptiveTimeoutMinMs, vsyncMs * AdaptiveTimeoutFraction));
+        const auto ADAPTIVE_TIMEOUT = std::chrono::milliseconds(
+            static_cast<int>(qMax(AdaptiveTimeoutMinMs, vsyncMs * AdaptiveTimeoutFraction)));
         const bool supportsAsyncPresent =
             QSGRhiSupport::instance()->rhiBackend() != QRhi::OpenGLES2;
 
@@ -1600,12 +1577,17 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
             } else if (!supportsAsyncPresent) {
                 qCDebug(QSG_LOG_RENDERLOOP, "- OpenGL backend: staying in pipeline mode");
             } else {
-                if (w->thread->renderCompletedSerial.load(std::memory_order_relaxed) < serial) {
-                    QMutexLocker timeoutLock(&w->thread->mutex);
-                    if (w->thread->renderCompletedSerial.load(std::memory_order_relaxed) < serial)
-                        w->thread->waitCondition.wait(&w->thread->mutex, ADAPTIVE_TIMEOUT_MS);
+                if (w->thread->renderCompletedSerial.load(std::memory_order_acquire) < serial) {
+                    std::unique_lock lock(w->thread->mutex);
+                    w->thread->renderCompletedCv.wait_for(
+                        lock,
+                        ADAPTIVE_TIMEOUT,
+                        [&] {
+                            return w->thread->renderCompletedSerial.load(
+                                       std::memory_order_acquire) >= serial;
+                        });
                 }
-                if (w->thread->renderCompletedSerial.load(std::memory_order_relaxed) < serial) {
+                if (w->thread->renderCompletedSerial.load(std::memory_order_acquire) < serial) {
                     qCDebug(QSG_LOG_RENDERLOOP, "- render overran budget, entering pipeline mode");
                     w->thread->pipelinedFramesRemaining = HYSTERESIS_FRAMES;
                 } else {
