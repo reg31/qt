@@ -4,8 +4,8 @@ env:
   SCCACHE_GHA_ENABLED: "true"
   OPENSSL_VERSION: openssl-3.6
   INIT_FLAGS: --module-subset=qtbase,qtdeclarative,-qtlanguageserver,-qtquicktimeline,-qtquick3d,-qtimageformats,-qtsvg --branch --no-update
-  SHARED_COMPILER_FLAGS: "-O2 -DNDEBUG -pipe -fno-semantic-interposition"
-  SHARED_LINKER_FLAGS: "-fuse-ld=lld -Wl,-S,--icf=safe"
+  SHARED_COMPILER_FLAGS: "-O2 -flto -DNDEBUG -pipe -fno-semantic-interposition"
+  SHARED_LINKER_FLAGS: "-flto -fuse-ld=lld -Wl,-S,--icf=safe"
   APPLY_CHERRY_PICK: true
   SHARED_FLAGS: -release -no-feature-testlib -DQT_NO_PACKAGE_VERSION_CHECK=ON -DQT_NO_PACKAGE_VERSION_INCOMPATIBLE_WARNING=ON -c++std c++2b
     -no-feature-hijricalendar -no-feature-islamiccivilcalendar -nomake tests -nomake examples -submodules qtbase,qtdeclarative -no-feature-whatsthis
