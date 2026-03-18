@@ -612,6 +612,16 @@ void QSGRenderThread::sync()
     syncAcknowledgedSerial.store(currentSyncSerial, std::memory_order_release);
     syncAcknowledgedSerial.notify_one();
 
+    // Advance render-thread animators (RotationAnimator, OpacityAnimator etc.)
+    // after sync has rebuilt SG nodes and after GUI is unblocked, so they write
+    // into valid nodes without holding up the GUI thread.
+    if (canSync && animatorDriver->isRunning()) [[unlikely]] {
+        auto *cd = QQuickWindowPrivate::get(window);
+        cd->animationController->lock();
+        const auto animatorUnlock = qScopeGuard([cd]{ cd->animationController->unlock(); });
+        animatorDriver->advance();
+    }
+
     if (canSync) [[likely]]
         sgrc->endSync();
 
@@ -664,14 +674,8 @@ void QSGRenderThread::syncAndRender()
         sync();
     }
 
-    if (animatorDriver->isRunning()) [[unlikely]] {
-        cd->animationController->lock();
-        const auto animatorUnlock = qScopeGuard([&cd]{ cd->animationController->unlock(); });
-        animatorDriver->advance();
-    }
-
     if (syncRequested && !syncResultedInChanges && !exposeRequested
-        && lastFrameValid && !(repaintRequested || animatorDriver->isRunning())) {
+        && lastFrameValid && !repaintRequested) {
         qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- sync produced no changes, skipping render");
         renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
         renderCompletedSerial.notify_one();
@@ -746,8 +750,11 @@ void QSGRenderThread::syncAndRender()
             }
         } else {
             lastFrameValid = true;
+            // Mirror the basic loop: instead of keeping the render thread awake
+            // ourselves, post requestUpdate() to the GUI thread. That triggers
+            // polishAndSync → WMSyncEvent, which is the correct, race-free path.
             if (animatorDriver->isRunning())
-                pendingUpdate.fetch_or(RepaintRequest, std::memory_order_relaxed);
+                QMetaObject::invokeMethod(window, &QQuickWindow::requestUpdate, Qt::QueuedConnection);
             if (!asyncPresent) {
                 renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
                 renderCompletedSerial.notify_one();
@@ -926,15 +933,11 @@ void QSGRenderThread::run()
 
         if (window) [[likely]] {
             ensureRhi();
-            if (pendingUpdate.load(std::memory_order_relaxed) != 0 || (animatorDriver && animatorDriver->isRunning()))
+            if (pendingUpdate.load(std::memory_order_relaxed) != 0)
                 syncAndRender();
         }
 
-        bool shouldSleep = (pendingUpdate.load(std::memory_order_relaxed) == 0);
-        if (shouldSleep && animatorDriver && animatorDriver->isRunning() && window)
-            shouldSleep = false;
-
-        if (active.load(std::memory_order_acquire) && (shouldSleep || !window)) [[unlikely]] {
+        if (active.load(std::memory_order_acquire) && (pendingUpdate.load(std::memory_order_relaxed) == 0 || !window)) [[unlikely]] {
             sleeping.store(true, std::memory_order_relaxed);
             processEventsAndWaitForMore();
             sleeping.store(false, std::memory_order_relaxed);
@@ -1413,7 +1416,7 @@ void QSGThreadedRenderLoop::releaseResources(Window *w, bool inDestructor)
         w->thread->postEvent(WMTryReleaseEvent(window, inDestructor, window->handle() == nullptr, &isDone));
         threadLock.unlock();
         isDone.wait(false, std::memory_order_acquire);
-        threadLock.relock();
+        threadLock.lock();
 
         if (!w->thread->active.load(std::memory_order_acquire)) {
             qCDebug(QSG_LOG_RENDERLOOP) << " - waiting for render thread to exit" << w->window;
@@ -1606,9 +1609,6 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
         m_animation_driver->advance();
         qCDebug(QSG_LOG_RENDERLOOP, "- animations done");
         emit timeToIncubate();
-        if (w && w->thread)
-            w->thread->pendingUpdate.fetch_or(QSGRenderThread::SyncRequest,
-                                              std::memory_order_relaxed);
         if (window)
             window->requestUpdate();
     } else if (w->updateDuringSync) {
