@@ -127,7 +127,8 @@ jobs:
           ..\configure.bat -schannel -prefix "%OUTPUT_DIR%" ${{ env.SHARED_FLAGS }} ^
            -- -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s -flto -fuse-linker-plugin"
               -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s -flto -fuse-linker-plugin" ^
-              -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--gc-sections -flto -fuse-linker-plugin"
+              -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--gc-sections -flto -fuse-linker-plugin" ^
+              -DCMAKE_AR="gcc-ar" -DCMAKE_RANLIB="gcc-ranlib" -DCMAKE_NM="gcc-nm"
 
       - name: Patch build.ninja
         shell: pwsh
