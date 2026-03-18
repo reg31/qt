@@ -1517,6 +1517,14 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
                 int(elapsedSinceLastMs));
     }
     Q_QUICK_SG_PROFILE_START(QQuickProfiler::SceneGraphPolishAndSync);
+
+    // BUGFIX: Advance GUI animations BEFORE polish, matching Basic Loop behavior.
+    if (m_animation_timer == 0 && m_animation_driver->isRunning()) {
+        qCDebug(QSG_LOG_RENDERLOOP, "- advancing animations");
+        m_animation_driver->advance();
+        emit timeToIncubate();
+    }
+
     Q_TRACE(QSG_polishItems_entry);
 
     QQuickWindowPrivate *d = QQuickWindowPrivate::get(window);
@@ -1616,23 +1624,9 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
     Q_TRACE(QSG_animations_entry);
 
     if (m_animation_timer == 0 && m_animation_driver->isRunning()) {
-        auto advanceAnimations = [this, window = QPointer(window)] {
-            qCDebug(QSG_LOG_RENDERLOOP, "- advancing animations");
-            m_animation_driver->advance();
-            qCDebug(QSG_LOG_RENDERLOOP, "- animations done..");
-            if (window)
-                window->requestUpdate();
-            emit timeToIncubate();
-        };
-
-#if defined(Q_OS_APPLE)
-        if (inExpose) {
-            QMetaObject::invokeMethod(this, advanceAnimations, Qt::QueuedConnection);
-        } else
-#endif
-        {
-            advanceAnimations();
-        }
+        // Trigger next frame request if animations are still active.
+        if (window)
+            window->requestUpdate();
     } else if (w->updateDuringSync) {
         postUpdateRequest(w);
     }
