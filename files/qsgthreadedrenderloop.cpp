@@ -653,7 +653,6 @@ void QSGRenderThread::handleDeviceLoss()
 void QSGRenderThread::syncAndRender()
 {
     auto *cd = QQuickWindowPrivate::get(window);
-    
     const uint currentUpdate = pendingUpdate.exchange(0, std::memory_order_relaxed);
     const bool syncRequested = (currentUpdate & SyncRequest);
     const bool exposeRequested = (currentUpdate & ExposeRequest) == ExposeRequest;
@@ -951,7 +950,7 @@ void QSGRenderThread::run()
 
         if (window) [[likely]] {
             ensureRhi();
-            if (pendingUpdate.load(std::memory_order_relaxed) != 0 || animatorDriver->isRunning())
+            if (pendingUpdate.load(std::memory_order_relaxed) != 0 || (animatorDriver && animatorDriver->isRunning()))
                 syncAndRender();
         }
 
@@ -1522,8 +1521,9 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
                 int(elapsedSinceLastMs));
     }
     Q_QUICK_SG_PROFILE_START(QQuickProfiler::SceneGraphPolishAndSync);
-    
+
     if (m_animation_timer == 0 && m_animation_driver->isRunning()) {
+        qCDebug(QSG_LOG_RENDERLOOP, "- advancing animations");
         m_animation_driver->advance();
         emit timeToIncubate();
         if (window)
