@@ -667,14 +667,14 @@ void QSGRenderThread::syncAndRender()
         rhi->makeThreadLocalNativeContextCurrent();
     }
 
-    if (syncRequested) [[likely]] {
-        sync();
-    }
-
     if (animatorDriver->isRunning()) [[unlikely]] {
         cd->animationController->lock();
         const auto animatorUnlock = qScopeGuard([&cd]{ cd->animationController->unlock(); });
         animatorDriver->advance();
+    }
+
+    if (syncRequested) [[likely]] {
+        sync();
     }
 
     if (syncRequested && !syncResultedInChanges && !exposeRequested
@@ -1518,7 +1518,9 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
     }
     Q_QUICK_SG_PROFILE_START(QQuickProfiler::SceneGraphPolishAndSync);
 
-    // BUGFIX: Advance GUI animations BEFORE polish, matching Basic Loop behavior.
+    // BUGFIX: Always advance GUI animations BEFORE polishing. This aligns the 
+    // threaded loop behavior with the basic loop, ensuring property changes 
+    // made by animations are included in the CURRENT frame's sync.
     if (m_animation_timer == 0 && m_animation_driver->isRunning()) {
         qCDebug(QSG_LOG_RENDERLOOP, "- advancing animations");
         m_animation_driver->advance();
@@ -1624,7 +1626,6 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
     Q_TRACE(QSG_animations_entry);
 
     if (m_animation_timer == 0 && m_animation_driver->isRunning()) {
-        // Trigger next frame request if animations are still active.
         if (window)
             window->requestUpdate();
     } else if (w->updateDuringSync) {
