@@ -289,8 +289,6 @@ public:
     std::atomic<uint> pendingUpdate;
     std::atomic<bool> sleeping;
 
-    std::atomic<bool> active;
-
     QMutex mutex;
     QWaitCondition waitCondition;
 
@@ -1526,6 +1524,9 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
         qCDebug(QSG_LOG_RENDERLOOP, "- advancing animations");
         m_animation_driver->advance();
         emit timeToIncubate();
+        if (w && w->thread)
+            w->thread->pendingUpdate.fetch_or(QSGRenderThread::SyncRequest,
+                                              std::memory_order_relaxed);
         if (window)
             window->requestUpdate();
     }
