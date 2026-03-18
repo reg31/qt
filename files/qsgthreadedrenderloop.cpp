@@ -653,6 +653,7 @@ void QSGRenderThread::handleDeviceLoss()
 void QSGRenderThread::syncAndRender()
 {
     auto *cd = QQuickWindowPrivate::get(window);
+    
     const uint currentUpdate = pendingUpdate.exchange(0, std::memory_order_relaxed);
     const bool syncRequested = (currentUpdate & SyncRequest);
     const bool exposeRequested = (currentUpdate & ExposeRequest) == ExposeRequest;
@@ -678,7 +679,7 @@ void QSGRenderThread::syncAndRender()
     }
 
     if (syncRequested && !syncResultedInChanges && !exposeRequested
-        && lastFrameValid && !repaintRequested && !animatorDriver->isRunning()) {
+        && lastFrameValid && !(repaintRequested || animatorDriver->isRunning())) {
         qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- sync produced no changes, skipping render");
         {
             QMutexLocker lock(&mutex);
@@ -1521,14 +1522,12 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
                 int(elapsedSinceLastMs));
     }
     Q_QUICK_SG_PROFILE_START(QQuickProfiler::SceneGraphPolishAndSync);
-
-    // FIX: Advance animations BEFORE polishing. Standard loop architecture advances AFTER unblocking
-    // from sync, which drops rapid property changes. Advancing before polish ensures property 
-    // changes are captured in the current synchronization block.
+    
     if (m_animation_timer == 0 && m_animation_driver->isRunning()) {
-        qCDebug(QSG_LOG_RENDERLOOP, "- advancing animations");
         m_animation_driver->advance();
         emit timeToIncubate();
+        if (window)
+            window->requestUpdate();
     }
 
     Q_TRACE(QSG_polishItems_entry);
@@ -1630,9 +1629,7 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
     Q_TRACE(QSG_animations_entry);
 
     if (m_animation_timer == 0 && m_animation_driver->isRunning()) {
-        // Trigger subsequent frame if animators are running.
-        if (window)
-            window->requestUpdate();
+        // next frame handled by window->requestUpdate() above.
     } else if (w->updateDuringSync) {
         postUpdateRequest(w);
     }
