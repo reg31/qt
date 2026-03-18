@@ -667,14 +667,14 @@ void QSGRenderThread::syncAndRender()
         rhi->makeThreadLocalNativeContextCurrent();
     }
 
+    if (syncRequested) [[likely]] {
+        sync();
+    }
+
     if (animatorDriver->isRunning()) [[unlikely]] {
         cd->animationController->lock();
         const auto animatorUnlock = qScopeGuard([&cd]{ cd->animationController->unlock(); });
         animatorDriver->advance();
-    }
-
-    if (syncRequested) [[likely]] {
-        sync();
     }
 
     if (syncRequested && !syncResultedInChanges && !exposeRequested
@@ -954,7 +954,11 @@ void QSGRenderThread::run()
                 syncAndRender();
         }
 
-        if (active.load(std::memory_order_relaxed) && (pendingUpdate.load(std::memory_order_relaxed) == 0 || !window)) [[unlikely]] {
+        bool shouldSleep = (pendingUpdate.load(std::memory_order_relaxed) == 0);
+        if (shouldSleep && animatorDriver && animatorDriver->isRunning() && window)
+            shouldSleep = false;
+
+        if (active.load(std::memory_order_relaxed) && (shouldSleep || !window)) [[unlikely]] {
             sleeping.store(true, std::memory_order_relaxed);
             processEventsAndWaitForMore();
             sleeping.store(false, std::memory_order_relaxed);
@@ -1518,9 +1522,9 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
     }
     Q_QUICK_SG_PROFILE_START(QQuickProfiler::SceneGraphPolishAndSync);
 
-    // BUGFIX: Always advance GUI animations BEFORE polishing. This aligns the 
-    // threaded loop behavior with the basic loop, ensuring property changes 
-    // made by animations are included in the CURRENT frame's sync.
+    // FIX: Advance animations BEFORE polishing. Standard loop architecture advances AFTER unblocking
+    // from sync, which drops rapid property changes. Advancing before polish ensures property 
+    // changes are captured in the current synchronization block.
     if (m_animation_timer == 0 && m_animation_driver->isRunning()) {
         qCDebug(QSG_LOG_RENDERLOOP, "- advancing animations");
         m_animation_driver->advance();
@@ -1626,6 +1630,7 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
     Q_TRACE(QSG_animations_entry);
 
     if (m_animation_timer == 0 && m_animation_driver->isRunning()) {
+        // Trigger subsequent frame if animators are running.
         if (window)
             window->requestUpdate();
     } else if (w->updateDuringSync) {
