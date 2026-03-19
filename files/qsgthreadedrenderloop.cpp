@@ -956,9 +956,23 @@ bool QSGThreadedRenderLoop::interleaveIncubation() const
     return anyoneShowing();
 }
 
-// Stubs for header-declared slots — animation timing delegated to QUnifiedTimer.
-void QSGThreadedRenderLoop::animationStarted() {}
-void QSGThreadedRenderLoop::animationStopped() {}
+// Animation timing is delegated to QUnifiedTimer — no custom driver or vsync
+// heuristics needed. animationStarted() preserves its essential side effect:
+// kicking all exposed windows so the render thread wakes up for the first frame.
+// animationStopped() and startOrStopAnimationTimer() have no meaningful work
+// to do without the custom driver, so they are intentional no-ops.
+void QSGThreadedRenderLoop::animationStarted()
+{
+    qCDebug(QSG_LOG_RENDERLOOP, "- animationStarted()");
+    for (auto &w : m_windows)
+        postUpdateRequest(&w);
+}
+
+void QSGThreadedRenderLoop::animationStopped()
+{
+    qCDebug(QSG_LOG_RENDERLOOP, "- animationStopped()");
+}
+
 void QSGThreadedRenderLoop::startOrStopAnimationTimer() {}
 
 void QSGThreadedRenderLoop::hide(QQuickWindow *window)
