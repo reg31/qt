@@ -599,9 +599,9 @@ void QSGRenderThread::sync()
             if (d->renderer != m_connectedRenderer) {
                 if (m_connectedRenderer)
                     disconnect(m_connectedRenderer, &QSGRenderer::sceneGraphChanged,
-                               nullptr, nullptr);
+                               this, &QSGRenderThread::sceneGraphChanged);
                 connect(d->renderer, &QSGRenderer::sceneGraphChanged,
-                        d->renderer, [this]{ syncResultedInChanges = true; },
+                        this, &QSGRenderThread::sceneGraphChanged,
                         Qt::DirectConnection);
                 m_connectedRenderer = d->renderer;
             }
@@ -740,6 +740,11 @@ void QSGRenderThread::syncAndRender()
                 w->forceRenderPass = true;
         }, Qt::QueuedConnection);
         QMetaObject::invokeMethod(window, &QQuickWindow::update, Qt::QueuedConnection);
+        {
+            std::lock_guard lock(renderMutex);
+            renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
+        }
+        renderCondition.notify_one();
         return;
     }
 
@@ -1512,7 +1517,7 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
 
         // Commit point: we are posting an event that WILL acknowledge this serial.
         const uint64_t serial = ++w->thread->lastPostedSyncSerial;
-        const bool forceRender = w->forceRenderPass;
+        const bool forceRender = w->forceRenderPass || m_animation_driver->isRunning();
         w->thread->postEvent(WMSyncEvent(window, inExpose, forceRender, std::move(scProxyData), serial));
         w->forceRenderPass = false;
 
