@@ -609,7 +609,8 @@ void QSGRenderThread::sync()
     }
 
     syncAcknowledgedSerial.store(currentSyncSerial, std::memory_order_release);
-    syncAcknowledgedSerial.notify_all();
+    // Only one GUI thread waits on this — notify_one() is correct and cheaper.
+    syncAcknowledgedSerial.notify_one();
 
     // Advance render-thread animators (RotationAnimator, OpacityAnimator etc.)
     // after sync has rebuilt SG nodes and after GUI is unblocked, so they write
@@ -682,10 +683,14 @@ void QSGRenderThread::syncAndRender()
         && !(animatorDriver && animatorDriver->isRunning())) {
         qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- sync produced no changes, skipping render");
         {
+            // The mutex is required to pair with condition_variable::wait_for on the
+            // GUI thread. Without it, there is a lost-wakeup race: the GUI thread could
+            // load renderCompletedSerial, find it stale, then be preempted before calling
+            // wait_for — at which point we'd notify_one into the void.
             std::lock_guard lock(renderMutex);
             renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
         }
-        renderCondition.notify_all();
+        renderCondition.notify_one(); // Only one GUI thread ever waits.
         return;
     }
 
@@ -745,7 +750,7 @@ void QSGRenderThread::syncAndRender()
                 std::lock_guard lock(renderMutex);
                 renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
             }
-            renderCondition.notify_all();
+            renderCondition.notify_one();
         }
 
         if (rhi->endFrame(cd->swapchain) != QRhi::FrameOpSuccess) [[unlikely]] {
@@ -756,7 +761,7 @@ void QSGRenderThread::syncAndRender()
             if (!asyncPresent) {
                 std::lock_guard lock(renderMutex);
                 renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
-                renderCondition.notify_all();
+                renderCondition.notify_one();
             }
         } else {
             lastFrameValid = true;
@@ -765,7 +770,7 @@ void QSGRenderThread::syncAndRender()
             if (!asyncPresent) {
                 std::lock_guard lock(renderMutex);
                 renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
-                renderCondition.notify_all();
+                renderCondition.notify_one();
             }
         }
 
@@ -777,7 +782,7 @@ void QSGRenderThread::syncAndRender()
             std::lock_guard lock(renderMutex);
             renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
         }
-        renderCondition.notify_all();
+        renderCondition.notify_one();
     }
 
     if (hasValidSwapChain) [[likely]]
@@ -786,7 +791,7 @@ void QSGRenderThread::syncAndRender()
     if (!gpuStarted) {
         std::lock_guard lock(renderMutex);
         renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
-        renderCondition.notify_all();
+        renderCondition.notify_one();
     }
 }
 
@@ -1216,6 +1221,11 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
         w->forceRenderPass = true;
     }
     if (!w->window->handle()) [[unlikely]] window->create();
+
+    // Ensure timer state is recalculated on every exit path, no matter which
+    // branch was taken (new thread, existing thread notified, or early bail).
+    const auto timerGuard = qScopeGuard([this]{ startOrStopAnimationTimer(); });
+
     if (!w->thread->isRunning()) {
         w->thread->window = window;
         if (!w->thread->rhi) {
@@ -1237,22 +1247,16 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
         }
         w->thread->start();
         w->thread->deferredFirstExpose.store(true, std::memory_order_seq_cst);
-        startOrStopAnimationTimer();
         return;
     } else {
         w->thread->postEvent(WMExposedEvent(w->window));
         w->thread->deferredFirstExpose.store(true, std::memory_order_seq_cst);
-        if (!w->thread->rhiReady.load(std::memory_order_seq_cst)) {
-            startOrStopAnimationTimer();
+        if (!w->thread->rhiReady.load(std::memory_order_seq_cst))
             return;
-        }
-        if (!w->thread->deferredFirstExpose.exchange(false, std::memory_order_seq_cst)) {
-            startOrStopAnimationTimer();
+        if (!w->thread->deferredFirstExpose.exchange(false, std::memory_order_seq_cst))
             return;
-        }
     }
     polishAndSync(w, true);
-    startOrStopAnimationTimer();
 }
 
 void QSGThreadedRenderLoop::handleObscurity(Window *w)
@@ -1512,10 +1516,6 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
             QSGRhiSupport::instance()->rhiBackend() != QRhi::OpenGLES2;
 
         QScopedValueRollback<bool> syncRollback(m_lockedForSync, true);
-        const uint64_t serial = ++w->thread->lastPostedSyncSerial;
-        const bool forceRender = w->forceRenderPass;
-        w->thread->postEvent(WMSyncEvent(window, inExpose, forceRender, std::move(scProxyData), serial));
-        w->forceRenderPass = false;
 
         if (inExpose && w->thread->rhiReady.load(std::memory_order_acquire)) {
             qCDebug(QSG_LOG_RENDERLOOP, "- inExpose (pre-warmed): skipping sync wait for fast startup");
@@ -1524,8 +1524,14 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
             Q_TRACE(QSG_animations_exit);
             Q_QUICK_SG_PROFILE_END(QQuickProfiler::SceneGraphPolishAndSync,
                                    QQuickProfiler::SceneGraphPolishAndSyncAnimations);
-            return;
+            return; // Safe: lastPostedSyncSerial not incremented, no event posted.
         }
+
+        // Commit point: we are posting an event that WILL acknowledge this serial.
+        const uint64_t serial = ++w->thread->lastPostedSyncSerial;
+        const bool forceRender = w->forceRenderPass;
+        w->thread->postEvent(WMSyncEvent(window, inExpose, forceRender, std::move(scProxyData), serial));
+        w->forceRenderPass = false;
 
         if (profileFrames)
             waitTime = timer.nsecsElapsed();
