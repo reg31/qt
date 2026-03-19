@@ -210,6 +210,7 @@ private:
 
 class QSGRenderThread : public QThread
 {
+    Q_OBJECT
 public:
     QSGRenderThread(QSGThreadedRenderLoop *w, QSGRenderContext *renderContext)
         : wm(w)
