@@ -663,7 +663,8 @@ void QSGRenderThread::syncAndRender()
     }
 
     if (syncRequested && !syncResultedInChanges && !exposeRequested
-        && lastFrameValid && !repaintRequested) {
+        && lastFrameValid && !repaintRequested
+        && !(animatorDriver && animatorDriver->isRunning())) {
         qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- sync produced no changes, skipping render");
         return;
     }
@@ -1394,6 +1395,25 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
     }
     Q_QUICK_SG_PROFILE_START(QQuickProfiler::SceneGraphPolishAndSync);
 
+    // Advance GUI-thread animations BEFORE polishItems() so that Z-order,
+    // opacity, and visibility changes land in the scene graph this frame,
+    // not the next one. Only in vsync mode; the fallback timer handles the rest.
+    if (m_animation_timer == 0 && m_animation_driver->isRunning()) {
+#if defined(Q_OS_APPLE)
+        if (inExpose) {
+            QMetaObject::invokeMethod(this, [this, win = QPointer(window)] {
+                if (win) { m_animation_driver->advance(); emit timeToIncubate(); win->requestUpdate(); }
+            }, Qt::QueuedConnection);
+        } else
+#endif
+        {
+            m_animation_driver->advance();
+            emit timeToIncubate();
+            if (window)
+                window->requestUpdate();
+        }
+    }
+
     Q_TRACE(QSG_polishItems_entry);
 
     QQuickWindowPrivate *d = QQuickWindowPrivate::get(window);
@@ -1463,27 +1483,6 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
     if (w->updateDuringSync)
         postUpdateRequest(w);
 
-    // Advance GUI-thread animations frame-coupled to vsync.
-    // Only when m_animation_timer == 0, meaning we are in single-window
-    // vsync-driven mode. Otherwise the fallback system timer advances the driver.
-    if (m_animation_timer == 0 && m_animation_driver->isRunning()) {
-#if defined(Q_OS_APPLE)
-        if (inExpose) {
-            // Defer on Apple to avoid invalidating the frame the system is
-            // about to present.
-            QMetaObject::invokeMethod(this, [this, w = QPointer(window)] {
-                if (w) { m_animation_driver->advance(); emit timeToIncubate(); w->requestUpdate(); }
-            }, Qt::QueuedConnection);
-        } else
-#endif
-        {
-            m_animation_driver->advance();
-            emit timeToIncubate();
-            if (window)
-                window->requestUpdate();
-        }
-    }
-
     if (profileFrames) {
         qCDebug(QSG_LOG_TIME_RENDERLOOP, "[window %p][gui thread] Frame prepared, polish=%d ms, lock=%d ms, sync+renderWait=%d ms, animations=%d ms",
                 window,
@@ -1506,6 +1505,10 @@ bool QSGThreadedRenderLoop::event(QEvent *e)
             qCDebug(QSG_LOG_RENDERLOOP, "- ticking fallback animation timer");
             m_animation_driver->advance();
             emit timeToIncubate();
+            for (auto &w : m_windows) {
+                if (w.window->isVisible() && w.window->isExposed())
+                    postUpdateRequest(&w);
+            }
             return true;
         }
     }
