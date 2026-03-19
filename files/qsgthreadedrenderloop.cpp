@@ -914,6 +914,11 @@ QSGThreadedRenderLoop::QSGThreadedRenderLoop()
     , m_animation_timer(0)
 {
     preloadPipelineCacheAsync();
+
+    m_animation_driver = sg->createAnimationDriver(this);
+    connect(m_animation_driver, &QAnimationDriver::started, this, &QSGThreadedRenderLoop::animationStarted);
+    connect(m_animation_driver, &QAnimationDriver::stopped, this, &QSGThreadedRenderLoop::animationStopped);
+    m_animation_driver->install();
 }
 
 QSGThreadedRenderLoop::~QSGThreadedRenderLoop()
@@ -936,7 +941,7 @@ void QSGThreadedRenderLoop::postUpdateRequest(Window *w)
 
 QAnimationDriver *QSGThreadedRenderLoop::animationDriver() const
 {
-    return nullptr; // QUnifiedTimer drives GUI-thread animations
+    return m_animation_driver;
 }
 
 QSGContext *QSGThreadedRenderLoop::sceneGraphContext() const
@@ -953,14 +958,9 @@ bool QSGThreadedRenderLoop::anyoneShowing() const
 
 bool QSGThreadedRenderLoop::interleaveIncubation() const
 {
-    return anyoneShowing();
+    return m_animation_driver->isRunning() && anyoneShowing();
 }
 
-// Animation timing is delegated to QUnifiedTimer — no custom driver or vsync
-// heuristics needed. animationStarted() preserves its essential side effect:
-// kicking all exposed windows so the render thread wakes up for the first frame.
-// animationStopped() and startOrStopAnimationTimer() have no meaningful work
-// to do without the custom driver, so they are intentional no-ops.
 void QSGThreadedRenderLoop::animationStarted()
 {
     qCDebug(QSG_LOG_RENDERLOOP, "- animationStarted()");
@@ -973,6 +973,8 @@ void QSGThreadedRenderLoop::animationStopped()
     qCDebug(QSG_LOG_RENDERLOOP, "- animationStopped()");
 }
 
+// startOrStopAnimationTimer: vsync heuristics removed — m_animation_driver
+// provides frame-coupled timing; no fallback system timer needed.
 void QSGThreadedRenderLoop::startOrStopAnimationTimer() {}
 
 void QSGThreadedRenderLoop::hide(QQuickWindow *window)
@@ -1412,6 +1414,28 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
 
     if (w->updateDuringSync)
         postUpdateRequest(w);
+
+    // Advance GUI-thread animations after the sync wait so they step in
+    // lock-step with actual rendered frames — this is the core timing guarantee
+    // the custom driver provides over QUnifiedTimer. No vsync heuristics needed:
+    // if the driver is running, advance it here, always.
+    if (m_animation_driver->isRunning()) {
+#if defined(Q_OS_APPLE)
+        if (inExpose) {
+            // Defer on Apple to avoid invalidating the frame the system is
+            // about to present.
+            QMetaObject::invokeMethod(this, [this, w = QPointer(window)] {
+                if (w) { m_animation_driver->advance(); emit timeToIncubate(); w->requestUpdate(); }
+            }, Qt::QueuedConnection);
+        } else
+#endif
+        {
+            m_animation_driver->advance();
+            emit timeToIncubate();
+            if (window)
+                window->requestUpdate();
+        }
+    }
 
     if (profileFrames) {
         qCDebug(QSG_LOG_TIME_RENDERLOOP, "[window %p][gui thread] Frame prepared, polish=%d ms, lock=%d ms, sync+renderWait=%d ms, animations=%d ms",
