@@ -606,6 +606,10 @@ void QSGRenderThread::sync()
         cd->animationController->lock();
         const auto animatorUnlock = qScopeGuard([cd]{ cd->animationController->unlock(); });
         animatorDriver->advance();
+        // Render-thread animators write directly into SG nodes after syncSceneGraph(),
+        // so syncResultedInChanges was never set. Force it true so the skip-render
+        // guard in syncAndRender() doesn't abort the frame.
+        syncResultedInChanges = true;
     }
 
     if (canSync) [[likely]]
