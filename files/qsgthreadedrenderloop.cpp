@@ -117,21 +117,19 @@ public:
 class WMSyncEvent : public WMWindowEvent
 {
 public:
-    WMSyncEvent(QQuickWindow *c, bool inExpose, bool force, QRhiSwapChainProxyData proxyData, uint64_t serial)
+    WMSyncEvent(QQuickWindow *c, bool inExpose, bool force, QRhiSwapChainProxyData proxyData)
         : WMWindowEvent(c)
         , size(c->size())
         , dpr(float(c->effectiveDevicePixelRatio()))
         , syncInExpose(inExpose)
         , forceRenderPass(force)
         , scProxyData(std::move(proxyData))
-        , serial(serial)
     {}
     QSize size;
     float dpr;
     bool syncInExpose;
     bool forceRenderPass;
     QRhiSwapChainProxyData scProxyData;
-    uint64_t serial;
 };
 
 
@@ -262,7 +260,6 @@ public:
     static constexpr uint RepaintRequest = 0x02;
     static constexpr uint ExposeRequest  = 0x04 | RepaintRequest | SyncRequest;
 
-    void ensureRhiDevice();
     void ensureRhi();
     void teardownGraphics();
     void handleDeviceLoss();
@@ -281,7 +278,6 @@ public:
     std::atomic<bool> active;
 
     std::mutex mutex;
-    std::condition_variable_any renderCompletedCv;
 
     QElapsedTimer m_threadTimeBetweenRenders;
 
@@ -305,11 +301,7 @@ public:
     bool syncResultedInChanges;
     QSGRenderer *m_connectedRenderer = nullptr;
 
-    std::atomic<uint64_t> syncAcknowledgedSerial{0};
-    std::atomic<uint64_t> renderCompletedSerial{0};
-    uint64_t lastPostedSyncSerial = 0;
-    uint64_t currentSyncSerial = 0;
-    int pipelinedFramesRemaining = 0;
+    std::atomic<bool> syncAcknowledged{true};
 
     QSize m_lastPixelSize;
 
@@ -324,8 +316,6 @@ template<class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
 template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
 
 static constexpr qint64 PSTimeResetThresholdMs = 500;
-static constexpr float AdaptiveTimeoutFraction = 0.75f;
-static constexpr float AdaptiveTimeoutMinMs = 4.0f;
 
 static const QString &pipelineCachePath()
 {
@@ -416,9 +406,6 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
         dpr = e.dpr;
         m_lastPixelSize = QSize(static_cast<int>(e.size.width() * e.dpr),
                                 static_cast<int>(e.size.height() * e.dpr));
-        pipelinedFramesRemaining = 0;
-        renderCompletedSerial.store(syncAcknowledgedSerial.load(std::memory_order_relaxed),
-                                    std::memory_order_relaxed);
         return true;
     },
     [&](WMSyncEvent &e) {
@@ -431,7 +418,6 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
         m_lastPixelSize = QSize(static_cast<int>(e.size.width() * e.dpr),
                                 static_cast<int>(e.size.height() * e.dpr));
         scProxyData = std::move(e.scProxyData);
-        currentSyncSerial = e.serial;
 
         uint flags = SyncRequest;
         if (e.syncInExpose) {
@@ -609,8 +595,8 @@ void QSGRenderThread::sync()
         d->syncSceneGraph();
     }
 
-    syncAcknowledgedSerial.store(currentSyncSerial, std::memory_order_release);
-    syncAcknowledgedSerial.notify_one();
+    syncAcknowledged.store(true, std::memory_order_release);
+    syncAcknowledged.notify_one();
 
     // Advance render-thread animators (RotationAnimator, OpacityAnimator etc.)
     // after sync has rebuilt SG nodes and after GUI is unblocked, so they write
@@ -677,8 +663,6 @@ void QSGRenderThread::syncAndRender()
     if (syncRequested && !syncResultedInChanges && !exposeRequested
         && lastFrameValid && !repaintRequested) {
         qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- sync produced no changes, skipping render");
-        renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
-        renderCompletedSerial.notify_one();
         return;
     }
 
@@ -732,50 +716,25 @@ void QSGRenderThread::syncAndRender()
     if (gpuStarted && cd->renderer) [[likely]] {
         cd->renderSceneGraph();
 
-        const bool asyncPresent = rhi->backend() != QRhi::OpenGLES2;
-        if (asyncPresent) {
-            renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
-            renderCompletedSerial.notify_one();
-            renderCompletedCv.notify_one();
-        }
-
         if (rhi->endFrame(cd->swapchain) != QRhi::FrameOpSuccess) [[unlikely]] {
             if (rhi->isDeviceLost())
                 handleDeviceLoss();
             QMetaObject::invokeMethod(window, &QQuickWindow::update, Qt::QueuedConnection);
             lastFrameValid = false;
-            if (!asyncPresent) {
-                renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
-                renderCompletedSerial.notify_one();
-            }
         } else {
             lastFrameValid = true;
-            // Mirror the basic loop: instead of keeping the render thread awake
-            // ourselves, post requestUpdate() to the GUI thread. That triggers
-            // polishAndSync → WMSyncEvent, which is the correct, race-free path.
             if (animatorDriver->isRunning())
                 QMetaObject::invokeMethod(window, &QQuickWindow::requestUpdate, Qt::QueuedConnection);
-            if (!asyncPresent) {
-                renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
-                renderCompletedSerial.notify_one();
-            }
         }
 
         cd->fireFrameSwapped();
     } else if (gpuStarted) {
         rhi->endFrame(cd->swapchain, QRhi::SkipPresent);
         lastFrameValid = false;
-        renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
-        renderCompletedSerial.notify_one();
     }
 
     if (hasValidSwapChain) [[likely]]
         emit window->afterFrameEnd();
-
-    if (!gpuStarted) {
-        renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
-        renderCompletedSerial.notify_one();
-    }
 }
 
 void QSGRenderThread::postEvent(QSGRenderThreadEvent &&e)
@@ -806,51 +765,6 @@ void QSGRenderThread::processEventsAndWaitForMore()
     qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "--- done processEventsAndWaitForMore()");
 }
 
-void QSGRenderThread::ensureRhiDevice()
-{
-    if (rhi || rhiDoomed) [[likely]]
-        return;
-
-    auto *rhiSupport = QSGRhiSupport::instance();
-    auto rhiResult = rhiSupport->createRhi(window, offscreenSurface, swRastFallbackDueToSwapchainFailure);
-    rhi = rhiResult.rhi;
-    ownRhi = rhiResult.own;
-    if (rhi) {
-        rhiDeviceLost = false;
-        rhiSampleCount = rhiSupport->chooseSampleCountForWindowWithRhi(window, rhi);
-        rhi->makeThreadLocalNativeContextCurrent();
-        if (!pipelineCacheLoaded) [[unlikely]] {
-            loadPipelineCache(rhi);
-            pipelineCacheLoaded = true;
-        }
-        if (!sgrc->rhi()) {
-            const QSize pixelSize = m_lastPixelSize.isValid()
-                ? m_lastPixelSize
-                : QSize(static_cast<int>(windowSize.width() * dpr),
-                        static_cast<int>(windowSize.height() * dpr));
-            if (pixelSize.isValid()) {
-                QSGDefaultRenderContext::InitParams params;
-                params.rhi = rhi;
-                params.sampleCount = rhiSampleCount;
-                params.initialSurfacePixelSize = pixelSize;
-                params.maybeSurface = window;
-                sgrc->initialize(&params);
-            }
-        }
-        rhiReady.store(true, std::memory_order_seq_cst);
-        if (deferredFirstExpose.exchange(false, std::memory_order_seq_cst)) {
-            QPointer<QQuickWindow> safeWindow(window);
-            QMetaObject::invokeMethod(wm, [wm = this->wm, safeWindow]() {
-                if (safeWindow)
-                    wm->exposureChanged(safeWindow);
-            }, Qt::QueuedConnection);
-        }
-    } else {
-        if (!rhiDeviceLost)
-            rhiDoomed = true;
-    }
-}
-
 void QSGRenderThread::ensureRhi()
 {
     auto *cd = QQuickWindowPrivate::get(window);
@@ -864,11 +778,46 @@ void QSGRenderThread::ensureRhi()
 
     const QSize &pixelSize = m_lastPixelSize;
 
-    ensureRhiDevice();
+    // --- Device init ---
+    if (!rhi && !rhiDoomed) {
+        auto *rhiSupport = QSGRhiSupport::instance();
+        auto rhiResult = rhiSupport->createRhi(window, offscreenSurface, swRastFallbackDueToSwapchainFailure);
+        rhi = rhiResult.rhi;
+        ownRhi = rhiResult.own;
+        if (rhi) {
+            rhiDeviceLost = false;
+            rhiSampleCount = rhiSupport->chooseSampleCountForWindowWithRhi(window, rhi);
+            rhi->makeThreadLocalNativeContextCurrent();
+            if (!pipelineCacheLoaded) [[unlikely]] {
+                loadPipelineCache(rhi);
+                pipelineCacheLoaded = true;
+            }
+            if (!sgrc->rhi() && pixelSize.isValid()) {
+                QSGDefaultRenderContext::InitParams params;
+                params.rhi = rhi;
+                params.sampleCount = rhiSampleCount;
+                params.initialSurfacePixelSize = pixelSize;
+                params.maybeSurface = window;
+                sgrc->initialize(&params);
+            }
+            rhiReady.store(true, std::memory_order_seq_cst);
+            if (deferredFirstExpose.exchange(false, std::memory_order_seq_cst)) {
+                QPointer<QQuickWindow> safeWindow(window);
+                QMetaObject::invokeMethod(wm, [wm = this->wm, safeWindow]() {
+                    if (safeWindow)
+                        wm->exposureChanged(safeWindow);
+                }, Qt::QueuedConnection);
+            }
+        } else {
+            if (!rhiDeviceLost)
+                rhiDoomed = true;
+        }
+    }
 
     if (!rhi)
         return;
 
+    // --- Render context init (if RHI was just created but sgrc still uninitialized) ---
     if (!sgrc->rhi() && pixelSize.isValid()) [[unlikely]] {
         rhi->makeThreadLocalNativeContextCurrent();
         QSGDefaultRenderContext::InitParams params;
@@ -879,6 +828,7 @@ void QSGRenderThread::ensureRhi()
         sgrc->initialize(&params);
     }
 
+    // --- Swapchain init ---
     if (!cd->swapchain && window->isExposed()) [[unlikely]] {
         cd->rhi = rhi;
         const auto requestedFormat = window->format();
@@ -922,7 +872,7 @@ void QSGRenderThread::run()
     m_threadTimeBetweenRenders.start();
 
     if (window)
-        ensureRhiDevice();
+        ensureRhi();
 
     while (active.load(std::memory_order_acquire)) [[likely]] {
 #ifdef Q_OS_DARWIN
@@ -1444,19 +1394,6 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
         return;
     }
 
-    if (w->thread->lastPostedSyncSerial > 0) [[likely]] {
-        uint64_t observed = w->thread->syncAcknowledgedSerial.load(std::memory_order_acquire);
-        if (observed < w->thread->lastPostedSyncSerial) [[unlikely]] {
-            qCDebug(QSG_LOG_RENDERLOOP, "- waiting for previous async sync to complete before polishing");
-            Q_TRACE(QSG_wait_entry);
-            while (observed < w->thread->lastPostedSyncSerial) {
-                w->thread->syncAcknowledgedSerial.wait(observed, std::memory_order_acquire);
-                observed = w->thread->syncAcknowledgedSerial.load(std::memory_order_acquire);
-            }
-            Q_TRACE(QSG_wait_exit);
-        }
-    }
-
     Q_TRACE(QSG_polishAndSync);
     QElapsedTimer timer;
     qint64 polishTime = 0;
@@ -1530,16 +1467,9 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
 
     qCDebug(QSG_LOG_RENDERLOOP, "- lock for sync");
     {
-        static constexpr int HYSTERESIS_FRAMES = 5;
-        const float vsyncMs = sg->vsyncIntervalForAnimationDriver(m_animation_driver);
-        const auto ADAPTIVE_TIMEOUT = std::chrono::milliseconds(
-            static_cast<int>(qMax(AdaptiveTimeoutMinMs, vsyncMs * AdaptiveTimeoutFraction)));
-        const bool supportsAsyncPresent =
-            QSGRhiSupport::instance()->rhiBackend() != QRhi::OpenGLES2;
-
         QScopedValueRollback<bool> syncRollback(m_lockedForSync, true);
-        const uint64_t serial = ++w->thread->lastPostedSyncSerial;
-        w->thread->postEvent(WMSyncEvent(window, inExpose, w->forceRenderPass, std::move(scProxyData), serial));
+        w->thread->syncAcknowledged.store(false, std::memory_order_release);
+        w->thread->postEvent(WMSyncEvent(window, inExpose, w->forceRenderPass, std::move(scProxyData)));
         w->forceRenderPass = false;
 
         if (inExpose && w->thread->rhiReady.load(std::memory_order_acquire)) {
@@ -1560,45 +1490,14 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
         Q_TRACE(QSG_sync_entry);
 
         qCDebug(QSG_LOG_RENDERLOOP, "- waiting for sync");
-        uint64_t observed = w->thread->syncAcknowledgedSerial.load(std::memory_order_acquire);
-        while (observed < serial) {
-            w->thread->syncAcknowledgedSerial.wait(observed, std::memory_order_acquire);
-            observed = w->thread->syncAcknowledgedSerial.load(std::memory_order_acquire);
-        }
+        w->thread->syncAcknowledged.wait(false, std::memory_order_acquire);
         m_lockedForSync = false;
         qCDebug(QSG_LOG_RENDERLOOP, "- sync done");
-
-        Q_TRACE(QSG_sync_exit);
-        Q_QUICK_SG_PROFILE_RECORD(QQuickProfiler::SceneGraphPolishAndSync,
-                                  QQuickProfiler::SceneGraphPolishAndSyncSync);
-
-        if (!inExpose) {
-            if (w->thread->pipelinedFramesRemaining > 0) {
-                qCDebug(QSG_LOG_RENDERLOOP, "- pipeline mode (%d frames remaining)",
-                        w->thread->pipelinedFramesRemaining);
-                --w->thread->pipelinedFramesRemaining;
-            } else if (!supportsAsyncPresent) {
-                qCDebug(QSG_LOG_RENDERLOOP, "- OpenGL backend: staying in pipeline mode");
-            } else {
-                if (w->thread->renderCompletedSerial.load(std::memory_order_acquire) < serial) {
-                    std::unique_lock lock(w->thread->mutex);
-                    w->thread->renderCompletedCv.wait_for(
-                        lock,
-                        ADAPTIVE_TIMEOUT,
-                        [&] {
-                            return w->thread->renderCompletedSerial.load(
-                                       std::memory_order_acquire) >= serial;
-                        });
-                }
-                if (w->thread->renderCompletedSerial.load(std::memory_order_acquire) < serial) {
-                    qCDebug(QSG_LOG_RENDERLOOP, "- render overran budget, entering pipeline mode");
-                    w->thread->pipelinedFramesRemaining = HYSTERESIS_FRAMES;
-                } else {
-                    qCDebug(QSG_LOG_RENDERLOOP, "- zero-latency frame");
-                }
-            }
-        }
     }
+
+    Q_TRACE(QSG_sync_exit);
+    Q_QUICK_SG_PROFILE_RECORD(QQuickProfiler::SceneGraphPolishAndSync,
+                              QQuickProfiler::SceneGraphPolishAndSyncSync);
 
     if (profileFrames)
         syncTime = timer.nsecsElapsed();
