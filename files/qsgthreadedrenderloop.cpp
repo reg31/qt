@@ -964,6 +964,7 @@ bool QSGThreadedRenderLoop::interleaveIncubation() const
 void QSGThreadedRenderLoop::animationStarted()
 {
     qCDebug(QSG_LOG_RENDERLOOP, "- animationStarted()");
+    startOrStopAnimationTimer();
     for (auto &w : m_windows)
         postUpdateRequest(&w);
 }
@@ -971,11 +972,52 @@ void QSGThreadedRenderLoop::animationStarted()
 void QSGThreadedRenderLoop::animationStopped()
 {
     qCDebug(QSG_LOG_RENDERLOOP, "- animationStopped()");
+    startOrStopAnimationTimer();
 }
 
-// startOrStopAnimationTimer: vsync heuristics removed — m_animation_driver
-// provides frame-coupled timing; no fallback system timer needed.
-void QSGThreadedRenderLoop::startOrStopAnimationTimer() {}
+// startOrStopAnimationTimer: manages the fallback system timer for the three
+// cases where tying animation ticks to vsync is unsafe:
+//   1. No exposed windows   — render thread sleeps, polishAndSync() never called
+//   2. Multiple exposed windows — both would call advance(), causing double-ticking
+//   3. Unthrottled window (swapInterval==0) — render loop runs unbounded, advance()
+//      would be called thousands of times per second
+// In all other cases (exactly one exposed, throttled window) vsync-coupling wins.
+void QSGThreadedRenderLoop::startOrStopAnimationTimer()
+{
+    const bool animationsRunning = m_animation_driver->isRunning();
+
+    if (!animationsRunning) {
+        if (m_animation_timer != 0) {
+            killTimer(m_animation_timer);
+            m_animation_timer = 0;
+        }
+        return;
+    }
+
+    int exposedWindows = 0;
+    int unthrottledWindows = 0;
+    Window *theOne = nullptr;
+    for (auto &w : m_windows) {
+        if (w.window->isVisible() && w.window->isExposed()) {
+            ++exposedWindows;
+            theOne = &w;
+            if (w.actualWindowFormat.swapInterval() == 0)
+                ++unthrottledWindows;
+        }
+    }
+
+    const bool canUseVSyncBasedAnimation = (exposedWindows == 1 && unthrottledWindows == 0);
+
+    if (m_animation_timer != 0 && canUseVSyncBasedAnimation) {
+        qCDebug(QSG_LOG_RENDERLOOP, "switching to vsync-driven animations");
+        killTimer(m_animation_timer);
+        m_animation_timer = 0;
+        postUpdateRequest(theOne);
+    } else if (m_animation_timer == 0 && !canUseVSyncBasedAnimation) {
+        qCDebug(QSG_LOG_RENDERLOOP, "switching to fallback timer-driven animations");
+        m_animation_timer = startTimer(int(sg->vsyncIntervalForAnimationDriver(m_animation_driver)));
+    }
+}
 
 void QSGThreadedRenderLoop::hide(QQuickWindow *window)
 {
@@ -1010,6 +1052,7 @@ void QSGThreadedRenderLoop::windowDestroyed(QQuickWindow *window)
 
     m_windows.removeIf([window](const Window &w) { return w.window == window; });
 
+    startOrStopAnimationTimer();
 
     qCDebug(QSG_LOG_RENDERLOOP) << "done windowDestroyed()" << window;
 }
@@ -1143,18 +1186,22 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
         }
         w->thread->start();
         w->thread->deferredFirstExpose.store(true, std::memory_order_seq_cst);
+        startOrStopAnimationTimer();
         return;
     } else {
         w->thread->postEvent(WMExposedEvent(w->window));
         w->thread->deferredFirstExpose.store(true, std::memory_order_seq_cst);
         if (!w->thread->rhiReady.load(std::memory_order_seq_cst)) {
+            startOrStopAnimationTimer();
             return;
         }
         if (!w->thread->deferredFirstExpose.exchange(false, std::memory_order_seq_cst)) {
+            startOrStopAnimationTimer();
             return;
         }
     }
     polishAndSync(w, true);
+    startOrStopAnimationTimer();
 }
 
 void QSGThreadedRenderLoop::handleObscurity(Window *w)
@@ -1170,6 +1217,7 @@ void QSGThreadedRenderLoop::handleObscurity(Window *w)
         }
         w->thread->postEvent(WMObscureEvent(w->window));
     }
+    startOrStopAnimationTimer();
 }
 
 bool QSGThreadedRenderLoop::eventFilter(QObject *watched, QEvent *event)
@@ -1415,11 +1463,10 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
     if (w->updateDuringSync)
         postUpdateRequest(w);
 
-    // Advance GUI-thread animations after the sync wait so they step in
-    // lock-step with actual rendered frames — this is the core timing guarantee
-    // the custom driver provides over QUnifiedTimer. No vsync heuristics needed:
-    // if the driver is running, advance it here, always.
-    if (m_animation_driver->isRunning()) {
+    // Advance GUI-thread animations frame-coupled to vsync.
+    // Only when m_animation_timer == 0, meaning we are in single-window
+    // vsync-driven mode. Otherwise the fallback system timer advances the driver.
+    if (m_animation_timer == 0 && m_animation_driver->isRunning()) {
 #if defined(Q_OS_APPLE)
         if (inExpose) {
             // Defer on Apple to avoid invalidating the frame the system is
@@ -1453,6 +1500,15 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
 
 bool QSGThreadedRenderLoop::event(QEvent *e)
 {
+    if (e->type() == QEvent::Timer) {
+        QTimerEvent *te = static_cast<QTimerEvent *>(e);
+        if (te->timerId() == m_animation_timer) {
+            qCDebug(QSG_LOG_RENDERLOOP, "- ticking fallback animation timer");
+            m_animation_driver->advance();
+            emit timeToIncubate();
+            return true;
+        }
+    }
     return QObject::event(e);
 }
 
