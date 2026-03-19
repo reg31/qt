@@ -609,8 +609,7 @@ void QSGRenderThread::sync()
     }
 
     syncAcknowledgedSerial.store(currentSyncSerial, std::memory_order_release);
-    // Only one GUI thread waits on this — notify_one() is correct and cheaper.
-    syncAcknowledgedSerial.notify_one();
+    syncAcknowledgedSerial.notify_all();
 
     // Advance render-thread animators (RotationAnimator, OpacityAnimator etc.)
     // after sync has rebuilt SG nodes and after GUI is unblocked, so they write
