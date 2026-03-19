@@ -315,8 +315,6 @@ namespace {
 template<class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
 template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
 
-static constexpr qint64 PSTimeResetThresholdMs = 500;
-
 static const QString &pipelineCachePath()
 {
     static const QString path = QStandardPaths::writableLocation(QStandardPaths::CacheLocation)
@@ -912,16 +910,10 @@ void QSGRenderThread::run()
 
 QSGThreadedRenderLoop::QSGThreadedRenderLoop()
     : sg(QSGContext::createDefaultContext())
+    , m_animation_driver(nullptr)
     , m_animation_timer(0)
 {
     preloadPipelineCacheAsync();
-
-    m_animation_driver = sg->createAnimationDriver(this);
-
-    connect(m_animation_driver, &QAnimationDriver::started, this, &QSGThreadedRenderLoop::animationStarted);
-    connect(m_animation_driver, &QAnimationDriver::stopped, this, &QSGThreadedRenderLoop::animationStopped);
-
-    m_animation_driver->install();
 }
 
 QSGThreadedRenderLoop::~QSGThreadedRenderLoop()
@@ -944,7 +936,7 @@ void QSGThreadedRenderLoop::postUpdateRequest(Window *w)
 
 QAnimationDriver *QSGThreadedRenderLoop::animationDriver() const
 {
-    return m_animation_driver;
+    return nullptr; // QUnifiedTimer drives GUI-thread animations
 }
 
 QSGContext *QSGThreadedRenderLoop::sceneGraphContext() const
@@ -961,66 +953,13 @@ bool QSGThreadedRenderLoop::anyoneShowing() const
 
 bool QSGThreadedRenderLoop::interleaveIncubation() const
 {
-    return m_animation_driver->isRunning() && anyoneShowing();
+    return anyoneShowing();
 }
 
-void QSGThreadedRenderLoop::animationStarted()
-{
-    qCDebug(QSG_LOG_RENDERLOOP, "- animationStarted()");
-    startOrStopAnimationTimer();
-
-    for (auto &w : m_windows)
-        postUpdateRequest(&w);
-}
-
-void QSGThreadedRenderLoop::animationStopped()
-{
-    qCDebug(QSG_LOG_RENDERLOOP, "- animationStopped()");
-    startOrStopAnimationTimer();
-}
-
-
-void QSGThreadedRenderLoop::startOrStopAnimationTimer()
-{
-    if (!sg->isVSyncDependent(m_animation_driver))
-        return;
-
-    const bool animationsRunning = m_animation_driver->isRunning();
-
-    if (!animationsRunning && m_animation_timer == 0)
-        return;
-
-    struct WindowStats { int exposed = 0; int unthrottled = 0; int badVSync = 0; Window *theOne = nullptr; };
-    auto stats = std::ranges::fold_left(m_windows, WindowStats{}, [](WindowStats s, auto &w) {
-        if (w.window->isVisible() && w.window->isExposed()) {
-            ++s.exposed;
-            s.theOne = &w;
-            if (w.actualWindowFormat.swapInterval() == 0) ++s.unthrottled;
-            if (w.badVSync) ++s.badVSync;
-        }
-        return s;
-    });
-
-    const int exposedWindows    = stats.exposed;
-    const int unthrottledWindows = stats.unthrottled;
-    const int badVSync          = stats.badVSync;
-    Window *theOne              = stats.theOne;
-
-    const bool canUseVSyncBasedAnimation = exposedWindows == 1 && unthrottledWindows == 0 && badVSync == 0;
-
-    if (m_animation_timer != 0 && (canUseVSyncBasedAnimation || !animationsRunning)) {
-        qCDebug(QSG_LOG_RENDERLOOP, "*** Stopping system (not vsync-based) animation timer (exposedWindows=%d unthrottledWindows=%d badVSync=%d)",
-                exposedWindows, unthrottledWindows, badVSync);
-        killTimer(m_animation_timer);
-        m_animation_timer = 0;
-        if (animationsRunning)
-            postUpdateRequest(theOne);
-    } else if (m_animation_timer == 0 && !canUseVSyncBasedAnimation && animationsRunning) {
-        qCDebug(QSG_LOG_RENDERLOOP, "*** Starting system (not vsync-based) animation timer (exposedWindows=%d unthrottledWindows=%d badVSync=%d)",
-                exposedWindows, unthrottledWindows, badVSync);
-        m_animation_timer = startTimer(int(sg->vsyncIntervalForAnimationDriver(m_animation_driver)));
-    }
-}
+// Stubs for header-declared slots — animation timing delegated to QUnifiedTimer.
+void QSGThreadedRenderLoop::animationStarted() {}
+void QSGThreadedRenderLoop::animationStopped() {}
+void QSGThreadedRenderLoop::startOrStopAnimationTimer() {}
 
 void QSGThreadedRenderLoop::hide(QQuickWindow *window)
 {
@@ -1034,14 +973,7 @@ void QSGThreadedRenderLoop::hide(QQuickWindow *window)
 
 void QSGThreadedRenderLoop::resize(QQuickWindow *window)
 {
-    qCDebug(QSG_LOG_RENDERLOOP) << "resize()" << window;
-
-    Window *w = windowFor(window);
-    if (!w)
-        return;
-
-    w->psTimeAccumulator = 0.0f;
-    w->psTimeSampleCount = 0;
+    Q_UNUSED(window);
 }
 
 void QSGThreadedRenderLoop::windowDestroyed(QQuickWindow *window)
@@ -1062,7 +994,6 @@ void QSGThreadedRenderLoop::windowDestroyed(QQuickWindow *window)
 
     m_windows.removeIf([window](const Window &w) { return w.window == window; });
 
-    startOrStopAnimationTimer();
 
     qCDebug(QSG_LOG_RENDERLOOP) << "done windowDestroyed()" << window;
 }
@@ -1133,10 +1064,6 @@ void QSGThreadedRenderLoop::exposureChanged(QQuickWindow *window)
             w->thread = new QSGRenderThread(this, renderContext);
             w->updateDuringSync = false;
             w->forceRenderPass = true;
-            w->badVSync = false;
-            w->psTimeAccumulator = 0.0f;
-            w->psTimeSampleCount = 0;
-            w->timeBetweenPolishAndSyncs.start();
             auto *rhiSupport = QSGRhiSupport::instance();
             w->thread->offscreenSurface = rhiSupport->maybeCreateOffscreenSurface(safeWindow);
             w->thread->window = safeWindow;
@@ -1177,10 +1104,6 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
         w->thread = new QSGRenderThread(this, renderContext);
         w->updateDuringSync = false;
         w->forceRenderPass = true;
-        w->badVSync = false;
-        w->psTimeAccumulator = 0.0f;
-        w->psTimeSampleCount = 0;
-        w->timeBetweenPolishAndSyncs.start();
     }
     if (!w->window->handle()) [[unlikely]] window->create();
     if (!w->thread->isRunning()) {
@@ -1204,22 +1127,18 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
         }
         w->thread->start();
         w->thread->deferredFirstExpose.store(true, std::memory_order_seq_cst);
-        startOrStopAnimationTimer();
         return;
     } else {
         w->thread->postEvent(WMExposedEvent(w->window));
         w->thread->deferredFirstExpose.store(true, std::memory_order_seq_cst);
         if (!w->thread->rhiReady.load(std::memory_order_seq_cst)) {
-            startOrStopAnimationTimer();
             return;
         }
         if (!w->thread->deferredFirstExpose.exchange(false, std::memory_order_seq_cst)) {
-            startOrStopAnimationTimer();
             return;
         }
     }
     polishAndSync(w, true);
-    startOrStopAnimationTimer();
 }
 
 void QSGThreadedRenderLoop::handleObscurity(Window *w)
@@ -1235,7 +1154,6 @@ void QSGThreadedRenderLoop::handleObscurity(Window *w)
         }
         w->thread->postEvent(WMObscureEvent(w->window));
     }
-    startOrStopAnimationTimer();
 }
 
 bool QSGThreadedRenderLoop::eventFilter(QObject *watched, QEvent *event)
@@ -1404,41 +1322,11 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
     qint64 waitTime = 0;
     qint64 syncTime = 0;
 
-    const qint64 elapsedSinceLastMs = w->timeBetweenPolishAndSyncs.restart();
-
-    if (elapsedSinceLastMs > PSTimeResetThresholdMs) {
-        w->psTimeAccumulator = 0.0f;
-        w->psTimeSampleCount = 0;
-    }
-
-    if (!w->badVSync && w->actualWindowFormat.swapInterval() != 0 && sg->isVSyncDependent(m_animation_driver)) {
-        w->psTimeAccumulator += elapsedSinceLastMs;
-        w->psTimeSampleCount += 1;
-        constexpr int PS_TIME_SAMPLE_LENGTH = 20;
-        if (w->psTimeSampleCount > PS_TIME_SAMPLE_LENGTH) [[unlikely]] {
-            const float t = w->psTimeAccumulator / w->psTimeSampleCount;
-            const float vsyncRate = sg->vsyncIntervalForAnimationDriver(m_animation_driver);
-            const float threshold = vsyncRate * 0.5f;
-            const bool badVSync = t < threshold;
-            if (badVSync && !w->badVSync) {
-                w->badVSync = true;
-                qCDebug(QSG_LOG_INFO, "Window %p is determined to have broken vsync throttling (%f < %f) "
-                                      "switching to system timer to drive gui thread animations to remedy this "
-                                      "(however, render thread animators will likely advance at an incorrect rate).",
-                        w->window, t, threshold);
-                startOrStopAnimationTimer();
-            }
-            w->psTimeAccumulator = 0.0f;
-            w->psTimeSampleCount = 0;
-        }
-    }
-
     const bool profileFrames = QSG_LOG_TIME_RENDERLOOP().isDebugEnabled();
     if (profileFrames) {
         timer.start();
-        qCDebug(QSG_LOG_TIME_RENDERLOOP, "[window %p][gui thread] polishAndSync: start, elapsed since last call: %d ms",
-                window,
-                int(elapsedSinceLastMs));
+        qCDebug(QSG_LOG_TIME_RENDERLOOP, "[window %p][gui thread] polishAndSync: start",
+                window);
     }
     Q_QUICK_SG_PROFILE_START(QQuickProfiler::SceneGraphPolishAndSync);
 
@@ -1473,7 +1361,8 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
     {
         QScopedValueRollback<bool> syncRollback(m_lockedForSync, true);
         w->thread->syncAcknowledged.store(false, std::memory_order_release);
-        w->thread->postEvent(WMSyncEvent(window, inExpose, w->forceRenderPass, std::move(scProxyData)));
+        const bool forceRender = w->forceRenderPass;
+        w->thread->postEvent(WMSyncEvent(window, inExpose, forceRender, std::move(scProxyData)));
         w->forceRenderPass = false;
 
         if (inExpose && w->thread->rhiReady.load(std::memory_order_acquire)) {
@@ -1507,16 +1396,8 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
         syncTime = timer.nsecsElapsed();
     Q_TRACE(QSG_animations_entry);
 
-    if (m_animation_timer == 0 && m_animation_driver->isRunning()) {
-        qCDebug(QSG_LOG_RENDERLOOP, "- advancing animations");
-        m_animation_driver->advance();
-        qCDebug(QSG_LOG_RENDERLOOP, "- animations done");
-        emit timeToIncubate();
-        if (window)
-            window->requestUpdate();
-    } else if (w->updateDuringSync) {
+    if (w->updateDuringSync)
         postUpdateRequest(w);
-    }
 
     if (profileFrames) {
         qCDebug(QSG_LOG_TIME_RENDERLOOP, "[window %p][gui thread] Frame prepared, polish=%d ms, lock=%d ms, sync+renderWait=%d ms, animations=%d ms",
@@ -1534,24 +1415,6 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
 
 bool QSGThreadedRenderLoop::event(QEvent *e)
 {
-    switch (std::to_underlying(e->type())) {
-
-    case std::to_underlying(QEvent::Timer): {
-        Q_ASSERT(sg->isVSyncDependent(m_animation_driver));
-        QTimerEvent *te = static_cast<QTimerEvent *>(e);
-        if (te->timerId() == m_animation_timer) {
-            qCDebug(QSG_LOG_RENDERLOOP, "- ticking non-render thread timer");
-            m_animation_driver->advance();
-            emit timeToIncubate();
-            return true;
-        }
-        break;
-    }
-
-    default:
-        break;
-    }
-
     return QObject::event(e);
 }
 
