@@ -842,7 +842,8 @@ void QSGRenderThread::ensureRhiDevice()
                 sgrc->initialize(&params);
             }
         }
-        rhiReady.store(true, std::memory_order_seq_cst);
+        rhiReady.store(true, std::memory_order_release);
+        rhiReady.notify_one();
     } else {
         if (!rhiDeviceLost)
             rhiDoomed = true;
@@ -919,8 +920,15 @@ void QSGRenderThread::run()
 
     m_threadTimeBetweenRenders.start();
 
-    if (window)
+    if (window) {
         ensureRhiDevice();
+        if (rhiReady.load(std::memory_order_acquire) && window->isExposed()) {
+            QMetaObject::invokeMethod(wm, [wm = this->wm, win = this->window]() {
+                if (Window *w = wm->windowFor(win); w && win->isExposed())
+                    wm->polishAndSync(w, true);
+            }, Qt::QueuedConnection);
+        }
+    }
 
     while (active.load(std::memory_order_relaxed)) [[likely]] {
 #ifdef Q_OS_DARWIN
@@ -1255,7 +1263,7 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
         return;
     } else {
         w->thread->postEvent(WMExposedEvent(w->window));
-        if (!w->thread->rhiReady.load(std::memory_order_seq_cst)) {
+        if (!w->thread->rhiReady.load(std::memory_order_acquire)) {
             startOrStopAnimationTimer();
             return;
         }
