@@ -847,13 +847,6 @@ void QSGRenderThread::ensureRhiDevice()
             }
         }
         rhiReady.store(true, std::memory_order_seq_cst);
-        if (deferredFirstExpose.exchange(false, std::memory_order_seq_cst)) {
-            QPointer<QQuickWindow> safeWindow(window);
-            QMetaObject::invokeMethod(wm, [wm = this->wm, safeWindow]() {
-                if (safeWindow)
-                    wm->exposureChanged(safeWindow);
-            }, Qt::QueuedConnection);
-        }
     } else {
         if (!rhiDeviceLost)
             rhiDoomed = true;
@@ -1257,17 +1250,11 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
             w->thread->moveToThread(w->thread);
         }
         w->thread->start();
-        w->thread->deferredFirstExpose.store(true, std::memory_order_seq_cst);
         startOrStopAnimationTimer();
         return;
     } else {
         w->thread->postEvent(WMExposedEvent(w->window));
-        w->thread->deferredFirstExpose.store(true, std::memory_order_seq_cst);
         if (!w->thread->rhiReady.load(std::memory_order_seq_cst)) {
-            startOrStopAnimationTimer();
-            return;
-        }
-        if (!w->thread->deferredFirstExpose.exchange(false, std::memory_order_seq_cst)) {
             startOrStopAnimationTimer();
             return;
         }
