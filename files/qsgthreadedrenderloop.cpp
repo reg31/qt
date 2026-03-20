@@ -1457,25 +1457,57 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
 
     const qint64 elapsedSinceLastMs = w->timeBetweenPolishAndSyncs.restart();
 
-    if (!w->badVSync && w->actualWindowFormat.swapInterval() != 0 && sg->isVSyncDependent(m_animation_driver)) {
-        w->psTimeAccumulator += elapsedSinceLastMs;
-        w->psTimeSampleCount += 1;
-        static const int PS_TIME_SAMPLE_LENGTH = 20;
-        if (w->psTimeSampleCount > PS_TIME_SAMPLE_LENGTH) [[unlikely]] {
-            const float t = w->psTimeAccumulator / w->psTimeSampleCount;
-            const float vsyncRate = sg->vsyncIntervalForAnimationDriver(m_animation_driver);
-            const float threshold = vsyncRate * 0.5f;
-            const bool badVSync = t < threshold;
-            if (badVSync && !w->badVSync) {
-                w->badVSync = true;
-                qCDebug(QSG_LOG_INFO, "Window %p is determined to have broken vsync throttling (%f < %f) "
-                                      "switching to system timer to drive gui thread animations to remedy this "
-                                      "(however, render thread animators will likely advance at an incorrect rate).",
-                        w->window, t, threshold);
-                startOrStopAnimationTimer();
+    if (w->actualWindowFormat.swapInterval() != 0 && sg->isVSyncDependent(m_animation_driver)) {
+        static constexpr int   PS_TIME_SAMPLE_LENGTH     = 20;
+        static constexpr int   PS_RECOVERY_SAMPLE_LENGTH = 10;
+        static constexpr float PS_OUTLIER_FACTOR         = 3.0f;
+        static constexpr float PS_DETECT_THRESHOLD       = 0.5f;
+        static constexpr float PS_RECOVERY_THRESHOLD     = 0.75f;
+
+        const float vsyncRate = sg->vsyncIntervalForAnimationDriver(m_animation_driver);
+        const bool isOutlier  = elapsedSinceLastMs > vsyncRate * PS_OUTLIER_FACTOR;
+
+        if (!w->badVSync) {
+            if (isOutlier) {
+                w->psTimeAccumulator = 0.0f;
+                w->psTimeSampleCount = 0;
+            } else {
+                w->psTimeAccumulator += elapsedSinceLastMs;
+                w->psTimeSampleCount += 1;
+                if (w->psTimeSampleCount > PS_TIME_SAMPLE_LENGTH) [[unlikely]] {
+                    const float t = w->psTimeAccumulator / w->psTimeSampleCount;
+                    if (t < vsyncRate * PS_DETECT_THRESHOLD) {
+                        w->badVSync = true;
+                        qCDebug(QSG_LOG_INFO, "Window %p is determined to have broken vsync throttling (%f < %f) "
+                                              "switching to system timer to drive gui thread animations to remedy this "
+                                              "(however, render thread animators will likely advance at an incorrect rate).",
+                                w->window, t, vsyncRate * PS_DETECT_THRESHOLD);
+                        startOrStopAnimationTimer();
+                    }
+                    w->psTimeAccumulator = 0.0f;
+                    w->psTimeSampleCount = 0;
+                }
             }
-            w->psTimeAccumulator = 0.0f;
-            w->psTimeSampleCount = 0;
+        } else {
+            if (isOutlier) {
+                w->psTimeAccumulator = 0.0f;
+                w->psTimeSampleCount = 0;
+            } else {
+                w->psTimeAccumulator += elapsedSinceLastMs;
+                w->psTimeSampleCount += 1;
+                if (w->psTimeSampleCount > PS_RECOVERY_SAMPLE_LENGTH) [[unlikely]] {
+                    const float t = w->psTimeAccumulator / w->psTimeSampleCount;
+                    if (t >= vsyncRate * PS_RECOVERY_THRESHOLD) {
+                        w->badVSync = false;
+                        qCDebug(QSG_LOG_INFO, "Window %p vsync throttling has recovered (%f >= %f), "
+                                              "switching back to vsync-based animation.",
+                                w->window, t, vsyncRate * PS_RECOVERY_THRESHOLD);
+                        startOrStopAnimationTimer();
+                    }
+                    w->psTimeAccumulator = 0.0f;
+                    w->psTimeSampleCount = 0;
+                }
+            }
         }
     }
 
