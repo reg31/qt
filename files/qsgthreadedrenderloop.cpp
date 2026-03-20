@@ -922,12 +922,8 @@ void QSGRenderThread::run()
 
     if (window) {
         ensureRhiDevice();
-        if (rhiReady.load(std::memory_order_acquire) && window->isExposed()) {
-            QMetaObject::invokeMethod(wm, [wm = this->wm, win = this->window]() {
-                if (Window *w = wm->windowFor(win); w && win->isExposed())
-                    wm->polishAndSync(w, true);
-            }, Qt::QueuedConnection);
-        }
+        if (rhiReady.load(std::memory_order_acquire) && window->isExposed())
+            QMetaObject::invokeMethod(window, &QQuickWindow::requestUpdate, Qt::QueuedConnection);
     }
 
     while (active.load(std::memory_order_relaxed)) [[likely]] {
