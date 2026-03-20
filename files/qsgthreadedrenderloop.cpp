@@ -163,6 +163,8 @@ using QSGRenderThreadEvent = std::variant<
     WMReleaseSwapchainEvent
 >;
 
+static constexpr int RENDER_HYSTERESIS_FRAMES = 5;
+
 class QSGRenderThreadEventQueue
 {
 public:
@@ -417,7 +419,7 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
         dpr = e.dpr;
         m_lastPixelSize = QSize(static_cast<int>(e.size.width() * e.dpr),
                                 static_cast<int>(e.size.height() * e.dpr));
-        pipelinedFramesRemaining = 0;
+        pipelinedFramesRemaining = RENDER_HYSTERESIS_FRAMES;
         renderCompletedSerial.store(syncAcknowledgedSerial.load(std::memory_order_relaxed),
                                     std::memory_order_relaxed);
         return true;
@@ -1547,7 +1549,6 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
 
     qCDebug(QSG_LOG_RENDERLOOP, "- lock for sync");
     {
-        static constexpr int HYSTERESIS_FRAMES = 5;
         const float vsyncMs = sg->vsyncIntervalForAnimationDriver(m_animation_driver);
         const unsigned long ADAPTIVE_TIMEOUT_MS = static_cast<unsigned long>(
             qMax(4.0f, vsyncMs * 0.75f));
@@ -1605,7 +1606,7 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
                 }
                 if (w->thread->renderCompletedSerial.load(std::memory_order_relaxed) < serial) {
                     qCDebug(QSG_LOG_RENDERLOOP, "- render overran budget, entering pipeline mode");
-                    w->thread->pipelinedFramesRemaining = HYSTERESIS_FRAMES;
+                    w->thread->pipelinedFramesRemaining = RENDER_HYSTERESIS_FRAMES;
                 } else {
                     qCDebug(QSG_LOG_RENDERLOOP, "- zero-latency frame");
                 }
