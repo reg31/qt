@@ -344,19 +344,6 @@ Q_GLOBAL_STATIC(QMutex, pipelineCacheFileMutex)
 static QByteArray g_pipelineCacheData;
 static bool g_pipelineCachePreloaded = false;
 
-static void preloadPipelineCacheAsync()
-{
-    QThreadPool::globalInstance()->start([]() {
-        QMutexLocker fileLock(pipelineCacheFileMutex());
-        if (g_pipelineCachePreloaded)
-            return;
-        QFile f(pipelineCachePath());
-        if (f.open(QIODevice::ReadOnly))
-            g_pipelineCacheData = f.readAll();
-        g_pipelineCachePreloaded = true;
-    });
-}
-
 static void savePipelineCache(QRhi *rhi)
 {
     QByteArray data = rhi->pipelineCacheData();
@@ -965,8 +952,6 @@ QSGThreadedRenderLoop::QSGThreadedRenderLoop()
     : sg(QSGContext::createDefaultContext())
     , m_animation_timer(0)
 {
-    preloadPipelineCacheAsync();
-
     m_animation_driver = sg->createAnimationDriver(this);
 
     connect(m_animation_driver, &QAnimationDriver::started, this, &QSGThreadedRenderLoop::animationStarted);
