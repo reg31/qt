@@ -357,12 +357,12 @@ static void preloadPipelineCacheAsync()
 
 static void savePipelineCache(QRhi *rhi)
 {
-    const QByteArray data = rhi->pipelineCacheData();
+    QByteArray data = rhi->pipelineCacheData();
     if (data.isEmpty())
         return;
-    const QString path = pipelineCachePath();
-    const QString dirPath = QFileInfo(path).absolutePath();
-    QThreadPool::globalInstance()->start([data, path, dirPath]() {
+    QString path = pipelineCachePath();
+    QString dirPath = QFileInfo(path).absolutePath();
+    QThreadPool::globalInstance()->start([data = std::move(data), path = std::move(path), dirPath = std::move(dirPath)]() {
         QMutexLocker fileLock(pipelineCacheFileMutex());
         QDir().mkpath(dirPath);
         QSaveFile f(path);
