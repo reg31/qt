@@ -315,6 +315,7 @@ public:
     uint64_t lastPostedSyncSerial = 0;
     uint64_t currentSyncSerial = 0;
     int pipelinedFramesRemaining = 0;
+    bool syncDoneBeforeEnsure = false;
 
     QSize m_lastPixelSize;
 
@@ -665,7 +666,7 @@ void QSGRenderThread::syncAndRender()
         cd->animationController->unlock();
     }
 
-    if (syncRequested) [[likely]] {
+    if (syncRequested && !syncDoneBeforeEnsure) [[likely]] {
         sync();
     }
 
@@ -934,6 +935,11 @@ void QSGRenderThread::run()
         QCoreApplication::sendPostedEvents(nullptr, 0);
 
         if (window) [[likely]] {
+            syncDoneBeforeEnsure = false;
+            if ((pendingUpdate & SyncRequest) && rhi && !QQuickWindowPrivate::get(window)->swapchain) [[unlikely]] {
+                syncDoneBeforeEnsure = true;
+                sync();
+            }
             ensureRhi();
             if (pendingUpdate != 0 || animatorDriver->isRunning())
                 syncAndRender();
