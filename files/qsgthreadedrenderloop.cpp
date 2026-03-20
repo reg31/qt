@@ -614,20 +614,6 @@ void QSGRenderThread::sync()
     syncAcknowledgedSerial.store(currentSyncSerial, std::memory_order_release);
     syncAcknowledgedSerial.notify_all();
 
-    // Advance render-thread animators (RotationAnimator, OpacityAnimator etc.)
-    // after sync has rebuilt SG nodes and after GUI is unblocked, so they write
-    // into valid nodes without holding up the GUI thread.
-    if (canSync && animatorDriver->isRunning()) [[unlikely]] {
-        auto *cd = QQuickWindowPrivate::get(window);
-        cd->animationController->lock();
-        const auto animatorUnlock = qScopeGuard([cd]{ cd->animationController->unlock(); });
-        animatorDriver->advance();
-        // Render-thread animators write directly into SG nodes after syncSceneGraph(),
-        // so syncResultedInChanges was never set. Force it true so the skip-render
-        // guard in syncAndRender() doesn't abort the frame.
-        syncResultedInChanges = true;
-    }
-
     if (canSync) [[likely]]
         sgrc->endSync();
 
@@ -665,74 +651,105 @@ void QSGRenderThread::syncAndRender()
     const uint currentUpdate = pendingUpdate.exchange(0, std::memory_order_relaxed);
     const bool syncRequested = (currentUpdate & SyncRequest);
     const bool exposeRequested = (currentUpdate & ExposeRequest) == ExposeRequest;
-    const bool repaintRequested = (currentUpdate & RepaintRequest);
 
     [[assume(window != nullptr)]];
     [[assume(cd != nullptr)]];
 
     const bool hasValidSwapChain = (cd->swapchain && windowSize.isValid());
 
-    if (hasValidSwapChain && !rhi->isRecordingFrame()) [[likely]] {
-        rhi->makeThreadLocalNativeContextCurrent();
+    // Begin the frame BEFORE sync — sync is where updatePaintNode() runs and
+    // items may want to do resource updates. Also required for beforeSynchronizing
+    // signals that do graphics work. Matches original Qt 6 ordering.
+    bool gpuStarted = false;
+    if (hasValidSwapChain) [[likely]] {
+        cd->swapchain->setProxyData(scProxyData);
+        const QSize effectiveOutputSize = cd->swapchain->surfacePixelSize();
+
+        if (effectiveOutputSize.isEmpty()) {
+            if (syncRequested) {
+                syncAcknowledgedSerial.store(currentSyncSerial, std::memory_order_release);
+                syncAcknowledgedSerial.notify_all();
+                {
+                    std::lock_guard lock(renderMutex);
+                    renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
+                }
+                renderCondition.notify_one();
+            }
+            return;
+        }
+
+        const QSize previousOutputSize = cd->swapchain->currentPixelSize();
+        if (previousOutputSize != effectiveOutputSize || cd->swapchainJustBecameRenderable) [[unlikely]] {
+            cd->hasActiveSwapchain = cd->swapchain->createOrResize();
+
+            if (!cd->hasActiveSwapchain) [[unlikely]] {
+                if (rhi->isDeviceLost()) {
+                    handleDeviceLoss();
+                } else if (previousOutputSize.isEmpty() && !swRastFallbackDueToSwapchainFailure &&
+                          QSGRhiSupport::instance()->attemptReinitWithSwRastUponFail()) {
+                    swRastFallbackDueToSwapchainFailure = true;
+                    teardownGraphics();
+                }
+                if (syncRequested) {
+                    syncAcknowledgedSerial.store(currentSyncSerial, std::memory_order_release);
+                    syncAcknowledgedSerial.notify_all();
+                    {
+                        std::lock_guard lock(renderMutex);
+                        renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
+                    }
+                    renderCondition.notify_one();
+                }
+                QMetaObject::invokeMethod(window, &QQuickWindow::update, Qt::QueuedConnection);
+                return;
+            }
+
+            cd->swapchainJustBecameRenderable = false;
+            cd->hasRenderableSwapchain = cd->hasActiveSwapchain;
+        }
+
+        if (cd->hasActiveSwapchain) {
+            emit window->beforeFrameBegin();
+            if (!rhi->isRecordingFrame())
+                rhi->makeThreadLocalNativeContextCurrent();
+
+            if (rhi->beginFrame(cd->swapchain) == QRhi::FrameOpSuccess) {
+                gpuStarted = true;
+            } else {
+                if (rhi->isDeviceLost())
+                    handleDeviceLoss();
+                QMetaObject::invokeMethod(window, &QQuickWindow::update, Qt::QueuedConnection);
+                if (syncRequested) {
+                    syncAcknowledgedSerial.store(currentSyncSerial, std::memory_order_release);
+                    syncAcknowledgedSerial.notify_all();
+                    {
+                        std::lock_guard lock(renderMutex);
+                        renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
+                    }
+                    renderCondition.notify_one();
+                }
+                emit window->afterFrameEnd();
+                return;
+            }
+        }
     }
 
     if (syncRequested) [[likely]] {
         sync();
     }
 
-    if (syncRequested && !syncResultedInChanges && !exposeRequested
-        && lastFrameValid && !repaintRequested
-        && !(animatorDriver && animatorDriver->isRunning())) {
-        qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- sync produced no changes, skipping render");
-        {
-            // The mutex is required to pair with condition_variable::wait_for on the
-            // GUI thread. Without it, there is a lost-wakeup race: the GUI thread could
-            // load renderCompletedSerial, find it stale, then be preempted before calling
-            // wait_for — at which point we'd notify_one into the void.
-            std::lock_guard lock(renderMutex);
-            renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
-        }
-        renderCondition.notify_one(); // Only one GUI thread ever waits.
-        return;
+    // Advance render-thread animators after sync so they write into valid nodes.
+    if (animatorDriver->isRunning()) [[unlikely]] {
+        cd->animationController->lock();
+        animatorDriver->advance();
+        cd->animationController->unlock();
+        syncResultedInChanges = true;
     }
 
-    bool gpuStarted = false;
-    if (hasValidSwapChain) [[likely]] {
-        cd->swapchain->setProxyData(scProxyData);
-        const QSize effectiveOutputSize = cd->swapchain->surfacePixelSize();
-
-        if (!effectiveOutputSize.isEmpty()) [[likely]] {
-            const QSize previousOutputSize = cd->swapchain->currentPixelSize();
-            if (previousOutputSize != effectiveOutputSize || cd->swapchainJustBecameRenderable) [[unlikely]] {
-                cd->hasActiveSwapchain = cd->swapchain->createOrResize();
-
-                if (!cd->hasActiveSwapchain) [[unlikely]] {
-                    if (rhi->isDeviceLost()) {
-                        handleDeviceLoss();
-                    } else if (previousOutputSize.isEmpty() && !swRastFallbackDueToSwapchainFailure &&
-                              QSGRhiSupport::instance()->attemptReinitWithSwRastUponFail()) {
-                        swRastFallbackDueToSwapchainFailure = true;
-                        teardownGraphics();
-                    }
-                }
-
-                cd->swapchainJustBecameRenderable = false;
-                cd->hasRenderableSwapchain = cd->hasActiveSwapchain;
-            }
-
-            if (cd->hasActiveSwapchain) {
-                emit window->beforeFrameBegin();
-
-                if (rhi->beginFrame(cd->swapchain) == QRhi::FrameOpSuccess) {
-                    gpuStarted = true;
-                } else {
-                    if (rhi->isDeviceLost())
-                        handleDeviceLoss();
-                    emit window->afterFrameEnd();
-                }
-            }
-        }
-    }
+    // Qt 6 original design: always complete and present a frame — no skip-render guard.
+    // Skipping frames caused animation freezes and was removed from the original codebase.
+    // RepaintRequest may have been set during sync()/updatePaintNode(); clear it now
+    // since we are about to render.
+    pendingUpdate.fetch_and(~RepaintRequest, std::memory_order_relaxed);
 
     if (exposeRequested && !gpuStarted) {
         QMetaObject::invokeMethod(wm, [wm = this->wm, win = this->window]() {
@@ -948,7 +965,8 @@ void QSGRenderThread::run()
 
         if (window) [[likely]] {
             ensureRhi();
-            if (pendingUpdate.load(std::memory_order_relaxed) != 0)
+            if (pendingUpdate.load(std::memory_order_relaxed) != 0
+                    || (animatorDriver && animatorDriver->isRunning()))
                 syncAndRender();
         }
 
