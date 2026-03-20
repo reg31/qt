@@ -309,8 +309,6 @@ public:
     uint64_t currentSyncSerial = 0;
     int pipelinedFramesRemaining = 0;
 
-    // Separate mutex+cv used only for the adaptive render-completion timeout.
-    // The hot-path sync acknowledge uses lock-free atomic::wait instead.
     std::mutex renderMutex;
     std::condition_variable renderCondition;
 
@@ -614,6 +612,14 @@ void QSGRenderThread::sync()
     syncAcknowledgedSerial.store(currentSyncSerial, std::memory_order_release);
     syncAcknowledgedSerial.notify_all();
 
+    if (canSync && animatorDriver->isRunning()) [[unlikely]] {
+        auto *cd = QQuickWindowPrivate::get(window);
+        cd->animationController->lock();
+        const auto animatorUnlock = qScopeGuard([cd]{ cd->animationController->unlock(); });
+        animatorDriver->advance();
+        syncResultedInChanges = true;
+    }
+
     if (canSync) [[likely]]
         sgrc->endSync();
 
@@ -657,9 +663,6 @@ void QSGRenderThread::syncAndRender()
 
     const bool hasValidSwapChain = (cd->swapchain && windowSize.isValid());
 
-    // Begin the frame BEFORE sync — sync is where updatePaintNode() runs and
-    // items may want to do resource updates. Also required for beforeSynchronizing
-    // signals that do graphics work. Matches original Qt 6 ordering.
     bool gpuStarted = false;
     if (hasValidSwapChain) [[likely]] {
         cd->swapchain->setProxyData(scProxyData);
@@ -737,7 +740,6 @@ void QSGRenderThread::syncAndRender()
         sync();
     }
 
-    // Advance render-thread animators after sync so they write into valid nodes.
     if (animatorDriver->isRunning()) [[unlikely]] {
         cd->animationController->lock();
         animatorDriver->advance();
@@ -745,10 +747,6 @@ void QSGRenderThread::syncAndRender()
         syncResultedInChanges = true;
     }
 
-    // Qt 6 original design: always complete and present a frame — no skip-render guard.
-    // Skipping frames caused animation freezes and was removed from the original codebase.
-    // RepaintRequest may have been set during sync()/updatePaintNode(); clear it now
-    // since we are about to render.
     pendingUpdate.fetch_and(~RepaintRequest, std::memory_order_relaxed);
 
     if (exposeRequested && !gpuStarted) {
@@ -790,7 +788,7 @@ void QSGRenderThread::syncAndRender()
         } else {
             lastFrameValid = true;
             if (animatorDriver->isRunning())
-                QMetaObject::invokeMethod(window, &QQuickWindow::requestUpdate, Qt::QueuedConnection);
+                pendingUpdate.fetch_or(RepaintRequest, std::memory_order_relaxed);
             if (!asyncPresent) {
                 std::lock_guard lock(renderMutex);
                 renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
@@ -860,7 +858,6 @@ void QSGRenderThread::ensureRhi()
 
     const QSize &pixelSize = m_lastPixelSize;
 
-    // --- Device init ---
     if (!rhi && !rhiDoomed) {
         auto *rhiSupport = QSGRhiSupport::instance();
         auto rhiResult = rhiSupport->createRhi(window, offscreenSurface, swRastFallbackDueToSwapchainFailure);
@@ -899,7 +896,6 @@ void QSGRenderThread::ensureRhi()
     if (!rhi)
         return;
 
-    // --- Render context init (if RHI was just created but sgrc still uninitialized) ---
     if (!sgrc->rhi() && pixelSize.isValid()) [[unlikely]] {
         rhi->makeThreadLocalNativeContextCurrent();
         QSGDefaultRenderContext::InitParams params;
@@ -910,7 +906,6 @@ void QSGRenderThread::ensureRhi()
         sgrc->initialize(&params);
     }
 
-    // --- Swapchain init ---
     if (!cd->swapchain && window->isExposed()) [[unlikely]] {
         cd->rhi = rhi;
         const auto requestedFormat = window->format();
@@ -1056,13 +1051,6 @@ void QSGThreadedRenderLoop::animationStopped()
     startOrStopAnimationTimer();
 }
 
-// startOrStopAnimationTimer: manages the fallback system timer for the three
-// cases where tying animation ticks to vsync is unsafe:
-//   1. No exposed windows   — render thread sleeps, polishAndSync() never called
-//   2. Multiple exposed windows — both would call advance(), causing double-ticking
-//   3. Unthrottled window (swapInterval==0) — render loop runs unbounded, advance()
-//      would be called thousands of times per second
-// In all other cases (exactly one exposed, throttled window) vsync-coupling wins.
 void QSGThreadedRenderLoop::startOrStopAnimationTimer()
 {
     const bool animationsRunning = m_animation_driver->isRunning();
@@ -1247,8 +1235,6 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
     }
     if (!w->window->handle()) [[unlikely]] window->create();
 
-    // Ensure timer state is recalculated on every exit path, no matter which
-    // branch was taken (new thread, existing thread notified, or early bail).
     const auto timerGuard = qScopeGuard([this]{ startOrStopAnimationTimer(); });
 
     if (!w->thread->isRunning()) {
@@ -1271,15 +1257,8 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
             w->thread->moveToThread(w->thread);
         }
         w->thread->start();
-        w->thread->deferredFirstExpose.store(true, std::memory_order_seq_cst);
-        return;
     } else {
         w->thread->postEvent(WMExposedEvent(w->window));
-        w->thread->deferredFirstExpose.store(true, std::memory_order_seq_cst);
-        if (!w->thread->rhiReady.load(std::memory_order_seq_cst))
-            return;
-        if (!w->thread->deferredFirstExpose.exchange(false, std::memory_order_seq_cst))
-            return;
     }
     polishAndSync(w, true);
 }
@@ -1462,8 +1441,6 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
 
     Q_TRACE(QSG_polishAndSync);
 
-    // Wait for the PREVIOUS sync to be acknowledged before polishing.
-    // Lock-free: uses C++20 atomic::wait — no OS kernel involvement if already done.
     if (w->thread->lastPostedSyncSerial > 0) [[likely]] {
         uint64_t observed = w->thread->syncAcknowledgedSerial.load(std::memory_order_acquire);
         while (observed < w->thread->lastPostedSyncSerial) {
@@ -1533,7 +1510,6 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
             return; // Safe: lastPostedSyncSerial not incremented, no event posted.
         }
 
-        // Commit point: we are posting an event that WILL acknowledge this serial.
         const uint64_t serial = ++w->thread->lastPostedSyncSerial;
         const bool forceRender = w->forceRenderPass || m_animation_driver->isRunning();
         w->thread->postEvent(WMSyncEvent(window, inExpose, forceRender, std::move(scProxyData), serial));
@@ -1546,7 +1522,6 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
                                   QQuickProfiler::SceneGraphPolishAndSyncWait);
         Q_TRACE(QSG_sync_entry);
 
-        // Wait for current sync — lock-free C++20 atomic::wait.
         qCDebug(QSG_LOG_RENDERLOOP, "- waiting for sync");
         uint64_t observed = w->thread->syncAcknowledgedSerial.load(std::memory_order_acquire);
         while (observed < serial) {
@@ -1560,8 +1535,6 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
         Q_QUICK_SG_PROFILE_RECORD(QQuickProfiler::SceneGraphPolishAndSync,
                                   QQuickProfiler::SceneGraphPolishAndSyncSync);
 
-        // Adaptive pipeline: wait briefly for render completion to achieve zero-latency
-        // frames. Falls back to pipelined mode if GPU overruns budget.
         if (!inExpose && supportsAsyncPresent) {
             if (w->thread->pipelinedFramesRemaining > 0) {
                 qCDebug(QSG_LOG_RENDERLOOP, "- pipeline mode (%d frames remaining)",
@@ -1592,9 +1565,6 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
     if (w->updateDuringSync)
         postUpdateRequest(w);
 
-    // Advance GUI-thread animations AFTER the sync+render handshake so the
-    // animation delta reflects actual frame time and requestUpdate() schedules
-    // the next polishAndSync correctly.
     if (m_animation_timer == 0 && m_animation_driver->isRunning()) {
         auto advanceAnimations = [this, window = QPointer(window)] {
             qCDebug(QSG_LOG_RENDERLOOP, "- advancing animations");
