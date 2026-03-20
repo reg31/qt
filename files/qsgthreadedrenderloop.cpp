@@ -314,7 +314,6 @@ public:
 
     std::atomic<uint64_t> syncAcknowledgedSerial{0};
     std::atomic<uint64_t> renderCompletedSerial{0};
-    std::atomic<uint32_t> lastGpuFrameUs{0};
     uint64_t lastPostedSyncSerial = 0;
     uint64_t currentSyncSerial = 0;
     int pipelinedFramesRemaining = RENDER_HYSTERESIS_FRAMES;
@@ -739,9 +738,6 @@ void QSGRenderThread::syncAndRender()
             lastFrameValid = true;
             if (animatorRunning)
                 pendingUpdate |= RepaintRequest;
-            const double gpuTime = cd->swapchain->currentFrameCommandBuffer()->lastCompletedGpuTime();
-            if (gpuTime > 0.0)
-                lastGpuFrameUs.store(static_cast<uint32_t>(gpuTime * 1e6), std::memory_order_relaxed);
             if (!asyncPresent) {
                 {
                     QMutexLocker lock(&mutex);
@@ -1546,11 +1542,8 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
     qCDebug(QSG_LOG_RENDERLOOP, "- lock for sync");
     {
         const float vsyncMs = sg->vsyncIntervalForAnimationDriver(m_animation_driver);
-        const uint32_t lastGpuUs = w->thread->lastGpuFrameUs.load(std::memory_order_relaxed);
         const unsigned long ADAPTIVE_TIMEOUT_MS = static_cast<unsigned long>(
-            lastGpuUs > 0
-                ? qMax(4.0f, lastGpuUs / 1000.0f * 1.1f)
-                : qMax(4.0f, vsyncMs * 0.75f));
+            qMax(4.0f, vsyncMs * 0.75f));
         const bool supportsAsyncPresent =
             QSGRhiSupport::instance()->rhiBackend() != QRhi::OpenGLES2;
 
