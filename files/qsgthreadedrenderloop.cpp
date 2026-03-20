@@ -316,7 +316,7 @@ public:
     std::atomic<uint64_t> renderCompletedSerial{0};
     uint64_t lastPostedSyncSerial = 0;
     uint64_t currentSyncSerial = 0;
-    int pipelinedFramesRemaining = 0;
+    int pipelinedFramesRemaining = RENDER_HYSTERESIS_FRAMES;
     bool syncDoneBeforeEnsure = false;
 
     QSize m_lastPixelSize;
@@ -922,8 +922,6 @@ void QSGRenderThread::run()
 
     if (window) {
         ensureRhiDevice();
-        if (rhiReady.load(std::memory_order_acquire) && window->isExposed())
-            QMetaObject::invokeMethod(window, &QQuickWindow::requestUpdate, Qt::QueuedConnection);
     }
 
     while (active.load(std::memory_order_relaxed)) [[likely]] {
@@ -1260,6 +1258,11 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
     } else {
         w->thread->postEvent(WMExposedEvent(w->window));
         if (!w->thread->rhiReady.load(std::memory_order_acquire)) {
+            QThreadPool::globalInstance()->start([thread = w->thread, win = QPointer(w->window)]() {
+                thread->rhiReady.wait(false, std::memory_order_acquire);
+                if (win)
+                    QMetaObject::invokeMethod(win.data(), &QQuickWindow::requestUpdate, Qt::QueuedConnection);
+            });
             startOrStopAnimationTimer();
             return;
         }
