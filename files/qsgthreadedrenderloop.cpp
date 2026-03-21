@@ -1611,21 +1611,12 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
     Q_TRACE(QSG_animations_entry);
 
     if (m_animation_timer == 0 && m_animation_driver->isRunning()) {
-        const float vsyncMs = sg->vsyncIntervalForAnimationDriver(m_animation_driver);
-        const qint64 frameElapsedMs = timer.elapsed();
-
-        auto advanceAnimations = [this, window = QPointer(window), vsyncMs, frameElapsedMs] {
+        auto advanceAnimations = [this, window = QPointer(window)] {
             qCDebug(QSG_LOG_RENDERLOOP, "- advancing animations");
             m_animation_driver->advance();
             qCDebug(QSG_LOG_RENDERLOOP, "- animations done..");
-            if (window) {
-                const int remaining = static_cast<int>(vsyncMs - frameElapsedMs) - 1;
-                if (remaining > 1)
-                    QTimer::singleShot(remaining, Qt::PreciseTimer, window.data(),
-                                       [window]() { if (window) window->requestUpdate(); });
-                else
-                    window->requestUpdate();
-            }
+            if (window)
+                window->requestUpdate();
             emit timeToIncubate();
         };
 
@@ -1638,7 +1629,14 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
             advanceAnimations();
         }
     } else if (w->updateDuringSync) {
-        postUpdateRequest(w);
+        const float vsyncMs = sg->vsyncIntervalForAnimationDriver(m_animation_driver);
+        const qint64 frameElapsedMs = timer.elapsed();
+        const int remaining = static_cast<int>(vsyncMs - frameElapsedMs) - 1;
+        if (remaining > 1)
+            QTimer::singleShot(remaining, Qt::PreciseTimer, w->window,
+                               [window = QPointer(w->window)]() { if (window) window->requestUpdate(); });
+        else
+            postUpdateRequest(w);
     }
 
     if (profileFrames) {
