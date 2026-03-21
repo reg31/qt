@@ -118,6 +118,7 @@ jobs:
           
       - name: Configure
         run: |
+          set "SCCACHE_RECACHE=true"
           set "CMAKE_C_COMPILER_LAUNCHER=sccache"
           set "CMAKE_CXX_COMPILER_LAUNCHER=sccache"
           set "CC=C:\ProgramData\mingw64\mingw64\bin\x86_64-w64-mingw32-gcc.exe"
