@@ -1296,11 +1296,14 @@ bool QSGThreadedRenderLoop::eventFilter(QObject *watched, QEvent *event)
 
 void QSGThreadedRenderLoop::handleUpdateRequest(QQuickWindow *window)
 {
-    if (!QQuickWindowPrivate::get(window)->updatesEnabled)
-        return;
-    Window *w = windowFor(window);
-    if (w)
-        polishAndSync(w);
+    QPointer<QQuickWindow> safeWindow = window;
+    QMetaObject::invokeMethod(this, [this, safeWindow]() {
+        if (!safeWindow) return;
+        if (!QQuickWindowPrivate::get(safeWindow)->updatesEnabled) return;
+        Window *w = windowFor(safeWindow);
+        if (w)
+            polishAndSync(w);
+    }, Qt::QueuedConnection);
 }
 
 void QSGThreadedRenderLoop::maybeUpdate(QQuickWindow *window)
@@ -1503,8 +1506,8 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
     }
 
     const bool profileFrames = QSG_LOG_TIME_RENDERLOOP().isDebugEnabled();
+    timer.start();
     if (profileFrames) {
-        timer.start();
         qCDebug(QSG_LOG_TIME_RENDERLOOP, "[window %p][gui thread] polishAndSync: start, elapsed since last call: %d ms",
                 window,
                 int(elapsedSinceLastMs));
@@ -1608,12 +1611,21 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
     Q_TRACE(QSG_animations_entry);
 
     if (m_animation_timer == 0 && m_animation_driver->isRunning()) {
-        auto advanceAnimations = [this, window = QPointer(window)] {
+        const float vsyncMs = sg->vsyncIntervalForAnimationDriver(m_animation_driver);
+        const qint64 frameElapsedMs = timer.elapsed();
+
+        auto advanceAnimations = [this, window = QPointer(window), vsyncMs, frameElapsedMs] {
             qCDebug(QSG_LOG_RENDERLOOP, "- advancing animations");
             m_animation_driver->advance();
             qCDebug(QSG_LOG_RENDERLOOP, "- animations done..");
-            if (window)
-                window->requestUpdate();
+            if (window) {
+                const int remaining = static_cast<int>(vsyncMs - frameElapsedMs) - 1;
+                if (remaining > 1)
+                    QTimer::singleShot(remaining, Qt::PreciseTimer, window.data(),
+                                       [window]() { if (window) window->requestUpdate(); });
+                else
+                    window->requestUpdate();
+            }
             emit timeToIncubate();
         };
 
