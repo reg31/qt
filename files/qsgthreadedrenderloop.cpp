@@ -655,10 +655,8 @@ void QSGRenderThread::syncAndRender()
     if (syncRequested && !syncResultedInChanges && !exposeRequested
         && lastFrameValid && !repaintRequested && !animatorRunning) {
         qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- sync produced no changes, skipping render");
-        {
-            QMutexLocker lock(&mutex);
-            renderCompletedSerial.store(currentSyncSerial, std::memory_order_relaxed);
-        }
+        renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
+        renderCompletedSerial.notify_one();
         waitCondition.wakeOne();
         return;
     }
@@ -715,10 +713,8 @@ void QSGRenderThread::syncAndRender()
 
         const bool asyncPresent = rhi->backend() != QRhi::OpenGLES2;
         if (asyncPresent) {
-            {
-                QMutexLocker lock(&mutex);
-                renderCompletedSerial.store(currentSyncSerial, std::memory_order_relaxed);
-            }
+            renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
+            renderCompletedSerial.notify_one();
             waitCondition.wakeOne();
         }
 
@@ -728,10 +724,8 @@ void QSGRenderThread::syncAndRender()
             QMetaObject::invokeMethod(window, &QQuickWindow::update, Qt::QueuedConnection);
             lastFrameValid = false;
             if (!asyncPresent) {
-                {
-                    QMutexLocker lock(&mutex);
-                    renderCompletedSerial.store(currentSyncSerial, std::memory_order_relaxed);
-                }
+                renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
+                renderCompletedSerial.notify_one();
                 waitCondition.wakeOne();
             }
         } else {
@@ -739,10 +733,8 @@ void QSGRenderThread::syncAndRender()
             if (animatorRunning)
                 pendingUpdate |= RepaintRequest;
             if (!asyncPresent) {
-                {
-                    QMutexLocker lock(&mutex);
-                    renderCompletedSerial.store(currentSyncSerial, std::memory_order_relaxed);
-                }
+                renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
+                renderCompletedSerial.notify_one();
                 waitCondition.wakeOne();
             }
         }
@@ -751,10 +743,8 @@ void QSGRenderThread::syncAndRender()
     } else if (gpuStarted) {
         rhi->endFrame(cd->swapchain, QRhi::SkipPresent);
         lastFrameValid = false;
-        {
-            QMutexLocker lock(&mutex);
-            renderCompletedSerial.store(currentSyncSerial, std::memory_order_relaxed);
-        }
+        renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
+        renderCompletedSerial.notify_one();
         waitCondition.wakeOne();
     }
 
@@ -762,10 +752,8 @@ void QSGRenderThread::syncAndRender()
         emit window->afterFrameEnd();
 
     if (!gpuStarted) {
-        {
-            QMutexLocker lock(&mutex);
-            renderCompletedSerial.store(currentSyncSerial, std::memory_order_relaxed);
-        }
+        renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
+        renderCompletedSerial.notify_one();
         waitCondition.wakeOne();
     }
 }
