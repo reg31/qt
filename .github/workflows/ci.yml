@@ -129,7 +129,8 @@ jobs:
           ..\configure.bat -schannel -prefix "%OUTPUT_DIR%" ${{ env.SHARED_FLAGS }} ^
            -- -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s -fno-semantic-interposition"
               -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s -fno-semantic-interposition" ^
-              -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,--gc-sections -Wl,-Bsymbolic-functions"
+              -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,--gc-sections -Wl,-Bsymbolic-functions" ^
+              -DCMAKE_UNITY_BUILD=ON 
 
       - name: Patch build.ninja
         shell: pwsh
