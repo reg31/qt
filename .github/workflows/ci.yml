@@ -315,7 +315,6 @@ jobs:
     runs-on: macos-26
     strategy:
       matrix:
-        arch: [x86_64, arm64]
         build_type: [release]
     steps:
       - name: Checkout Qt
@@ -367,42 +366,15 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgbatchrenderer_p.h -o qtdeclarative/src/quick/scenegraph/coreapi/qsgbatchrenderer_p.h
           echo "Download completed  ..."
 
-      - name: Download prebuilt Qt Host (cross-compile only)
-        if: matrix.arch == 'x86_64'
+      - name: Configure
         run: |
-          mkdir -p qt-macos-host
-          cd qt-macos-host
-          QT_ARCHIVE=qt-macos-release-dev.zip
-          curl -fsSL -o $QT_ARCHIVE https://github.com/reg31/qt/releases/latest/download/$QT_ARCHIVE
-          7z x $QT_ARCHIVE
-
-      - name: Configure (native arm64)
-        if: matrix.arch == 'arm64'
-        run: |
-          OUTPUT_DIR=$(pwd)/qt-macos-${{ matrix.arch }}-release-${{ needs.setup.outputs.qt_branch }}
+          OUTPUT_DIR=$(pwd)/qt-macos-release-${{ needs.setup.outputs.qt_branch }}
           export CMAKE_CXX_COMPILER_LAUNCHER="sccache"
           export CMAKE_C_COMPILER_LAUNCHER="sccache"
           mkdir -p build && cd build
 
           ../configure ${{ env.SHARED_FLAGS }} -securetransport -feature-appstore-compliant -prefix $OUTPUT_DIR \
-          -- -DCMAKE_OSX_ARCHITECTURES="arm64" -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,-dead_strip" \
-            -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp" \
-            -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp" \
-            ${{ env.UNITY_BUILD }}
-            
-          ../configure -list-features
-
-      - name: Configure (cross-compile x86_64)
-        if: matrix.arch == 'x86_64'
-        run: |
-          OUTPUT_DIR=$(pwd)/qt-macos-${{ matrix.arch }}-release-${{ needs.setup.outputs.qt_branch }}
-          HOST_PATH=$(pwd)/qt-macos-host
-          export CMAKE_CXX_COMPILER_LAUNCHER="sccache"
-          export CMAKE_C_COMPILER_LAUNCHER="sccache"
-          mkdir -p build && cd build
-
-          ../configure ${{ env.SHARED_FLAGS }} -securetransport -feature-appstore-compliant -prefix $OUTPUT_DIR -qt-host-path "$HOST_PATH" \
-          -- -DCMAKE_OSX_ARCHITECTURES="x86_64" -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,-dead_strip" \
+          -- -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,-dead_strip" \
             -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp" \
             -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp" \
             ${{ env.UNITY_BUILD }}
@@ -416,76 +388,6 @@ jobs:
           cmake --install . --strip
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: qt-macos-${{ matrix.arch }}
-          path: qt-macos-${{ matrix.arch }}-release-${{ needs.setup.outputs.qt_branch }}
-
-  combine-macos:
-    needs: [setup, build-macos]
-    runs-on: macos-26
-    steps:
-      - name: Download x86_64 build
-        uses: actions/download-artifact@v8
-        with:
-          name: qt-macos-x86_64
-          path: x86_64
-          
-      - name: Download arm64 build
-        uses: actions/download-artifact@v8
-        with:
-          name: qt-macos-arm64
-          path: arm64
-          
-      - name: Verify downloads
-        run: |
-          echo "x86_64 contents:"
-          ls -la x86_64/
-          echo "arm64 contents:"
-          ls -la arm64/
-          
-      - name: Create universal binaries
-        run: |
-          BRANCH="${{ needs.setup.outputs.qt_branch }}"
-          OUTPUT_DIR="qt-macos-universal-release-${BRANCH}"
-          
-          mkdir -p "$OUTPUT_DIR"
-          
-          echo "Copying arm64 base structure..."
-          cp -R arm64/* "$OUTPUT_DIR/"
-          
-          echo "Creating universal binaries..."
-          find arm64 \( -type f -o -type l \) \( -name "*.dylib" -o -name "*.a" -o -perm +111 \) -print0 | while IFS= read -r -d '' arm64file; do
-            relpath="${arm64file#arm64/}"
-            x86file="x86_64/$relpath"
-            outfile="$OUTPUT_DIR/$relpath"
-            
-            if [ -L "$outfile" ]; then
-              continue
-            fi
-            
-            if [ -f "$x86file" ] && [ -f "$arm64file" ]; then
-              if file "$arm64file" | grep -q "Mach-O"; then
-                echo "Creating universal binary: $relpath"
-                lipo -create "$x86file" "$arm64file" -output "$outfile" 2>/dev/null || {
-                  echo "Warning: Failed to create universal binary for $relpath"
-                }
-              fi
-            fi
-          done
-          
-          echo "Universal binary creation complete"
-          
-      - name: Package universal build
-        run: |
-          BRANCH="${{ needs.setup.outputs.qt_branch }}"
-          OUTPUT_NAME="qt-macos-release-${BRANCH}"
-          UNIVERSAL_DIR="qt-macos-universal-release-${BRANCH}"
-          
-          find . -type f -exec chmod +x {} +
-          7z a "${OUTPUT_NAME}.zip" "./${UNIVERSAL_DIR}/"* -x!./${UNIVERSAL_DIR}/share -x!./${UNIVERSAL_DIR}/sbom -x!./${UNIVERSAL_DIR}/doc
-          
-      - name: Upload universal build
         uses: actions/upload-artifact@v7
         with:
           name: qt-macos
@@ -585,9 +487,9 @@ jobs:
           path: qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
 
   release:
-    needs: [setup, build-windows, build-android, combine-macos, build-ios]
+    needs: [setup, build-windows, build-android, build-macos, build-ios]
     runs-on: ubuntu-latest
-    if: ${{ !cancelled() && needs.build-windows.result == 'success' && needs.combine-macos.result == 'success'}}
+    if: ${{ !cancelled() && needs.build-windows.result == 'success' && needs.build-macos.result == 'success'}}
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v8
