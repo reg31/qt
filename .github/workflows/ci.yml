@@ -636,7 +636,7 @@ jobs:
       - name: Package artifacts
         run: |
           OUTPUT_NAME=qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
-          Xcopy .\configFolder\bin\ .\%OUTPUT_NAME%\bin\ /c /i /s /y /r  
+          cp -R ./configFolder/* ./$OUTPUT_NAME/bin/
           find ./$OUTPUT_NAME -type f -exec chmod +x {} +
           7z a $OUTPUT_NAME.zip ./$OUTPUT_NAME/* -x!./$OUTPUT_NAME/share -x!./$OUTPUT_NAME/sbom -x!./$OUTPUT_NAME/doc
           
