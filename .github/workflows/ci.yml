@@ -307,7 +307,7 @@ jobs:
           name: qt-android-${{ matrix.arch }}
           path: ./qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
 
-  build-macos:
+  build-macos-arm64:
     needs: setup
     runs-on: macos-26
     strategy:
@@ -389,7 +389,7 @@ jobs:
           name: qt-macos-${{ matrix.arch }}
           path: qt-macos-${{ matrix.arch }}-release-${{ needs.setup.outputs.qt_branch }}
 
-build-macos:
+  build-macos-x86:
     needs: setup
     runs-on: macos-26-intel
     strategy:
@@ -473,8 +473,8 @@ build-macos:
           name: qt-macos-${{ matrix.arch }}
           path: qt-macos-${{ matrix.arch }}-release-${{ needs.setup.outputs.qt_branch }}
 
-combine-macos:
-    needs: [setup, build-macos]
+  combine-macos:
+    needs: [setup, build-macos-arm64, build-macos-x86]
     runs-on: macos-26
     steps:
       - name: Download x86_64 build
@@ -543,7 +543,7 @@ combine-macos:
           name: qt-macos
           path: qt-macos-release-${{ needs.setup.outputs.qt_branch }}.zip
 
-build-ios:
+  build-ios:
     needs: setup
     runs-on: macos-26
     strategy:
