@@ -223,6 +223,7 @@ jobs:
           }
           [ -n "${QT_BASE_CHERRY_PICK}" ] && apply_changes qtbase ${QT_BASE_CHERRY_PICK}
           [ -n "${QT_DECLARATIVE_CHERRY_PICK}" ] && apply_changes qtdeclarative ${QT_DECLARATIVE_CHERRY_PICK}
+
       - name: Download prebuilt Qt Host
         run: |
           mkdir qt-windows-mingw-release-dev
@@ -245,7 +246,7 @@ jobs:
           cd configFolders
           curl -fsSL -o android_bin.7z https://raw.githubusercontent.com/reg31/qt/main/files/android_bin.7z
           7z x android_bin.7z
-          
+
       - name: Append Qt configuration
         if: matrix.arch == 'armeabi-v7a'
         run: Xcopy .\configFolders\bin\arm\ .\configFolders\bin\ /c /i /s /y /r
@@ -259,6 +260,7 @@ jobs:
           cd .\configFolders\bin
           rmdir /s /q arm
           rmdir /s /q arm64
+
       - name: Experimental library improvement
         shell: bash
         run: |
@@ -299,7 +301,7 @@ jobs:
       - name: Package artifacts
         run: |
           set "OUTPUT_NAME=qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
-          Xcopy .\configFolders\bin\ .\%OUTPUT_NAME%\bin\ /c /i /s /y /r
+          Xcopy .\configFolders\bin\ .\%OUTPUT_NAME%\bin\ /c /i /s /y /r          
           7z a %OUTPUT_NAME%.zip .\%OUTPUT_NAME%\* -x!.\%OUTPUT_NAME%\share -x!.\%OUTPUT_NAME%\sbom -x!.\%OUTPUT_NAME%\doc
           
       - name: Upload build artifact
@@ -308,12 +310,11 @@ jobs:
           name: qt-android-${{ matrix.arch }}
           path: ./qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
 
-  build-macos-arm64:
+  build-macos:
     needs: setup
     runs-on: macos-26
     strategy:
       matrix:
-        arch: [arm64]
         build_type: [release]
     steps:
       - name: Checkout Qt
@@ -354,7 +355,7 @@ jobs:
           }
           [ -n "${QT_BASE_CHERRY_PICK}" ] && apply_changes qtbase ${QT_BASE_CHERRY_PICK}
           [ -n "${QT_DECLARATIVE_CHERRY_PICK}" ] && apply_changes qtdeclarative ${QT_DECLARATIVE_CHERRY_PICK}
-          
+
       - name: Experimental library improvement
         shell: bash
         run: |
@@ -364,19 +365,19 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgbatchrenderer.cpp -o qtdeclarative/src/quick/scenegraph/coreapi/qsgbatchrenderer.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgbatchrenderer_p.h -o qtdeclarative/src/quick/scenegraph/coreapi/qsgbatchrenderer_p.h
           echo "Download completed  ..."
-          
+
       - name: Configure
         run: |
-          OUTPUT_DIR=$(pwd)/qt-macos-${{ matrix.arch }}-release-${{ needs.setup.outputs.qt_branch }}
+          OUTPUT_DIR=$(pwd)/qt-macos-release-${{ needs.setup.outputs.qt_branch }}
           export CMAKE_CXX_COMPILER_LAUNCHER="sccache"
           export CMAKE_C_COMPILER_LAUNCHER="sccache"
           mkdir -p build && cd build
           ../configure ${{ env.SHARED_FLAGS }} -securetransport -feature-appstore-compliant -prefix $OUTPUT_DIR \
-          -- -DCMAKE_OSX_ARCHITECTURES="arm64" -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,-dead_strip" \
+          -- -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,-dead_strip" \
             -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp" \
             -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp" \
             ${{ env.UNITY_BUILD }}
-            
+
           ../configure -list-features
 
       - name: Build
@@ -385,161 +386,13 @@ jobs:
           cmake --build . -j$(sysctl -n hw.ncpu)
           cmake --install . --strip
 
+      - name: Package artifacts
+        run: |
+          OUTPUT_NAME=qt-macos-release-${{ needs.setup.outputs.qt_branch }}
+          find ./$OUTPUT_NAME -type f -exec chmod +x {} +
+          7z a $OUTPUT_NAME.zip ./$OUTPUT_NAME/* -x!./$OUTPUT_NAME/share -x!./$OUTPUT_NAME/sbom -x!./$OUTPUT_NAME/doc
+
       - name: Upload build artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: qt-macos-${{ matrix.arch }}
-          path: qt-macos-${{ matrix.arch }}-release-${{ needs.setup.outputs.qt_branch }}
-
-  build-macos-x86:
-    needs: setup
-    runs-on: macos-26-intel
-    strategy:
-      matrix:
-        arch: [x86_64]
-        build_type: [release]
-    steps:
-      - name: Checkout Qt
-        uses: actions/checkout@v6
-        with:
-          repository: qt/qt5
-          ref: ${{ needs.setup.outputs.qt_branch }}
-          fetch-depth: 1
-          submodules: false
-
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.9
-
-      - name: Setup lld
-        run: brew install lld
-
-      - name: Initialize Qt submodules
-        run: perl init-repository ${{ env.INIT_FLAGS }}
-
-      - name: Apply QT cherry picks
-        if: (env.QT_BASE_CHERRY_PICK != '' || env.QT_DECLARATIVE_CHERRY_PICK != '') && env.APPLY_CHERRY_PICK != 'false'
-        shell: bash
-        run: |
-          apply_changes() {
-            local repo=$1
-            shift
-            local workspace=$(echo "${{ github.workspace }}" | sed 's/\\/\//g')
-            for change in "$@"; do
-              cd "$workspace/$repo"
-              commit=$(curl -sf \
-                "https://codereview.qt-project.org/changes/qt%2F${repo}~${change}/revisions/current/commit" \
-                | tail -n +2 \
-                | jq -r '.commit')
-              [ -z "$commit" ] && { echo "::error::Change $change not found in $repo"; exit 1; }
-              git fetch https://codereview.qt-project.org/qt/$repo "$commit" || exit 1
-              git cherry-pick --no-commit FETCH_HEAD || { echo "::error::Cherry-pick failed for $change"; git cherry-pick --abort; exit 1; }
-            done
-          }
-          [ -n "${QT_BASE_CHERRY_PICK}" ] && apply_changes qtbase ${QT_BASE_CHERRY_PICK}
-          [ -n "${QT_DECLARATIVE_CHERRY_PICK}" ] && apply_changes qtdeclarative ${QT_DECLARATIVE_CHERRY_PICK}
-          
-      - name: Experimental library improvement
-        shell: bash
-        run: |
-          set -e
-          echo "Downloading experimental changes  ..."
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgthreadedrenderloop.cpp -o qtdeclarative/src/quick/scenegraph/qsgthreadedrenderloop.cpp
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgbatchrenderer.cpp -o qtdeclarative/src/quick/scenegraph/coreapi/qsgbatchrenderer.cpp
-          curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgbatchrenderer_p.h -o qtdeclarative/src/quick/scenegraph/coreapi/qsgbatchrenderer_p.h
-          echo "Download completed  ..."
-            
-      - name: Configure
-        run: |
-          OUTPUT_DIR=$(pwd)/qt-macos-${{ matrix.arch }}-release-${{ needs.setup.outputs.qt_branch }}
-          HOST_PATH=$(pwd)/qt-macos-host
-          export CMAKE_CXX_COMPILER_LAUNCHER="sccache"
-          export CMAKE_C_COMPILER_LAUNCHER="sccache"
-          mkdir -p build && cd build
-          ../configure ${{ env.SHARED_FLAGS }} -securetransport -feature-appstore-compliant -prefix $OUTPUT_DIR \
-          -- -DCMAKE_OSX_ARCHITECTURES="x86_64" -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,-dead_strip" \
-            -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp" \
-            -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp" \
-            ${{ env.UNITY_BUILD }}
-            
-          ../configure -list-features
-          
-      - name: Build
-        run: |
-          cd build
-          cmake --build . -j$(sysctl -n hw.ncpu)
-          cmake --install . --strip
-          
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: qt-macos-${{ matrix.arch }}
-          path: qt-macos-${{ matrix.arch }}-release-${{ needs.setup.outputs.qt_branch }}
-
-  combine-macos:
-    needs: [setup, build-macos-arm64, build-macos-x86]
-    runs-on: macos-26
-    steps:
-      - name: Download x86_64 build
-        uses: actions/download-artifact@v8
-        with:
-          name: qt-macos-x86_64
-          path: x86_64
-          
-      - name: Download arm64 build
-        uses: actions/download-artifact@v8
-        with:
-          name: qt-macos-arm64
-          path: arm64
-          
-      - name: Verify downloads
-        run: |
-          echo "x86_64 contents:"
-          ls -la x86_64/
-          echo "arm64 contents:"
-          ls -la arm64/
-          
-      - name: Create universal binaries
-        run: |
-          BRANCH="${{ needs.setup.outputs.qt_branch }}"
-          OUTPUT_DIR="qt-macos-universal-release-${BRANCH}"
-
-          mkdir -p "$OUTPUT_DIR"
-
-          cp -R arm64/* "$OUTPUT_DIR/"
-
-          find arm64 -type f -print0 | while IFS= read -r -d '' arm64file; do
-            relpath="${arm64file#arm64/}"
-            x86file="x86_64/$relpath"
-            outfile="$OUTPUT_DIR/$relpath"
-
-            if [ -f "$x86file" ] && file "$arm64file" | grep -q "Mach-O"; then
-              lipo -create "$x86file" "$arm64file" -output "$outfile" 2>/dev/null || {
-                echo "Warning: Failed to create universal binary for $relpath"
-              }
-            fi
-          done
-
-      - name: Patch config files for universal
-        run: |
-          BRANCH="${{ needs.setup.outputs.qt_branch }}"
-          OUTPUT_DIR="qt-macos-universal-release-${BRANCH}"
-
-          find "$OUTPUT_DIR" -name "*.cmake" -type f -exec \
-            sed -i '' 's/CMAKE_OSX_ARCHITECTURES "arm64"/CMAKE_OSX_ARCHITECTURES "arm64;x86_64"/g' {} +
-
-          find "$OUTPUT_DIR" \( -name "*.conf" -o -name "*.pri" \) | xargs grep -l "QMAKE_APPLE_DEVICE_ARCHS" | xargs \
-            sed -i '' 's/QMAKE_APPLE_DEVICE_ARCHS = arm64/QMAKE_APPLE_DEVICE_ARCHS = arm64 x86_64/g'
-
-      - name: Package universal build
-        run: |
-          BRANCH="${{ needs.setup.outputs.qt_branch }}"
-          OUTPUT_NAME="qt-macos-release-${BRANCH}"
-          UNIVERSAL_DIR="qt-macos-universal-release-${BRANCH}"
-
-          find "./${UNIVERSAL_DIR}" -type f -exec chmod +x {} +
-          7z a "${OUTPUT_NAME}.zip" "./${UNIVERSAL_DIR}/"* -x!./${UNIVERSAL_DIR}/share -x!./${UNIVERSAL_DIR}/sbom -x!./${UNIVERSAL_DIR}/doc
-          
-      - name: Upload universal build
         uses: actions/upload-artifact@v7
         with:
           name: qt-macos
@@ -597,13 +450,6 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgbatchrenderer.cpp -o qtdeclarative/src/quick/scenegraph/coreapi/qsgbatchrenderer.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgbatchrenderer_p.h -o qtdeclarative/src/quick/scenegraph/coreapi/qsgbatchrenderer_p.h
           echo "Download completed  ..."
-
-      - name: Extract config folder
-        run: |
-          mkdir configFolder
-          cd configFolder
-          curl -fsSL -o ios_bin.7z https://raw.githubusercontent.com/reg31/qt/main/files/ios_bin.7z
-          7z x ios_bin.7z
       
       - name: Download prebuilt Qt Host
         run: |
@@ -636,7 +482,6 @@ jobs:
       - name: Package artifacts
         run: |
           OUTPUT_NAME=qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
-          cp -R ./configFolder/* ./$OUTPUT_NAME/bin/
           find ./$OUTPUT_NAME -type f -exec chmod +x {} +
           7z a $OUTPUT_NAME.zip ./$OUTPUT_NAME/* -x!./$OUTPUT_NAME/share -x!./$OUTPUT_NAME/sbom -x!./$OUTPUT_NAME/doc
           
@@ -647,9 +492,9 @@ jobs:
           path: qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
 
   release:
-    needs: [setup, build-windows, build-android, combine-macos, build-ios]
+    needs: [setup, build-windows, build-android, build-macos, build-ios]
     runs-on: ubuntu-latest
-    if: ${{ !cancelled() && needs.build-windows.result == 'success' && needs.combine-macos.result == 'success'}}
+    if: ${{ !cancelled() && needs.build-windows.result == 'success' && needs.build-macos.result == 'success'}}
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v8
