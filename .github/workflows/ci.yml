@@ -245,6 +245,7 @@ jobs:
           cd configFolders
           curl -fsSL -o android_bin.7z https://raw.githubusercontent.com/reg31/qt/main/files/android_bin.7z
           7z x android_bin.7z
+          
       - name: Append Qt configuration
         if: matrix.arch == 'armeabi-v7a'
         run: Xcopy .\configFolders\bin\arm\ .\configFolders\bin\ /c /i /s /y /r
@@ -298,7 +299,7 @@ jobs:
       - name: Package artifacts
         run: |
           set "OUTPUT_NAME=qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
-          Xcopy .\configFolders\bin\ .\%OUTPUT_NAME%\bin\ /c /i /s /y /r          
+          Xcopy .\configFolders\bin\ .\%OUTPUT_NAME%\bin\ /c /i /s /y /r
           7z a %OUTPUT_NAME%.zip .\%OUTPUT_NAME%\* -x!.\%OUTPUT_NAME%\share -x!.\%OUTPUT_NAME%\sbom -x!.\%OUTPUT_NAME%\doc
           
       - name: Upload build artifact
@@ -383,6 +384,7 @@ jobs:
           cd build
           cmake --build . -j$(sysctl -n hw.ncpu)
           cmake --install . --strip
+
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
         with:
@@ -516,7 +518,18 @@ jobs:
               }
             fi
           done
-          
+
+      - name: Patch config files for universal
+        run: |
+          BRANCH="${{ needs.setup.outputs.qt_branch }}"
+          OUTPUT_DIR="qt-macos-universal-release-${BRANCH}"
+
+          find "$OUTPUT_DIR" -name "*.cmake" -type f -exec \
+            sed -i '' 's/CMAKE_OSX_ARCHITECTURES "arm64"/CMAKE_OSX_ARCHITECTURES "arm64;x86_64"/g' {} +
+
+          find "$OUTPUT_DIR" \( -name "*.conf" -o -name "*.pri" \) | xargs grep -l "QMAKE_APPLE_DEVICE_ARCHS" | xargs \
+            sed -i '' 's/QMAKE_APPLE_DEVICE_ARCHS = arm64/QMAKE_APPLE_DEVICE_ARCHS = arm64 x86_64/g'
+
       - name: Package universal build
         run: |
           BRANCH="${{ needs.setup.outputs.qt_branch }}"
@@ -574,6 +587,7 @@ jobs:
           }
           [ -n "${QT_BASE_CHERRY_PICK}" ] && apply_changes qtbase ${QT_BASE_CHERRY_PICK}
           [ -n "${QT_DECLARATIVE_CHERRY_PICK}" ] && apply_changes qtdeclarative ${QT_DECLARATIVE_CHERRY_PICK}
+
       - name: Experimental library improvement
         shell: bash
         run: |
@@ -583,6 +597,13 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgbatchrenderer.cpp -o qtdeclarative/src/quick/scenegraph/coreapi/qsgbatchrenderer.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgbatchrenderer_p.h -o qtdeclarative/src/quick/scenegraph/coreapi/qsgbatchrenderer_p.h
           echo "Download completed  ..."
+
+      - name: Extract config folder
+        run: |
+          mkdir configFolder
+          cd configFolder
+          curl -fsSL -o android_bin.7z https://raw.githubusercontent.com/reg31/qt/main/files/ios_bin.7z
+          7z x ios_bin.7z
       
       - name: Download prebuilt Qt Host
         run: |
@@ -591,6 +612,7 @@ jobs:
           QT_ARCHIVE=qt-macos-release-dev.zip
           curl -fsSL -o $QT_ARCHIVE https://github.com/reg31/qt/releases/latest/download/$QT_ARCHIVE
           7z x $QT_ARCHIVE
+
       - name: Configure and build for iOS
         run: | 
           OUTPUT_DIR=$(pwd)/qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
@@ -614,6 +636,7 @@ jobs:
       - name: Package artifacts
         run: |
           OUTPUT_NAME=qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
+          Xcopy .\configFolder\bin\ .\%OUTPUT_NAME%\bin\ /c /i /s /y /r  
           find ./$OUTPUT_NAME -type f -exec chmod +x {} +
           7z a $OUTPUT_NAME.zip ./$OUTPUT_NAME/* -x!./$OUTPUT_NAME/share -x!./$OUTPUT_NAME/sbom -x!./$OUTPUT_NAME/doc
           
