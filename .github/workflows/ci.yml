@@ -543,7 +543,7 @@ combine-macos:
           name: qt-macos
           path: qt-macos-release-${{ needs.setup.outputs.qt_branch }}.zip
 
-  build-ios:
+build-ios:
     needs: setup
     runs-on: macos-26
     strategy:
