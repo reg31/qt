@@ -500,41 +500,30 @@ jobs:
         run: |
           BRANCH="${{ needs.setup.outputs.qt_branch }}"
           OUTPUT_DIR="qt-macos-universal-release-${BRANCH}"
-          
+
           mkdir -p "$OUTPUT_DIR"
-          
-          echo "Copying arm64 base structure..."
+
           cp -R arm64/* "$OUTPUT_DIR/"
-          
-          echo "Creating universal binaries..."
-          find arm64 \( -type f -o -type l \) \( -name "*.dylib" -o -name "*.a" -o -perm +111 \) -print0 | while IFS= read -r -d '' arm64file; do
+
+          find arm64 -type f -print0 | while IFS= read -r -d '' arm64file; do
             relpath="${arm64file#arm64/}"
             x86file="x86_64/$relpath"
             outfile="$OUTPUT_DIR/$relpath"
-            
-            if [ -L "$outfile" ]; then
-              continue
-            fi
-            
-            if [ -f "$x86file" ] && [ -f "$arm64file" ]; then
-              if file "$arm64file" | grep -q "Mach-O"; then
-                echo "Creating universal binary: $relpath"
-                lipo -create "$x86file" "$arm64file" -output "$outfile" 2>/dev/null || {
-                  echo "Warning: Failed to create universal binary for $relpath"
-                }
-              fi
+
+            if [ -f "$x86file" ] && file "$arm64file" | grep -q "Mach-O"; then
+              lipo -create "$x86file" "$arm64file" -output "$outfile" 2>/dev/null || {
+                echo "Warning: Failed to create universal binary for $relpath"
+              }
             fi
           done
-          
-          echo "Universal binary creation complete"
           
       - name: Package universal build
         run: |
           BRANCH="${{ needs.setup.outputs.qt_branch }}"
           OUTPUT_NAME="qt-macos-release-${BRANCH}"
           UNIVERSAL_DIR="qt-macos-universal-release-${BRANCH}"
-          
-          find . -type f -exec chmod +x {} +
+
+          find "./${UNIVERSAL_DIR}" -type f -exec chmod +x {} +
           7z a "${OUTPUT_NAME}.zip" "./${UNIVERSAL_DIR}/"* -x!./${UNIVERSAL_DIR}/share -x!./${UNIVERSAL_DIR}/sbom -x!./${UNIVERSAL_DIR}/doc
           
       - name: Upload universal build
