@@ -446,7 +446,6 @@ build-macos:
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgbatchrenderer_p.h -o qtdeclarative/src/quick/scenegraph/coreapi/qsgbatchrenderer_p.h
           echo "Download completed  ..."
             
-          ../configure -list-features
       - name: Configure
         run: |
           OUTPUT_DIR=$(pwd)/qt-macos-${{ matrix.arch }}-release-${{ needs.setup.outputs.qt_branch }}
@@ -461,18 +460,20 @@ build-macos:
             ${{ env.UNITY_BUILD }}
             
           ../configure -list-features
+          
       - name: Build
         run: |
           cd build
           cmake --build . -j$(sysctl -n hw.ncpu)
           cmake --install . --strip
+          
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
         with:
           name: qt-macos-${{ matrix.arch }}
           path: qt-macos-${{ matrix.arch }}-release-${{ needs.setup.outputs.qt_branch }}
-          
-  combine-macos:
+
+combine-macos:
     needs: [setup, build-macos]
     runs-on: macos-26
     steps:
