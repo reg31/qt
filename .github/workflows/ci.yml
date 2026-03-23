@@ -602,7 +602,7 @@ jobs:
         run: |
           mkdir configFolder
           cd configFolder
-          curl -fsSL -o android_bin.7z https://raw.githubusercontent.com/reg31/qt/main/files/ios_bin.7z
+          curl -fsSL -o ios_bin.7z https://raw.githubusercontent.com/reg31/qt/main/files/ios_bin.7z
           7z x ios_bin.7z
       
       - name: Download prebuilt Qt Host
