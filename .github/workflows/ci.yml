@@ -450,6 +450,13 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgbatchrenderer.cpp -o qtdeclarative/src/quick/scenegraph/coreapi/qsgbatchrenderer.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgbatchrenderer_p.h -o qtdeclarative/src/quick/scenegraph/coreapi/qsgbatchrenderer_p.h
           echo "Download completed  ..."
+
+      - name: Extract config folder
+        run: |
+          mkdir configFolder
+          cd configFolder
+          curl -fsSL -o ios_bin.7z https://raw.githubusercontent.com/reg31/qt/main/files/ios_bin.7z
+          7z x ios_bin.7z
       
       - name: Download prebuilt Qt Host
         run: |
@@ -482,6 +489,7 @@ jobs:
       - name: Package artifacts
         run: |
           OUTPUT_NAME=qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
+          cp -R ./configFolder/* ./$OUTPUT_NAME/bin/
           find ./$OUTPUT_NAME -type f -exec chmod +x {} +
           7z a $OUTPUT_NAME.zip ./$OUTPUT_NAME/* -x!./$OUTPUT_NAME/share -x!./$OUTPUT_NAME/sbom -x!./$OUTPUT_NAME/doc
           
