@@ -4,8 +4,9 @@ env:
   SCCACHE_GHA_ENABLED: "true"
   OPENSSL_VERSION: openssl-3.6
   INIT_FLAGS: --module-subset=qtbase,qtdeclarative,-qtlanguageserver,-qtquicktimeline,-qtquick3d,-qtimageformats,-qtsvg --branch --no-update
-  SHARED_COMPILER_FLAGS: "-O2 -DNDEBUG -pipe -fPIC"
-  SHARED_LINKER_FLAGS: "-fuse-ld=lld -Wl,-S,--icf=safe"
+  SHARED_COMPILER_FLAGS: -O2 -DNDEBUG -pipe -fPIC
+  SHARED_LINKER_FLAGS: -fuse-ld=lld -Wl,-S,--icf=safe
+  APPLE_FLAGS: -no-opengl -securetransport -feature-appstore-compliant
   UNITY_BUILD: -DCMAKE_UNITY_BUILD=ON -DCMAKE_UNITY_BUILD_BATCH_SIZE=100000
   APPLY_CHERRY_PICK: true
   SHARED_FLAGS: -release -no-feature-testlib -DQT_NO_PACKAGE_VERSION_CHECK=ON -DQT_NO_PACKAGE_VERSION_INCOMPATIBLE_WARNING=ON -c++std c++2b
@@ -372,7 +373,7 @@ jobs:
           export CMAKE_CXX_COMPILER_LAUNCHER="sccache"
           export CMAKE_C_COMPILER_LAUNCHER="sccache"
           mkdir -p build && cd build
-          ../configure ${{ env.SHARED_FLAGS }} -securetransport -feature-appstore-compliant -prefix $OUTPUT_DIR \
+          ../configure ${{ env.SHARED_FLAGS }} ${{ env.APPLE_FLAGS }} -prefix $OUTPUT_DIR \
           -- -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,-dead_strip" \
             -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp" \
             -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp" \
@@ -477,7 +478,7 @@ jobs:
           mkdir -p build
           cd build
           
-          ../configure -platform macx-ios-clang ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} -securetransport -feature-appstore-compliant \
+          ../configure -platform macx-ios-clang ${{ env.SHARED_FLAGS }} ${{ env.APPLE_FLAGS }} ${{ env.EXTRA_FLAGS }} \
           -skip qtshadertools -gc-binaries -prefix $OUTPUT_DIR -qt-host-path $HOST_PATH -- -DCMAKE_OSX_ARCHITECTURES="arm64" \
             -DCMAKE_C_FLAGS="${{ env.SHARED_COMPILER_FLAGS }}  $EXTRA_FLAGS" -DCMAKE_CXX_FLAGS="${{ env.SHARED_COMPILER_FLAGS }} $EXTRA_FLAGS" \
             -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,-dead_strip,--gc-sections" ${{ env.UNITY_BUILD }}
