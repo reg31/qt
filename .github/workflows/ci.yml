@@ -4,9 +4,8 @@ env:
   SCCACHE_GHA_ENABLED: "true"
   OPENSSL_VERSION: openssl-3.6
   INIT_FLAGS: --module-subset=qtbase,qtdeclarative,-qtlanguageserver,-qtquicktimeline,-qtquick3d,-qtimageformats,-qtsvg --branch --no-update
-  SHARED_COMPILER_FLAGS: -O2 -DNDEBUG -pipe -fPIC
-  APPLE_FLAGS: -securetransport -feature-appstore-compliant
-  SHARED_LINKER_FLAGS: -fuse-ld=lld -Wl,-S,--icf=safe
+  SHARED_COMPILER_FLAGS: "-O2 -DNDEBUG -pipe -fPIC"
+  SHARED_LINKER_FLAGS: "-fuse-ld=lld -Wl,-S,--icf=safe"
   UNITY_BUILD: -DCMAKE_UNITY_BUILD=ON -DCMAKE_UNITY_BUILD_BATCH_SIZE=100000
   APPLY_CHERRY_PICK: true
   SHARED_FLAGS: -release -no-feature-testlib -DQT_NO_PACKAGE_VERSION_CHECK=ON -DQT_NO_PACKAGE_VERSION_INCOMPATIBLE_WARNING=ON -c++std c++2b
@@ -373,7 +372,7 @@ jobs:
           export CMAKE_CXX_COMPILER_LAUNCHER="sccache"
           export CMAKE_C_COMPILER_LAUNCHER="sccache"
           mkdir -p build && cd build
-          ../configure ${{ env.SHARED_FLAGS }} ${{ env.APPLE_FLAGS }} -no-framework -prefix $OUTPUT_DIR \
+          ../configure ${{ env.SHARED_FLAGS }} -securetransport -feature-appstore-compliant -prefix $OUTPUT_DIR \
           -- -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,-dead_strip" \
             -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp" \
             -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp" \
@@ -390,14 +389,16 @@ jobs:
       - name: Package artifacts
         run: |
           OUTPUT_NAME=qt-macos-release-${{ needs.setup.outputs.qt_branch }}
-          find ./$OUTPUT_NAME -type f -exec chmod +x {} +
-          7z a $OUTPUT_NAME.zip ./$OUTPUT_NAME/* -x!./$OUTPUT_NAME/share -x!./$OUTPUT_NAME/sbom -x!./$OUTPUT_NAME/doc
+          tar --exclude="./$OUTPUT_NAME/share" \
+              --exclude="./$OUTPUT_NAME/sbom" \
+              --exclude="./$OUTPUT_NAME/doc" \
+              -czf $OUTPUT_NAME.tar.gz ./$OUTPUT_NAME
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
         with:
           name: qt-macos
-          path: qt-macos-release-${{ needs.setup.outputs.qt_branch }}.zip
+          path: qt-macos-release-${{ needs.setup.outputs.qt_branch }}.tar.gz
 
   build-ios:
     needs: setup
@@ -463,9 +464,9 @@ jobs:
         run: |
           mkdir -p qt-macos-release-dev
           cd qt-macos-release-dev
-          QT_ARCHIVE=qt-macos-release-dev.zip
+          QT_ARCHIVE=qt-macos-release-dev.tar.gz
           curl -fsSL -o $QT_ARCHIVE https://github.com/reg31/qt/releases/latest/download/$QT_ARCHIVE
-          7z x $QT_ARCHIVE
+          tar -xzf $QT_ARCHIVE --strip-components=1
 
       - name: Configure and build for iOS
         run: | 
@@ -477,7 +478,7 @@ jobs:
           mkdir -p build
           cd build
           
-          ../configure -platform macx-ios-clang ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} ${{ env.APPLE_FLAGS }} \
+          ../configure -platform macx-ios-clang ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} -securetransport -feature-appstore-compliant \
           -skip qtshadertools -gc-binaries -prefix $OUTPUT_DIR -qt-host-path $HOST_PATH -- -DCMAKE_OSX_ARCHITECTURES="arm64" \
             -DCMAKE_C_FLAGS="${{ env.SHARED_COMPILER_FLAGS }}  $EXTRA_FLAGS" -DCMAKE_CXX_FLAGS="${{ env.SHARED_COMPILER_FLAGS }} $EXTRA_FLAGS" \
             -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,-dead_strip,--gc-sections" ${{ env.UNITY_BUILD }}
@@ -490,15 +491,17 @@ jobs:
       - name: Package artifacts
         run: |
           OUTPUT_NAME=qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
-          cp -R ./configFolder/* ./$OUTPUT_NAME/bin/
-          find ./$OUTPUT_NAME -type f -exec chmod +x {} +
-          7z a $OUTPUT_NAME.zip ./$OUTPUT_NAME/* -x!./$OUTPUT_NAME/share -x!./$OUTPUT_NAME/sbom -x!./$OUTPUT_NAME/doc
-          
+          cp -Rn ./configFolder/bin/ ./$OUTPUT_NAME/bin/
+          tar --exclude="./$OUTPUT_NAME/share" \
+              --exclude="./$OUTPUT_NAME/sbom" \
+              --exclude="./$OUTPUT_NAME/doc" \
+              -czf $OUTPUT_NAME.tar.gz ./$OUTPUT_NAME
+
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
         with:
           name: qt-ios
-          path: qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
+          path: qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.tar.gz
 
   release:
     needs: [setup, build-windows, build-android, build-macos, build-ios]
@@ -527,8 +530,8 @@ jobs:
             qt-windows-mingw/*.zip
             qt-android-armeabi-v7a/*.zip
             qt-android-arm64-v8a/*.zip
-            qt-macos/*.zip
-            qt-ios/*.zip
+            qt-macos/*.tar.gz
+            qt-ios/*.tar.gz
           
       - name: Cleanup repository
         uses: dev-drprasad/delete-older-releases@v0.3.4
