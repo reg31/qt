@@ -19,7 +19,7 @@ env:
     -no-feature-textmarkdownreader -no-feature-textmarkdownwriter -no-feature-movie -no-feature-undocommand -no-feature-concatenatetablesproxymodel -no-cups
     -no-feature-undogroup -no-feature-ctf -no-feature-widgets -no-feature-imageformat_xbm -no-feature-sortfilterproxymodel -no-feature-filesystemwatcher
     -nomake examples -nomake tests -nomake benchmarks -nomake manual-tests -nomake minimal-static-tests -no-feature-sql -no-feature-gssapi -no-feature-accessibility
-    -no-feature-graphicsframecapture -DFEATURE_no_direct_exte_access=ON
+    -no-feature-graphicsframecapture -DFEATURE_no_direct_extern_access=ON
   EXTRA_FLAGS: -no-feature-qml-network -no-feature-qml-ssl -no-feature-quickcontrols2-fusion
   QT_BASE_CHERRY_PICK: 524178 680264 680265 712956 713974
   QT_DECLARATIVE_CHERRY_PICK: 622692 695153 663127
@@ -491,7 +491,7 @@ jobs:
       - name: Package artifacts
         run: |
           OUTPUT_NAME=qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
-          cp -R ./configFolder/bin/ ./$OUTPUT_NAME/bin/
+          cp -Rn ./configFolder/bin/ ./$OUTPUT_NAME/bin/
           tar --exclude="./$OUTPUT_NAME/share" \
               --exclude="./$OUTPUT_NAME/sbom" \
               --exclude="./$OUTPUT_NAME/doc" \
