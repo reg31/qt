@@ -389,16 +389,14 @@ jobs:
       - name: Package artifacts
         run: |
           OUTPUT_NAME=qt-macos-release-${{ needs.setup.outputs.qt_branch }}
-          tar --exclude="./$OUTPUT_NAME/share" \
-              --exclude="./$OUTPUT_NAME/sbom" \
-              --exclude="./$OUTPUT_NAME/doc" \
-              -czf $OUTPUT_NAME.tar.gz ./$OUTPUT_NAME
+          find ./$OUTPUT_NAME -type f -exec chmod +x {} +
+          7z a $OUTPUT_NAME.zip ./$OUTPUT_NAME/* -x!./$OUTPUT_NAME/share -x!./$OUTPUT_NAME/sbom -x!./$OUTPUT_NAME/doc
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
         with:
           name: qt-macos
-          path: qt-macos-release-${{ needs.setup.outputs.qt_branch }}.tar.gz
+          path: qt-macos-release-${{ needs.setup.outputs.qt_branch }}.zip
 
   build-ios:
     needs: setup
@@ -464,9 +462,9 @@ jobs:
         run: |
           mkdir -p qt-macos-release-dev
           cd qt-macos-release-dev
-          QT_ARCHIVE=qt-macos-release-dev.tar.gz
+          QT_ARCHIVE=qt-macos-release-dev.zip
           curl -fsSL -o $QT_ARCHIVE https://github.com/reg31/qt/releases/latest/download/$QT_ARCHIVE
-          tar -xzf $QT_ARCHIVE --strip-components=1
+          7z x $QT_ARCHIVE
 
       - name: Configure and build for iOS
         run: | 
@@ -491,17 +489,15 @@ jobs:
       - name: Package artifacts
         run: |
           OUTPUT_NAME=qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
-          cp -Rn ./configFolder/bin/ ./$OUTPUT_NAME/bin/
-          tar --exclude="./$OUTPUT_NAME/share" \
-              --exclude="./$OUTPUT_NAME/sbom" \
-              --exclude="./$OUTPUT_NAME/doc" \
-              -czf $OUTPUT_NAME.tar.gz ./$OUTPUT_NAME
-
+          cp -R ./configFolder/* ./$OUTPUT_NAME/bin/
+          find ./$OUTPUT_NAME -type f -exec chmod +x {} +
+          7z a $OUTPUT_NAME.zip ./$OUTPUT_NAME/* -x!./$OUTPUT_NAME/share -x!./$OUTPUT_NAME/sbom -x!./$OUTPUT_NAME/doc
+          
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
         with:
           name: qt-ios
-          path: qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.tar.gz
+          path: qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
 
   release:
     needs: [setup, build-windows, build-android, build-macos, build-ios]
@@ -530,8 +526,8 @@ jobs:
             qt-windows-mingw/*.zip
             qt-android-armeabi-v7a/*.zip
             qt-android-arm64-v8a/*.zip
-            qt-macos/*.tar.gz
-            qt-ios/*.tar.gz
+            qt-macos/*.zip
+            qt-ios/*.zip
           
       - name: Cleanup repository
         uses: dev-drprasad/delete-older-releases@v0.3.4
