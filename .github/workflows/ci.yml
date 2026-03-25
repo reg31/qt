@@ -5,7 +5,7 @@ env:
   OPENSSL_VERSION: openssl-3.6
   INIT_FLAGS: --module-subset=qtbase,qtdeclarative,-qtlanguageserver,-qtquicktimeline,-qtquick3d,-qtimageformats,-qtsvg --branch --no-update
   SHARED_COMPILER_FLAGS: -O2 -DNDEBUG -pipe -fPIC
-  APPLE_FLAGS: -no-framework -securetransport -feature-appstore-compliant
+  APPLE_FLAGS: -securetransport -feature-appstore-compliant
   SHARED_LINKER_FLAGS: -fuse-ld=lld -Wl,-S,--icf=safe
   UNITY_BUILD: -DCMAKE_UNITY_BUILD=ON -DCMAKE_UNITY_BUILD_BATCH_SIZE=100000
   APPLY_CHERRY_PICK: true
@@ -373,7 +373,7 @@ jobs:
           export CMAKE_CXX_COMPILER_LAUNCHER="sccache"
           export CMAKE_C_COMPILER_LAUNCHER="sccache"
           mkdir -p build && cd build
-          ../configure ${{ env.SHARED_FLAGS }} ${{ env.APPLE_FLAGS }} -prefix $OUTPUT_DIR \
+          ../configure ${{ env.SHARED_FLAGS }} ${{ env.APPLE_FLAGS }} -no-framework -prefix $OUTPUT_DIR \
           -- -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,-dead_strip" \
             -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp" \
             -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp" \
