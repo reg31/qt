@@ -100,10 +100,12 @@ public:
     WMTryReleaseEvent(QQuickWindow *win, bool destroy, bool needsFallbackSurface, std::atomic<bool> *done)
         : WMWindowEvent(win)
         , inDestructor(destroy)
+        , needsFallbackSurface(needsFallbackSurface)
         , done(done)
-    { Q_UNUSED(needsFallbackSurface); }
+    {}
 
     bool inDestructor;
+    bool needsFallbackSurface;
     std::atomic<bool> *done;
 };
 
@@ -243,7 +245,7 @@ public:
         delete offscreenSurface;
     }
 
-    void invalidateGraphics(QQuickWindow *window, bool inDestructor);
+    void invalidateGraphics(QQuickWindow *window, bool inDestructor, bool needsFallbackSurface);
 
     bool processEvent(QSGRenderThreadEvent &e);
     void run() override;
@@ -439,7 +441,7 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
         {
             if (!window || e.inDestructor) {
                 qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- setting exit flag and invalidating");
-                invalidateGraphics(e.window, e.inDestructor);
+                invalidateGraphics(e.window, e.inDestructor, e.needsFallbackSurface);
                 active.store(rhi != nullptr, std::memory_order_relaxed);
                 Q_ASSERT_X(!e.inDestructor || !active, "QSGRenderThread::invalidateGraphics()", "Thread's active state is not set to false when shutting down");
                 if (sleeping)
@@ -515,7 +517,7 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
     }, e);
 }
 
-void QSGRenderThread::invalidateGraphics(QQuickWindow *window, bool inDestructor)
+void QSGRenderThread::invalidateGraphics(QQuickWindow *window, bool inDestructor, bool needsFallbackSurface)
 {
     qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "invalidateGraphics()");
 
@@ -530,7 +532,8 @@ void QSGRenderThread::invalidateGraphics(QQuickWindow *window, bool inDestructor
     bool wipeSG = inDestructor || !window->isPersistentSceneGraph();
     bool wipeGraphics = inDestructor || (wipeSG && !window->isPersistentGraphics());
 
-    rhi->makeThreadLocalNativeContextCurrent();
+    if (!needsFallbackSurface)
+        rhi->makeThreadLocalNativeContextCurrent();
 
     QQuickWindowPrivate *dd = QQuickWindowPrivate::get(window);
 
