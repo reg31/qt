@@ -1397,7 +1397,7 @@ void QSGThreadedRenderLoop::releaseResources(Window *w, bool inDestructor)
 
         qCDebug(QSG_LOG_RENDERLOOP, "- posting release request to render thread");
         std::atomic<bool> isDone{false};
-        w->thread->postEvent(WMTryReleaseEvent(window, inDestructor, window->handle() == nullptr, &isDone));
+        w->thread->postEvent(WMTryReleaseEvent(window, inDestructor, inDestructor || window->handle() == nullptr, &isDone));
         isDone.wait(false, std::memory_order_acquire);
 
         if (!w->thread->active.load(std::memory_order_acquire)) {
