@@ -390,10 +390,9 @@ jobs:
         run: |
           OUTPUT_NAME=qt-macos-release-${{ needs.setup.outputs.qt_branch }}
           xattr -cr ./$OUTPUT_NAME
-          zip -r9 $OUTPUT_NAME.zip ./$OUTPUT_NAME \
-            -x "./$OUTPUT_NAME/share/*" \
-            -x "./$OUTPUT_NAME/sbom/*" \
-            -x "./$OUTPUT_NAME/doc/*"
+          cd ./$OUTPUT_NAME
+          zip -r9 ../$OUTPUT_NAME.zip . -x "./share/*" -x "./sbom/*" -x "./doc/*"
+          cd ..
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
@@ -494,10 +493,9 @@ jobs:
           OUTPUT_NAME=qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
           cp -R ./configFolder/bin/* ./$OUTPUT_NAME/bin/
           xattr -cr ./$OUTPUT_NAME
-          zip -r9 $OUTPUT_NAME.zip ./$OUTPUT_NAME \
-            -x "./$OUTPUT_NAME/share/*" \
-            -x "./$OUTPUT_NAME/sbom/*" \
-            -x "./$OUTPUT_NAME/doc/*"
+          cd ./$OUTPUT_NAME
+          zip -r9 ../$OUTPUT_NAME.zip . -x "./share/*" -x "./sbom/*" -x "./doc/*"
+          cd ..
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
