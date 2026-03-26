@@ -312,7 +312,7 @@ jobs:
 
   build-macos:
     needs: setup
-    runs-on: macos-latest
+    runs-on: macos-26
     strategy:
       matrix:
         build_type: [release]
@@ -401,7 +401,7 @@ jobs:
 
   build-ios:
     needs: setup
-    runs-on: macos-latest
+    runs-on: macos-26
     strategy:
       matrix:
         build_type: [release]
@@ -490,7 +490,7 @@ jobs:
       - name: Package artifacts
         run: |
           OUTPUT_NAME=qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
-          cp -R ./configFolder/* ./$OUTPUT_NAME/bin/
+          cp -R ./configFolder/bin/* ./$OUTPUT_NAME/bin/
           xattr -cr ./$OUTPUT_NAME
           find ./$OUTPUT_NAME -type f -exec chmod +x {} +
           7z a $OUTPUT_NAME.zip ./$OUTPUT_NAME/* -x!./$OUTPUT_NAME/share -x!./$OUTPUT_NAME/sbom -x!./$OUTPUT_NAME/doc
