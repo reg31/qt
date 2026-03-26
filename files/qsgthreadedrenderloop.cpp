@@ -501,6 +501,10 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
     [&](WMReleaseSwapchainEvent &e) {
         qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "WM_ReleaseSwapchain");
         Q_ASSERT(e.window);
+
+        if (rhi)
+            rhi->makeThreadLocalNativeContextCurrent();
+        
         wm->releaseSwapchain(e.window);
         lastFrameValid = false;
         qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- swapchain released");
