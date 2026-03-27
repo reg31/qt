@@ -391,8 +391,8 @@ jobs:
           OUTPUT_NAME=qt-macos-release-${{ needs.setup.outputs.qt_branch }}
           xattr -cr ./$OUTPUT_NAME
           find ./$OUTPUT_NAME -type f -exec chmod +x {} +
-          tar --exclude="./$OUTPUT_NAME/share" --exclude="./$OUTPUT_NAME/sbom" --exclude="./$OUTPUT_NAME/doc" \
-            -czf $OUTPUT_NAME.tar.gz ./$OUTPUT_NAME
+          tar --exclude="share" --exclude="sbom" --exclude="doc" \
+            -czf $OUTPUT_NAME.tar.gz -C . $OUTPUT_NAME
           7z a $OUTPUT_NAME.zip ./$OUTPUT_NAME/* -x!./$OUTPUT_NAME/share -x!./$OUTPUT_NAME/sbom -x!./$OUTPUT_NAME/doc
 
       - name: Upload build artifact
@@ -497,8 +497,8 @@ jobs:
           cp -R ./configFolder/* ./$OUTPUT_NAME/bin/
           xattr -cr ./$OUTPUT_NAME
           find ./$OUTPUT_NAME -type f -exec chmod +x {} +
-          tar --exclude="./$OUTPUT_NAME/share" --exclude="./$OUTPUT_NAME/sbom" --exclude="./$OUTPUT_NAME/doc" \
-            -czf $OUTPUT_NAME.tar.gz ./$OUTPUT_NAME
+          tar --exclude="share" --exclude="sbom" --exclude="doc" \
+            -czf $OUTPUT_NAME.tar.gz -C . $OUTPUT_NAME
           7z a $OUTPUT_NAME.zip ./$OUTPUT_NAME/* -x!./$OUTPUT_NAME/share -x!./$OUTPUT_NAME/sbom -x!./$OUTPUT_NAME/doc
 
       - name: Upload build artifact
