@@ -1,7 +1,6 @@
 name: Build Qt Library
 env:
   QT_BRANCH: 'dev'
-  SCCACHE_GHA_ENABLED: "true"
   OPENSSL_VERSION: openssl-3.6
   INIT_FLAGS: --module-subset=qtbase,qtdeclarative,-qtlanguageserver,-qtquicktimeline,-qtquick3d,-qtimageformats,-qtsvg --branch --no-update
   SHARED_COMPILER_FLAGS: "-O2 -DNDEBUG -pipe -fPIC"
@@ -76,8 +75,16 @@ jobs:
           fetch-depth: 1
           submodules: false
           
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.9
+      - name: Setup zccache
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\zccache
+          key: zccache-windows-${{ github.run_id }}
+          restore-keys: zccache-windows-
+
+      - name: Install zccache
+        shell: powershell
+        run: pip install zccache
             
       - name: Set up MinGW
         uses: egor-tensin/setup-mingw@v3
@@ -119,8 +126,8 @@ jobs:
           
       - name: Configure
         run: |
-          set "CMAKE_C_COMPILER_LAUNCHER=sccache"
-          set "CMAKE_CXX_COMPILER_LAUNCHER=sccache"
+          set "CMAKE_C_COMPILER_LAUNCHER=zccache"
+          set "CMAKE_CXX_COMPILER_LAUNCHER=zccache"
           set "CC=C:\ProgramData\mingw64\mingw64\bin\x86_64-w64-mingw32-gcc.exe"
           set "CXX=C:\ProgramData\mingw64\mingw64\bin\x86_64-w64-mingw32-g++.exe"
           set "OUTPUT_DIR=%CD%\qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
@@ -189,8 +196,16 @@ jobs:
           fetch-depth: 1
           submodules: false
           
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.9
+      - name: Setup zccache
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\zccache
+          key: zccache-android-${{ matrix.arch }}-${{ github.run_id }}
+          restore-keys: zccache-android-${{ matrix.arch }}-
+
+      - name: Install zccache
+        shell: powershell
+        run: pip install zccache
             
       - name: Set up JDK
         uses: actions/setup-java@v5
@@ -275,8 +290,8 @@ jobs:
         run: |
           set "OUTPUT_DIR=%CD:\=/%/qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
           set "QT_ROOT_DIR=%CD:\=/%/qt-windows-mingw-release-dev"
-          set "CMAKE_CXX_COMPILER_LAUNCHER=sccache"
-          set "CMAKE_C_COMPILER_LAUNCHER=sccache"
+          set "CMAKE_CXX_COMPILER_LAUNCHER=zccache"
+          set "CMAKE_C_COMPILER_LAUNCHER=zccache"
           set "OPENSSL_ROOT=%CD:\=/%/openssl"
           
           mkdir build
@@ -325,8 +340,15 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.9
+      - name: Setup zccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.zccache
+          key: zccache-macos-${{ github.run_id }}
+          restore-keys: zccache-macos-
+
+      - name: Install zccache
+        run: pip install zccache
 
       - name: Setup lld
         run: brew install lld
@@ -369,8 +391,8 @@ jobs:
       - name: Configure
         run: |
           OUTPUT_DIR=$(pwd)/qt-macos-release-${{ needs.setup.outputs.qt_branch }}
-          export CMAKE_CXX_COMPILER_LAUNCHER="sccache"
-          export CMAKE_C_COMPILER_LAUNCHER="sccache"
+          export CMAKE_CXX_COMPILER_LAUNCHER="zccache"
+          export CMAKE_C_COMPILER_LAUNCHER="zccache"
           mkdir -p build && cd build
           ../configure ${{ env.SHARED_FLAGS }} -securetransport -feature-appstore-compliant -prefix $OUTPUT_DIR \
           -- -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,-dead_strip" \
@@ -415,8 +437,15 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.9
+      - name: Setup zccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.zccache
+          key: zccache-ios-${{ github.run_id }}
+          restore-keys: zccache-ios-
+
+      - name: Install zccache
+        run: pip install zccache
         
       - name: Initialize Qt submodules
         run: perl init-repository ${{ env.INIT_FLAGS }}
@@ -471,8 +500,8 @@ jobs:
       - name: Configure and build for iOS
         run: | 
           OUTPUT_DIR=$(pwd)/qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
-          export CMAKE_CXX_COMPILER_LAUNCHER="sccache"
-          export CMAKE_C_COMPILER_LAUNCHER="sccache"
+          export CMAKE_CXX_COMPILER_LAUNCHER="zccache"
+          export CMAKE_C_COMPILER_LAUNCHER="zccache"
           HOST_PATH=$(pwd)/qt-macos-release-dev
           EXTRA_FLAGS="-march=armv8.2-a+dotprod -Xclang -fno-pch-timestamp"
           mkdir -p build
