@@ -391,8 +391,6 @@ jobs:
           OUTPUT_NAME=qt-macos-release-${{ needs.setup.outputs.qt_branch }}
           xattr -cr ./$OUTPUT_NAME
           find ./$OUTPUT_NAME -type f -exec chmod +x {} +
-          tar --exclude="share" --exclude="sbom" --exclude="doc" \
-            -czf $OUTPUT_NAME.tar.gz -C . $OUTPUT_NAME
           7z a $OUTPUT_NAME.zip ./$OUTPUT_NAME/* -x!./$OUTPUT_NAME/share -x!./$OUTPUT_NAME/sbom -x!./$OUTPUT_NAME/doc
 
       - name: Upload build artifact
@@ -401,7 +399,6 @@ jobs:
           name: qt-macos
           path: |
             qt-macos-release-${{ needs.setup.outputs.qt_branch }}.zip
-            qt-macos-release-${{ needs.setup.outputs.qt_branch }}.tar.gz
 
   build-ios:
     needs: setup
@@ -497,8 +494,6 @@ jobs:
           cp -R ./configFolder/* ./$OUTPUT_NAME/bin/
           xattr -cr ./$OUTPUT_NAME
           find ./$OUTPUT_NAME -type f -exec chmod +x {} +
-          tar --exclude="share" --exclude="sbom" --exclude="doc" \
-            -czf $OUTPUT_NAME.tar.gz -C . $OUTPUT_NAME
           7z a $OUTPUT_NAME.zip ./$OUTPUT_NAME/* -x!./$OUTPUT_NAME/share -x!./$OUTPUT_NAME/sbom -x!./$OUTPUT_NAME/doc
 
       - name: Upload build artifact
@@ -507,7 +502,6 @@ jobs:
           name: qt-ios
           path: |
             qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
-            qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.tar.gz
 
   release:
     needs: [setup, build-windows, build-android, build-macos, build-ios]
@@ -537,9 +531,7 @@ jobs:
             qt-android-armeabi-v7a/*.zip
             qt-android-arm64-v8a/*.zip
             qt-macos/*.zip
-            qt-macos/*.tar.gz
             qt-ios/*.zip
-            qt-ios/*.tar.gz
           
       - name: Cleanup repository
         uses: dev-drprasad/delete-older-releases@v0.3.4
