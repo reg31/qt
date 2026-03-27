@@ -75,16 +75,20 @@ jobs:
           fetch-depth: 1
           submodules: false
           
-      - name: Setup zccache
+      - name: Setup FastBuild cache
         uses: actions/cache@v4
         with:
-          path: ~\AppData\Local\zccache
-          key: zccache-windows-${{ github.run_id }}
-          restore-keys: zccache-windows-
+          path: ${{ github.workspace }}\.fbuild-cache
+          key: fastbuild-windows-${{ github.run_id }}
+          restore-keys: fastbuild-windows-
 
-      - name: Install zccache
+      - name: Install FastBuild
         shell: powershell
-        run: pip install zccache
+        run: |
+          $zip = "$env:TEMP\fbuild.zip"
+          Invoke-WebRequest -Uri "https://github.com/fastbuild/fastbuild/releases/latest/download/FASTBuild-Windows-x64.zip" -OutFile $zip
+          Expand-Archive $zip -DestinationPath "$env:TEMP\fbuild"
+          Copy-Item "$env:TEMP\fbuild\FBuild.exe" "C:\Windows\System32\FBuild.exe"
             
       - name: Set up MinGW
         uses: egor-tensin/setup-mingw@v3
@@ -126,8 +130,7 @@ jobs:
           
       - name: Configure
         run: |
-          set "CMAKE_C_COMPILER_LAUNCHER=zccache"
-          set "CMAKE_CXX_COMPILER_LAUNCHER=zccache"
+          set "FASTBUILD_CACHE_PATH=${{ github.workspace }}\.fbuild-cache"
           set "CC=C:\ProgramData\mingw64\mingw64\bin\x86_64-w64-mingw32-gcc.exe"
           set "CXX=C:\ProgramData\mingw64\mingw64\bin\x86_64-w64-mingw32-g++.exe"
           set "OUTPUT_DIR=%CD%\qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
@@ -135,7 +138,7 @@ jobs:
           mkdir build
           cd build
           ..\configure.bat -schannel -prefix "%OUTPUT_DIR%" ${{ env.SHARED_FLAGS }} ^
-           -- -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s -fno-semantic-interposition"
+           -- -G "FastBuild" -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s -fno-semantic-interposition"
               -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s -fno-semantic-interposition" ^
               -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,--gc-sections -Wl,-Bsymbolic-functions" ^
               ${{ env.UNITY_BUILD }}
@@ -152,6 +155,18 @@ jobs:
             }
           }
               
+      - name: Patch build.ninja
+        shell: pwsh
+        run: |
+          Get-ChildItem -Path build -Filter "*.ninja" -Recurse | ForEach-Object {
+            $content = Get-Content $_.FullName -Raw
+            $patched = $content -replace ' -Wl,--version-script,[^\s]+', ''
+            if ($content -ne $patched) {
+              Set-Content $_.FullName $patched
+              Write-Host "Patched: $($_.FullName)"
+            }
+          }
+
       - name: List features
         run: configure.bat -list-features
 
@@ -196,16 +211,20 @@ jobs:
           fetch-depth: 1
           submodules: false
           
-      - name: Setup zccache
+      - name: Setup FastBuild cache
         uses: actions/cache@v4
         with:
-          path: ~\AppData\Local\zccache
-          key: zccache-android-${{ matrix.arch }}-${{ github.run_id }}
-          restore-keys: zccache-android-${{ matrix.arch }}-
+          path: ${{ github.workspace }}\.fbuild-cache
+          key: fastbuild-android-${{ matrix.arch }}-${{ github.run_id }}
+          restore-keys: fastbuild-android-${{ matrix.arch }}-
 
-      - name: Install zccache
+      - name: Install FastBuild
         shell: powershell
-        run: pip install zccache
+        run: |
+          $zip = "$env:TEMP\fbuild.zip"
+          Invoke-WebRequest -Uri "https://github.com/fastbuild/fastbuild/releases/latest/download/FASTBuild-Windows-x64.zip" -OutFile $zip
+          Expand-Archive $zip -DestinationPath "$env:TEMP\fbuild"
+          Copy-Item "$env:TEMP\fbuild\FBuild.exe" "C:\Windows\System32\FBuild.exe"
             
       - name: Set up JDK
         uses: actions/setup-java@v5
@@ -288,10 +307,9 @@ jobs:
           
       - name: Configure Android Qt
         run: |
+          set "FASTBUILD_CACHE_PATH=${{ github.workspace }}\.fbuild-cache"
           set "OUTPUT_DIR=%CD:\=/%/qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
           set "QT_ROOT_DIR=%CD:\=/%/qt-windows-mingw-release-dev"
-          set "CMAKE_CXX_COMPILER_LAUNCHER=zccache"
-          set "CMAKE_C_COMPILER_LAUNCHER=zccache"
           set "OPENSSL_ROOT=%CD:\=/%/openssl"
           
           mkdir build
@@ -299,7 +317,7 @@ jobs:
           
             ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} -skip qtshadertools ^
               -android-abis ${{ matrix.arch }} -android-ndk "%ANDROID_NDK_LATEST_HOME%" -android-sdk "%ANDROID_SDK_ROOT%" ^
-              -reduce-relocations -openssl-runtime -- -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT%" ${{ env.UNITY_BUILD }} ^
+              -reduce-relocations -openssl-runtime -- -G "FastBuild" -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT%" ${{ env.UNITY_BUILD }} ^
               -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp -fno-semantic-interposition" ^
               -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp -fno-semantic-interposition" ^
               -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,--pack-dyn-relocs=android+relr,--use-android-relr-tags,--gc-sections -Wl,-Bsymbolic-functions"
@@ -340,15 +358,19 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: Setup zccache
+      - name: Setup FastBuild cache
         uses: actions/cache@v4
         with:
-          path: ~/.zccache
-          key: zccache-macos-${{ github.run_id }}
-          restore-keys: zccache-macos-
+          path: ~/.fbuild-cache
+          key: fastbuild-macos-${{ github.run_id }}
+          restore-keys: fastbuild-macos-
 
-      - name: Install zccache
-        run: pip install zccache
+      - name: Install FastBuild
+        run: |
+          curl -fsSL https://github.com/fastbuild/fastbuild/releases/latest/download/FASTBuild-OSX-x64.zip -o /tmp/fbuild.zip
+          unzip /tmp/fbuild.zip -d /tmp/fbuild
+          sudo mv /tmp/fbuild/FBuild /usr/local/bin/FBuild
+          sudo chmod +x /usr/local/bin/FBuild
 
       - name: Setup lld
         run: brew install lld
@@ -391,11 +413,10 @@ jobs:
       - name: Configure
         run: |
           OUTPUT_DIR=$(pwd)/qt-macos-release-${{ needs.setup.outputs.qt_branch }}
-          export CMAKE_CXX_COMPILER_LAUNCHER="zccache"
-          export CMAKE_C_COMPILER_LAUNCHER="zccache"
+          export FASTBUILD_CACHE_PATH="$HOME/.fbuild-cache"
           mkdir -p build && cd build
           ../configure ${{ env.SHARED_FLAGS }} -securetransport -feature-appstore-compliant -prefix $OUTPUT_DIR \
-          -- -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,-dead_strip" \
+          -- -G "FastBuild" -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,-dead_strip" \
             -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp" \
             -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp" \
             ${{ env.UNITY_BUILD }}
@@ -437,15 +458,19 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: Setup zccache
+      - name: Setup FastBuild cache
         uses: actions/cache@v4
         with:
-          path: ~/.zccache
-          key: zccache-ios-${{ github.run_id }}
-          restore-keys: zccache-ios-
+          path: ~/.fbuild-cache
+          key: fastbuild-ios-${{ github.run_id }}
+          restore-keys: fastbuild-ios-
 
-      - name: Install zccache
-        run: pip install zccache
+      - name: Install FastBuild
+        run: |
+          curl -fsSL https://github.com/fastbuild/fastbuild/releases/latest/download/FASTBuild-OSX-x64.zip -o /tmp/fbuild.zip
+          unzip /tmp/fbuild.zip -d /tmp/fbuild
+          sudo mv /tmp/fbuild/FBuild /usr/local/bin/FBuild
+          sudo chmod +x /usr/local/bin/FBuild
         
       - name: Initialize Qt submodules
         run: perl init-repository ${{ env.INIT_FLAGS }}
@@ -500,15 +525,14 @@ jobs:
       - name: Configure and build for iOS
         run: | 
           OUTPUT_DIR=$(pwd)/qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
-          export CMAKE_CXX_COMPILER_LAUNCHER="zccache"
-          export CMAKE_C_COMPILER_LAUNCHER="zccache"
+          export FASTBUILD_CACHE_PATH="$HOME/.fbuild-cache"
           HOST_PATH=$(pwd)/qt-macos-release-dev
           EXTRA_FLAGS="-march=armv8.2-a+dotprod -Xclang -fno-pch-timestamp"
           mkdir -p build
           cd build
           
           ../configure -platform macx-ios-clang ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} -securetransport -feature-appstore-compliant \
-          -skip qtshadertools -gc-binaries -prefix $OUTPUT_DIR -qt-host-path $HOST_PATH -- -DCMAKE_OSX_ARCHITECTURES="arm64" \
+          -skip qtshadertools -gc-binaries -prefix $OUTPUT_DIR -qt-host-path $HOST_PATH -- -G "FastBuild" -DCMAKE_OSX_ARCHITECTURES="arm64" \
             -DCMAKE_C_FLAGS="${{ env.SHARED_COMPILER_FLAGS }}  $EXTRA_FLAGS" -DCMAKE_CXX_FLAGS="${{ env.SHARED_COMPILER_FLAGS }} $EXTRA_FLAGS" \
             -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,-dead_strip,--gc-sections" ${{ env.UNITY_BUILD }}
             
