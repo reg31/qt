@@ -875,8 +875,8 @@ void QSGRenderThread::ensureRhi()
             cd->swapchain->setDepthStencil(cd->depthStencilForSwapchain);
         }
 
-        cd->swapchain->setWindow(window);
         cd->swapchain->setProxyData(scProxyData);
+        cd->swapchain->setWindow(window);
         QSGRhiSupport::instance()->applySwapChainFormat(cd->swapchain, window);
         cd->swapchain->setSampleCount(rhiSampleCount);
         cd->swapchain->setFlags(flags);
