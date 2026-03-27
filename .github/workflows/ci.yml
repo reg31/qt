@@ -81,14 +81,6 @@ jobs:
           path: ${{ github.workspace }}\.fbuild-cache
           key: fastbuild-windows-${{ github.run_id }}
           restore-keys: fastbuild-windows-
-
-      - name: Install FastBuild
-        shell: powershell
-        run: |
-          $zip = "$env:TEMP\fbuild.zip"
-          Invoke-WebRequest -Uri "https://github.com/fastbuild/fastbuild/releases/latest/download/FASTBuild-Windows-x64.zip" -OutFile $zip
-          Expand-Archive $zip -DestinationPath "$env:TEMP\fbuild"
-          Copy-Item "$env:TEMP\fbuild\FBuild.exe" "C:\Windows\System32\FBuild.exe"
             
       - name: Set up MinGW
         uses: egor-tensin/setup-mingw@v3
@@ -217,14 +209,6 @@ jobs:
           path: ${{ github.workspace }}\.fbuild-cache
           key: fastbuild-android-${{ matrix.arch }}-${{ github.run_id }}
           restore-keys: fastbuild-android-${{ matrix.arch }}-
-
-      - name: Install FastBuild
-        shell: powershell
-        run: |
-          $zip = "$env:TEMP\fbuild.zip"
-          Invoke-WebRequest -Uri "https://github.com/fastbuild/fastbuild/releases/latest/download/FASTBuild-Windows-x64.zip" -OutFile $zip
-          Expand-Archive $zip -DestinationPath "$env:TEMP\fbuild"
-          Copy-Item "$env:TEMP\fbuild\FBuild.exe" "C:\Windows\System32\FBuild.exe"
             
       - name: Set up JDK
         uses: actions/setup-java@v5
@@ -365,13 +349,6 @@ jobs:
           key: fastbuild-macos-${{ github.run_id }}
           restore-keys: fastbuild-macos-
 
-      - name: Install FastBuild
-        run: |
-          curl -fsSL https://github.com/fastbuild/fastbuild/releases/latest/download/FASTBuild-OSX-x64.zip -o /tmp/fbuild.zip
-          unzip /tmp/fbuild.zip -d /tmp/fbuild
-          sudo mv /tmp/fbuild/FBuild /usr/local/bin/FBuild
-          sudo chmod +x /usr/local/bin/FBuild
-
       - name: Setup lld
         run: brew install lld
 
@@ -464,13 +441,6 @@ jobs:
           path: ~/.fbuild-cache
           key: fastbuild-ios-${{ github.run_id }}
           restore-keys: fastbuild-ios-
-
-      - name: Install FastBuild
-        run: |
-          curl -fsSL https://github.com/fastbuild/fastbuild/releases/latest/download/FASTBuild-OSX-x64.zip -o /tmp/fbuild.zip
-          unzip /tmp/fbuild.zip -d /tmp/fbuild
-          sudo mv /tmp/fbuild/FBuild /usr/local/bin/FBuild
-          sudo chmod +x /usr/local/bin/FBuild
         
       - name: Initialize Qt submodules
         run: perl init-repository ${{ env.INIT_FLAGS }}
