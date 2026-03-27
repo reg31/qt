@@ -1,6 +1,7 @@
 name: Build Qt Library
 env:
   QT_BRANCH: 'dev'
+  SCCACHE_GHA_ENABLED: "true"
   OPENSSL_VERSION: openssl-3.6
   INIT_FLAGS: --module-subset=qtbase,qtdeclarative,-qtlanguageserver,-qtquicktimeline,-qtquick3d,-qtimageformats,-qtsvg --branch --no-update
   SHARED_COMPILER_FLAGS: "-O2 -DNDEBUG -pipe -fPIC"
@@ -75,12 +76,8 @@ jobs:
           fetch-depth: 1
           submodules: false
           
-      - name: Setup FastBuild cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ github.workspace }}\.fbuild-cache
-          key: fastbuild-windows-${{ github.run_id }}
-          restore-keys: fastbuild-windows-
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
             
       - name: Set up MinGW
         uses: egor-tensin/setup-mingw@v3
@@ -122,7 +119,8 @@ jobs:
           
       - name: Configure
         run: |
-          set "FASTBUILD_CACHE_PATH=${{ github.workspace }}\.fbuild-cache"
+          set "CMAKE_C_COMPILER_LAUNCHER=sccache"
+          set "CMAKE_CXX_COMPILER_LAUNCHER=sccache"
           set "CC=C:\ProgramData\mingw64\mingw64\bin\x86_64-w64-mingw32-gcc.exe"
           set "CXX=C:\ProgramData\mingw64\mingw64\bin\x86_64-w64-mingw32-g++.exe"
           set "OUTPUT_DIR=%CD%\qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
@@ -130,7 +128,7 @@ jobs:
           mkdir build
           cd build
           ..\configure.bat -schannel -prefix "%OUTPUT_DIR%" ${{ env.SHARED_FLAGS }} ^
-           -- -G "FastBuild" -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s -fno-semantic-interposition"
+           -- -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s -fno-semantic-interposition"
               -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s -fno-semantic-interposition" ^
               -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,--gc-sections -Wl,-Bsymbolic-functions" ^
               ${{ env.UNITY_BUILD }}
@@ -147,18 +145,6 @@ jobs:
             }
           }
               
-      - name: Patch build.ninja
-        shell: pwsh
-        run: |
-          Get-ChildItem -Path build -Filter "*.ninja" -Recurse | ForEach-Object {
-            $content = Get-Content $_.FullName -Raw
-            $patched = $content -replace ' -Wl,--version-script,[^\s]+', ''
-            if ($content -ne $patched) {
-              Set-Content $_.FullName $patched
-              Write-Host "Patched: $($_.FullName)"
-            }
-          }
-
       - name: List features
         run: configure.bat -list-features
 
@@ -203,12 +189,8 @@ jobs:
           fetch-depth: 1
           submodules: false
           
-      - name: Setup FastBuild cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ github.workspace }}\.fbuild-cache
-          key: fastbuild-android-${{ matrix.arch }}-${{ github.run_id }}
-          restore-keys: fastbuild-android-${{ matrix.arch }}-
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
             
       - name: Set up JDK
         uses: actions/setup-java@v5
@@ -291,9 +273,10 @@ jobs:
           
       - name: Configure Android Qt
         run: |
-          set "FASTBUILD_CACHE_PATH=${{ github.workspace }}\.fbuild-cache"
           set "OUTPUT_DIR=%CD:\=/%/qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
           set "QT_ROOT_DIR=%CD:\=/%/qt-windows-mingw-release-dev"
+          set "CMAKE_CXX_COMPILER_LAUNCHER=sccache"
+          set "CMAKE_C_COMPILER_LAUNCHER=sccache"
           set "OPENSSL_ROOT=%CD:\=/%/openssl"
           
           mkdir build
@@ -301,7 +284,7 @@ jobs:
           
             ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} -skip qtshadertools ^
               -android-abis ${{ matrix.arch }} -android-ndk "%ANDROID_NDK_LATEST_HOME%" -android-sdk "%ANDROID_SDK_ROOT%" ^
-              -reduce-relocations -openssl-runtime -- -G "FastBuild" -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT%" ${{ env.UNITY_BUILD }} ^
+              -reduce-relocations -openssl-runtime -- -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT%" ${{ env.UNITY_BUILD }} ^
               -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp -fno-semantic-interposition" ^
               -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp -fno-semantic-interposition" ^
               -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,--pack-dyn-relocs=android+relr,--use-android-relr-tags,--gc-sections -Wl,-Bsymbolic-functions"
@@ -342,12 +325,8 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: Setup FastBuild cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.fbuild-cache
-          key: fastbuild-macos-${{ github.run_id }}
-          restore-keys: fastbuild-macos-
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
 
       - name: Setup lld
         run: brew install lld
@@ -390,10 +369,11 @@ jobs:
       - name: Configure
         run: |
           OUTPUT_DIR=$(pwd)/qt-macos-release-${{ needs.setup.outputs.qt_branch }}
-          export FASTBUILD_CACHE_PATH="$HOME/.fbuild-cache"
+          export CMAKE_CXX_COMPILER_LAUNCHER="sccache"
+          export CMAKE_C_COMPILER_LAUNCHER="sccache"
           mkdir -p build && cd build
           ../configure ${{ env.SHARED_FLAGS }} -securetransport -feature-appstore-compliant -prefix $OUTPUT_DIR \
-          -- -G "FastBuild" -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,-dead_strip" \
+          -- -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,-dead_strip" \
             -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp" \
             -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp" \
             ${{ env.UNITY_BUILD }}
@@ -435,12 +415,8 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: Setup FastBuild cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.fbuild-cache
-          key: fastbuild-ios-${{ github.run_id }}
-          restore-keys: fastbuild-ios-
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
         
       - name: Initialize Qt submodules
         run: perl init-repository ${{ env.INIT_FLAGS }}
@@ -495,14 +471,15 @@ jobs:
       - name: Configure and build for iOS
         run: | 
           OUTPUT_DIR=$(pwd)/qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
-          export FASTBUILD_CACHE_PATH="$HOME/.fbuild-cache"
+          export CMAKE_CXX_COMPILER_LAUNCHER="sccache"
+          export CMAKE_C_COMPILER_LAUNCHER="sccache"
           HOST_PATH=$(pwd)/qt-macos-release-dev
           EXTRA_FLAGS="-march=armv8.2-a+dotprod -Xclang -fno-pch-timestamp"
           mkdir -p build
           cd build
           
           ../configure -platform macx-ios-clang ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} -securetransport -feature-appstore-compliant \
-          -skip qtshadertools -gc-binaries -prefix $OUTPUT_DIR -qt-host-path $HOST_PATH -- -G "FastBuild" -DCMAKE_OSX_ARCHITECTURES="arm64" \
+          -skip qtshadertools -gc-binaries -prefix $OUTPUT_DIR -qt-host-path $HOST_PATH -- -DCMAKE_OSX_ARCHITECTURES="arm64" \
             -DCMAKE_C_FLAGS="${{ env.SHARED_COMPILER_FLAGS }}  $EXTRA_FLAGS" -DCMAKE_CXX_FLAGS="${{ env.SHARED_COMPILER_FLAGS }} $EXTRA_FLAGS" \
             -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,-dead_strip,--gc-sections" ${{ env.UNITY_BUILD }}
             
