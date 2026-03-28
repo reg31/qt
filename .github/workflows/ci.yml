@@ -863,87 +863,87 @@ PYEOF
           IOS_UNCOMP=$(uncomp_size archives-macos/qt-ios-release-dev.7z)
 
           python3 - << 'PYEOF'
-import os
-
-version = os.popen("date -u +%Y.%-m.%-d.0").read().strip()
-date    = os.popen("date -u +%Y-%m-%d").read().strip()
-
-def read(v): return os.environ.get(v, open("/dev/stdin").read()) if False else ""
-
-WIN_SHA1   = os.popen("sha1sum archives-windows/qt-windows-mingw-release-dev.7z | cut -d' ' -f1").read().strip()
-WIN_COMP   = os.popen("stat -c%s archives-windows/qt-windows-mingw-release-dev.7z").read().strip()
-WIN_UNCOMP = os.popen("7z l -slt archives-windows/qt-windows-mingw-release-dev.7z | awk -F' = ' '/^Size/{sum+=$2} END{print sum}'").read().strip()
-
-ARM64_SHA1   = os.popen("sha1sum archives-windows/qt-android-arm64-v8a-release-dev.7z | cut -d' ' -f1").read().strip()
-ARM64_COMP   = os.popen("stat -c%s archives-windows/qt-android-arm64-v8a-release-dev.7z").read().strip()
-ARM64_UNCOMP = os.popen("7z l -slt archives-windows/qt-android-arm64-v8a-release-dev.7z | awk -F' = ' '/^Size/{sum+=$2} END{print sum}'").read().strip()
-
-ARMV7_SHA1   = os.popen("sha1sum archives-windows/qt-android-armeabi-v7a-release-dev.7z | cut -d' ' -f1").read().strip()
-ARMV7_COMP   = os.popen("stat -c%s archives-windows/qt-android-armeabi-v7a-release-dev.7z").read().strip()
-ARMV7_UNCOMP = os.popen("7z l -slt archives-windows/qt-android-armeabi-v7a-release-dev.7z | awk -F' = ' '/^Size/{sum+=$2} END{print sum}'").read().strip()
-
-MACOS_SHA1   = os.popen("sha1sum archives-macos/qt-macos-release-dev.7z | cut -d' ' -f1").read().strip()
-MACOS_COMP   = os.popen("stat -c%s archives-macos/qt-macos-release-dev.7z").read().strip()
-MACOS_UNCOMP = os.popen("7z l -slt archives-macos/qt-macos-release-dev.7z | awk -F' = ' '/^Size/{sum+=$2} END{print sum}'").read().strip()
-
-IOS_SHA1   = os.popen("sha1sum archives-macos/qt-ios-release-dev.7z | cut -d' ' -f1").read().strip()
-IOS_COMP   = os.popen("stat -c%s archives-macos/qt-ios-release-dev.7z").read().strip()
-IOS_UNCOMP = os.popen("7z l -slt archives-macos/qt-ios-release-dev.7z | awk -F' = ' '/^Size/{sum+=$2} END{print sum}'").read().strip()
-
-BASE_URL = "https://github.com/reg31/qt/releases/latest/download/"
-
-xml = f"""<?xml version="1.0" encoding="UTF-8"?>
-<Updates>
-    <ApplicationName>Qt Dev Kit</ApplicationName>
-    <ApplicationVersion>{version}</ApplicationVersion>
-    <ArchivesBaseUrl>{BASE_URL}</ArchivesBaseUrl>
-    <PackageUpdate>
-        <Name>com.qt.dev.windows.mingw</Name>
-        <DisplayName>Qt Dev - Windows MinGW (x64)</DisplayName>
-        <Version>{version}</Version>
-        <ReleaseDate>{date}</ReleaseDate>
-        <Default>true</Default>
-        <DownloadableArchives>qt-windows-mingw-release-dev.7z</DownloadableArchives>
-        <UpdateFile CompressedSize="{WIN_COMP}" UncompressedSize="{WIN_UNCOMP}" OS="Any" SHA1="{WIN_SHA1}"/>
-    </PackageUpdate>
-    <PackageUpdate>
-        <Name>com.qt.dev.android.arm64</Name>
-        <DisplayName>Qt Dev - Android ARM64-v8a</DisplayName>
-        <Version>{version}</Version>
-        <ReleaseDate>{date}</ReleaseDate>
-        <Default>true</Default>
-        <DownloadableArchives>qt-android-arm64-v8a-release-dev.7z</DownloadableArchives>
-        <UpdateFile CompressedSize="{ARM64_COMP}" UncompressedSize="{ARM64_UNCOMP}" OS="Any" SHA1="{ARM64_SHA1}"/>
-    </PackageUpdate>
-    <PackageUpdate>
-        <Name>com.qt.dev.android.armv7</Name>
-        <DisplayName>Qt Dev - Android ARMv7 (armeabi-v7a)</DisplayName>
-        <Version>{version}</Version>
-        <ReleaseDate>{date}</ReleaseDate>
-        <Default>false</Default>
-        <DownloadableArchives>qt-android-armeabi-v7a-release-dev.7z</DownloadableArchives>
-        <UpdateFile CompressedSize="{ARMV7_COMP}" UncompressedSize="{ARMV7_UNCOMP}" OS="Any" SHA1="{ARMV7_SHA1}"/>
-    </PackageUpdate>
-    <PackageUpdate>
-        <Name>com.qt.dev.macos</Name>
-        <DisplayName>Qt Dev - macOS (Universal)</DisplayName>
-        <Version>{version}</Version>
-        <ReleaseDate>{date}</ReleaseDate>
-        <Default>true</Default>
-        <DownloadableArchives>qt-macos-release-dev.7z</DownloadableArchives>
-        <UpdateFile CompressedSize="{MACOS_COMP}" UncompressedSize="{MACOS_UNCOMP}" OS="Any" SHA1="{MACOS_SHA1}"/>
-    </PackageUpdate>
-    <PackageUpdate>
-        <Name>com.qt.dev.ios</Name>
-        <DisplayName>Qt Dev - iOS</DisplayName>
-        <Version>{version}</Version>
-        <ReleaseDate>{date}</ReleaseDate>
-        <Default>true</Default>
-        <DownloadableArchives>qt-ios-release-dev.7z</DownloadableArchives>
-        <UpdateFile CompressedSize="{IOS_COMP}" UncompressedSize="{IOS_UNCOMP}" OS="Any" SHA1="{IOS_SHA1}"/>
-    </PackageUpdate>
-</Updates>
-"""
+          import os
+          
+          version = os.popen("date -u +%Y.%-m.%-d.0").read().strip()
+          date    = os.popen("date -u +%Y-%m-%d").read().strip()
+          
+          def read(v): return os.environ.get(v, open("/dev/stdin").read()) if False else ""
+          
+          WIN_SHA1   = os.popen("sha1sum archives-windows/qt-windows-mingw-release-dev.7z | cut -d' ' -f1").read().strip()
+          WIN_COMP   = os.popen("stat -c%s archives-windows/qt-windows-mingw-release-dev.7z").read().strip()
+          WIN_UNCOMP = os.popen("7z l -slt archives-windows/qt-windows-mingw-release-dev.7z | awk -F' = ' '/^Size/{sum+=$2} END{print sum}'").read().strip()
+          
+          ARM64_SHA1   = os.popen("sha1sum archives-windows/qt-android-arm64-v8a-release-dev.7z | cut -d' ' -f1").read().strip()
+          ARM64_COMP   = os.popen("stat -c%s archives-windows/qt-android-arm64-v8a-release-dev.7z").read().strip()
+          ARM64_UNCOMP = os.popen("7z l -slt archives-windows/qt-android-arm64-v8a-release-dev.7z | awk -F' = ' '/^Size/{sum+=$2} END{print sum}'").read().strip()
+          
+          ARMV7_SHA1   = os.popen("sha1sum archives-windows/qt-android-armeabi-v7a-release-dev.7z | cut -d' ' -f1").read().strip()
+          ARMV7_COMP   = os.popen("stat -c%s archives-windows/qt-android-armeabi-v7a-release-dev.7z").read().strip()
+          ARMV7_UNCOMP = os.popen("7z l -slt archives-windows/qt-android-armeabi-v7a-release-dev.7z | awk -F' = ' '/^Size/{sum+=$2} END{print sum}'").read().strip()
+          
+          MACOS_SHA1   = os.popen("sha1sum archives-macos/qt-macos-release-dev.7z | cut -d' ' -f1").read().strip()
+          MACOS_COMP   = os.popen("stat -c%s archives-macos/qt-macos-release-dev.7z").read().strip()
+          MACOS_UNCOMP = os.popen("7z l -slt archives-macos/qt-macos-release-dev.7z | awk -F' = ' '/^Size/{sum+=$2} END{print sum}'").read().strip()
+          
+          IOS_SHA1   = os.popen("sha1sum archives-macos/qt-ios-release-dev.7z | cut -d' ' -f1").read().strip()
+          IOS_COMP   = os.popen("stat -c%s archives-macos/qt-ios-release-dev.7z").read().strip()
+          IOS_UNCOMP = os.popen("7z l -slt archives-macos/qt-ios-release-dev.7z | awk -F' = ' '/^Size/{sum+=$2} END{print sum}'").read().strip()
+          
+          BASE_URL = "https://github.com/reg31/qt/releases/latest/download/"
+          
+          xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+          <Updates>
+              <ApplicationName>Qt Dev Kit</ApplicationName>
+              <ApplicationVersion>{version}</ApplicationVersion>
+              <ArchivesBaseUrl>{BASE_URL}</ArchivesBaseUrl>
+              <PackageUpdate>
+                  <Name>com.qt.dev.windows.mingw</Name>
+                  <DisplayName>Qt Dev - Windows MinGW (x64)</DisplayName>
+                  <Version>{version}</Version>
+                  <ReleaseDate>{date}</ReleaseDate>
+                  <Default>true</Default>
+                  <DownloadableArchives>qt-windows-mingw-release-dev.7z</DownloadableArchives>
+                  <UpdateFile CompressedSize="{WIN_COMP}" UncompressedSize="{WIN_UNCOMP}" OS="Any" SHA1="{WIN_SHA1}"/>
+              </PackageUpdate>
+              <PackageUpdate>
+                  <Name>com.qt.dev.android.arm64</Name>
+                  <DisplayName>Qt Dev - Android ARM64-v8a</DisplayName>
+                  <Version>{version}</Version>
+                  <ReleaseDate>{date}</ReleaseDate>
+                  <Default>true</Default>
+                  <DownloadableArchives>qt-android-arm64-v8a-release-dev.7z</DownloadableArchives>
+                  <UpdateFile CompressedSize="{ARM64_COMP}" UncompressedSize="{ARM64_UNCOMP}" OS="Any" SHA1="{ARM64_SHA1}"/>
+              </PackageUpdate>
+              <PackageUpdate>
+                  <Name>com.qt.dev.android.armv7</Name>
+                  <DisplayName>Qt Dev - Android ARMv7 (armeabi-v7a)</DisplayName>
+                  <Version>{version}</Version>
+                  <ReleaseDate>{date}</ReleaseDate>
+                  <Default>false</Default>
+                  <DownloadableArchives>qt-android-armeabi-v7a-release-dev.7z</DownloadableArchives>
+                  <UpdateFile CompressedSize="{ARMV7_COMP}" UncompressedSize="{ARMV7_UNCOMP}" OS="Any" SHA1="{ARMV7_SHA1}"/>
+              </PackageUpdate>
+              <PackageUpdate>
+                  <Name>com.qt.dev.macos</Name>
+                  <DisplayName>Qt Dev - macOS (Universal)</DisplayName>
+                  <Version>{version}</Version>
+                  <ReleaseDate>{date}</ReleaseDate>
+                  <Default>true</Default>
+                  <DownloadableArchives>qt-macos-release-dev.7z</DownloadableArchives>
+                  <UpdateFile CompressedSize="{MACOS_COMP}" UncompressedSize="{MACOS_UNCOMP}" OS="Any" SHA1="{MACOS_SHA1}"/>
+              </PackageUpdate>
+              <PackageUpdate>
+                  <Name>com.qt.dev.ios</Name>
+                  <DisplayName>Qt Dev - iOS</DisplayName>
+                  <Version>{version}</Version>
+                  <ReleaseDate>{date}</ReleaseDate>
+                  <Default>true</Default>
+                  <DownloadableArchives>qt-ios-release-dev.7z</DownloadableArchives>
+                  <UpdateFile CompressedSize="{IOS_COMP}" UncompressedSize="{IOS_UNCOMP}" OS="Any" SHA1="{IOS_SHA1}"/>
+              </PackageUpdate>
+          </Updates>
+          """
 
 open("Updates.xml", "w").write(xml)
 print("Updates.xml generated.")
