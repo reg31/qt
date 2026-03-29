@@ -6,5 +6,5 @@
     <ReleaseDate>2024-01-01</ReleaseDate>
     <Default>true</Default>
     <Script>installscript.qs</Script>
-    <DownloadableArchives>qt-macos-release-dev.7z</DownloadableArchives>
+    <DownloadableArchives>qt-macos-release-dev.zip</DownloadableArchives>
 </Package>
