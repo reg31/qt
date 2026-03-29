@@ -489,6 +489,7 @@ jobs:
 
   build-installer-windows:
     needs: [setup, build-windows, build-android]
+    if: ${{ !cancelled() && (needs.build-windows.result == 'success' || needs.build-android.result == 'success') }}
     runs-on: windows-2022
     defaults:
       run:
@@ -536,7 +537,7 @@ jobs:
           convert_kit() {
             local zip="$1" kit="$2"
             mkdir -p tmp archives
-            unzip -q "$zip" -d tmp/$kit
+            unzip -q "$zip" -d tmp
             archivegen archives/$kit.7z tmp/$kit
             rm -rf tmp/$kit
           }
@@ -566,6 +567,7 @@ jobs:
 
   build-installer-macos:
     needs: [setup, build-macos, build-ios]
+    if: ${{ !cancelled() && (needs.build-macos.result == 'success' || needs.build-ios.result == 'success') }}
     runs-on: macos-26
     steps:
       - name: Setup QtIFW
@@ -603,7 +605,7 @@ jobs:
           convert_kit() {
             local zip="$1" kit="$2"
             mkdir -p tmp archives
-            unzip -q "$zip" -d tmp/$kit
+            unzip -q "$zip" -d tmp
             archivegen archives/$kit.7z tmp/$kit
             rm -rf tmp/$kit
           }
