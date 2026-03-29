@@ -9,7 +9,7 @@
     <ControlScript>controller.qs</ControlScript>
     <RemoteRepositories>
         <Repository>
-            <Url>https://github.com/reg31/qt/releases/latest/download/</Url>
+            <Url>https://github.com/reg31/qt/releases/latest/download</Url>
             <Enabled>1</Enabled>
             <DisplayName>Qt Dev Kits</DisplayName>
         </Repository>
