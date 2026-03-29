@@ -6,8 +6,10 @@ function Controller() {
 }
 
 function detectQtRoot() {
-    var regKey = installer.registryValue("HKEY_LOCAL_MACHINE\\SOFTWARE\\Qt\\", "Install_Dir");
-    if (regKey !== "") return regKey.replace(/\\/g, "/");
+    try {
+        var regKey = installer.registryValue("HKEY_LOCAL_MACHINE\\SOFTWARE\\Qt\\", "Install_Dir", "");
+        if (regKey !== "") return regKey.replace(/\\/g, "/");
+    } catch (e) {}
     var candidates = ["C:/Qt", "D:/Qt"];
     for (var i = 0; i < candidates.length; i++) {
         if (installer.fileExists(candidates[i])) return candidates[i];
