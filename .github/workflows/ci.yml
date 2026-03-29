@@ -497,7 +497,7 @@ jobs:
       - name: Setup QtIFW
         uses: jmarrec/setup-qtifw@v1
         with:
-          qtifw-version: '4.8.1'
+          qtifw-version: '4.7'
 
       - name: Download Windows artifact
         uses: actions/download-artifact@v8
@@ -571,7 +571,7 @@ jobs:
       - name: Setup QtIFW
         uses: jmarrec/setup-qtifw@v1
         with:
-          qtifw-version: '4.8.1'
+          qtifw-version: '4.7'
 
       - name: Download macOS artifact
         uses: actions/download-artifact@v8
