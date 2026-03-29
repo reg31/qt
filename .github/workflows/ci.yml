@@ -583,21 +583,19 @@ jobs:
         run: |
           VERSION=$(date -u +%Y.%-m.%-d.0)
           DATE=$(date -u +%Y-%m-%d)
-          BASE_URL="https://github.com/reg31/qt/releases/latest/download"
-
           entry() {
-            local name="$1" display="$2" file="$3" dir="$4" default="$5"
+            local name="$1" display="$2" file="$3" dir="$4"
             sha1=$(sha1sum "$dir/$file" | cut -d' ' -f1)
             comp=$(stat -c%s "$dir/$file")
             uncomp=$(7z l -slt "$dir/$file" | awk -F' = ' '/^Size/{sum+=$2} END{print sum}')
             printf '    <PackageUpdate>\n'
-            printf '        <n>%s</n>\n' "$name"
+            printf '        <Name>%s</Name>\n' "$name"
             printf '        <DisplayName>%s</DisplayName>\n' "$display"
             printf '        <Version>%s</Version>\n' "$VERSION"
             printf '        <ReleaseDate>%s</ReleaseDate>\n' "$DATE"
-            printf '        <Default>%s</Default>\n' "$default"
             printf '        <DownloadableArchives>%s</DownloadableArchives>\n' "$file"
-            printf '        <UpdateFile CompressedSize="%s" UncompressedSize="%s" OS="Any" SHA1="%s"/>\n' "$comp" "$uncomp" "$sha1"
+            printf '        <UpdateFile CompressedSize="%s" UncompressedSize="%s" OS="Any"/>\n' "$comp" "$uncomp"
+            printf '        <SHA1>%s</SHA1>\n' "$sha1"
             printf '    </PackageUpdate>\n'
           }
 
@@ -606,12 +604,11 @@ jobs:
             printf '<Updates>\n'
             printf '    <ApplicationName>Qt Dev Kit</ApplicationName>\n'
             printf '    <ApplicationVersion>%s</ApplicationVersion>\n' "$VERSION"
-            printf '    <ArchivesBaseUrl>%s</ArchivesBaseUrl>\n' "$BASE_URL"
-            entry "com.qt.dev.windows.mingw" "Qt Dev - Windows MinGW (x64)"  "qt-windows-mingw-release-dev.zip"       "qt-windows-mingw" "true"
-            entry "com.qt.dev.android.arm64" "Qt Dev - Android ARM64-v8a"    "qt-android-arm64-v8a-release-dev.zip"   "qt-android-arm64-v8a" "true"
-            entry "com.qt.dev.android.armv7" "Qt Dev - Android ARMv7"        "qt-android-armeabi-v7a-release-dev.zip" "qt-android-armeabi-v7a" "true"
-            entry "com.qt.dev.macos"         "Qt Dev - macOS (Universal)"    "qt-macos-release-dev.zip"               "qt-macos" "true"
-            entry "com.qt.dev.ios"           "Qt Dev - iOS"                  "qt-ios-release-dev.zip"                 "qt-ios" "true"
+            entry "com.qt.dev.windows.mingw" "Qt Dev - Windows MinGW (x64)"  "qt-windows-mingw-release-dev.zip"       "qt-windows-mingw"
+            entry "com.qt.dev.android.arm64" "Qt Dev - Android ARM64-v8a"    "qt-android-arm64-v8a-release-dev.zip"   "qt-android-arm64-v8a"
+            entry "com.qt.dev.android.armv7" "Qt Dev - Android ARMv7"        "qt-android-armeabi-v7a-release-dev.zip" "qt-android-armeabi-v7a"
+            entry "com.qt.dev.macos"         "Qt Dev - macOS (Universal)"    "qt-macos-release-dev.zip"               "qt-macos"
+            entry "com.qt.dev.ios"           "Qt Dev - iOS"                  "qt-ios-release-dev.zip"                 "qt-ios"
             printf '</Updates>\n'
           } > Updates.xml
 
