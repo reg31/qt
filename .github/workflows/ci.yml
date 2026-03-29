@@ -669,7 +669,7 @@ jobs:
             printf '    <ArchivesBaseUrl>%s</ArchivesBaseUrl>\n' "$BASE_URL"
             entry "com.qt.dev.windows.mingw" "Qt Dev - Windows MinGW (x64)"  "qt-windows-mingw-release-dev.7z"       "archives-windows" "true"
             entry "com.qt.dev.android.arm64" "Qt Dev - Android ARM64-v8a"    "qt-android-arm64-v8a-release-dev.7z"   "archives-windows" "true"
-            entry "com.qt.dev.android.armv7" "Qt Dev - Android ARMv7"        "qt-android-armeabi-v7a-release-dev.7z" "archives-windows" "false"
+            entry "com.qt.dev.android.armv7" "Qt Dev - Android ARMv7"        "qt-android-armeabi-v7a-release-dev.7z" "archives-windows" "true"
             entry "com.qt.dev.macos"         "Qt Dev - macOS (Universal)"    "qt-macos-release-dev.7z"               "archives-macos"   "true"
             entry "com.qt.dev.ios"           "Qt Dev - iOS"                  "qt-ios-release-dev.7z"                 "archives-macos"   "true"
             printf '</Updates>\n'
