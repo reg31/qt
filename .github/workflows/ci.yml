@@ -514,12 +514,14 @@ jobs:
           curl -fsSL $B/windows-android-arm64-package.xml -o installer/packages/com.qt.dev.android.arm64/meta/package.xml
           curl -fsSL $B/windows-android-armv7-package.xml -o installer/packages/com.qt.dev.android.armv7/meta/package.xml
 
-      - name: Build online-only installer
+      - name: Generate repository and build installer
         run: |
-          mkdir -p out
+          mkdir -p out repo-windows
+          repogen --packages installer/packages --repository repo-windows
           binarycreator --online-only \
             --config installer/config/config.xml \
             --packages installer/packages \
+            out/qt-dev-installer-windows.exe
             out/qt-dev-installer-windows.exe
 
       - name: Upload installer artifact
@@ -527,6 +529,12 @@ jobs:
         with:
           name: qt-dev-installer-windows
           path: out/qt-dev-installer-windows.exe
+
+      - name: Upload Windows repository metadata
+        uses: actions/upload-artifact@v7
+        with:
+          name: repo-windows
+          path: repo-windows/
 
 
   build-installer-macos:
@@ -552,15 +560,18 @@ jobs:
           curl -fsSL $B/ios-package.xml               -o installer/packages/com.qt.dev.ios/meta/package.xml
           curl -fsSL $B/ios-installscript.qs          -o installer/packages/com.qt.dev.ios/meta/installscript.qs
 
-      - name: Build online-only installer
+      - name: Generate repository and build installer
         run: |
-          mkdir -p out
+          mkdir -p out repo-macos
+          repogen --packages installer/packages --repository repo-macos
           binarycreator --online-only \
             --config installer/config/config.xml \
             --packages installer/packages \
             out/qt-dev-installer-macos.app
           hdiutil create -volname "Qt Dev Kit" \
             -srcfolder out/qt-dev-installer-macos.app \
+            -ov -format UDZO \
+            out/qt-dev-installer-macos.dmg
             -ov -format UDZO \
             out/qt-dev-installer-macos.dmg
 
@@ -570,6 +581,12 @@ jobs:
           name: qt-dev-installer-macos
           path: out/qt-dev-installer-macos.dmg
 
+      - name: Upload macOS repository metadata
+        uses: actions/upload-artifact@v7
+        with:
+          name: repo-macos
+          path: repo-macos/
+
 
   release:
     needs: [setup, build-windows, build-android, build-macos, build-ios, build-installer-windows, build-installer-macos]
@@ -578,39 +595,6 @@ jobs:
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v8
-
-      - name: Generate Updates.xml
-        run: |
-          VERSION=$(date -u +%Y.%-m.%-d.0)
-          DATE=$(date -u +%Y-%m-%d)
-          entry() {
-            local name="$1" display="$2" file="$3" dir="$4"
-            sha1=$(sha1sum "$dir/$file" | cut -d' ' -f1)
-            comp=$(stat -c%s "$dir/$file")
-            uncomp=$(7z l -slt "$dir/$file" | awk -F' = ' '/^Size/{sum+=$2} END{print sum}')
-            printf '    <PackageUpdate>\n'
-            printf '        <Name>%s</Name>\n' "$name"
-            printf '        <DisplayName>%s</DisplayName>\n' "$display"
-            printf '        <Version>%s</Version>\n' "$VERSION"
-            printf '        <ReleaseDate>%s</ReleaseDate>\n' "$DATE"
-            printf '        <DownloadableArchives>%s</DownloadableArchives>\n' "$file"
-            printf '        <UpdateFile CompressedSize="%s" UncompressedSize="%s" OS="Any"/>\n' "$comp" "$uncomp"
-            printf '        <SHA1>%s</SHA1>\n' "$sha1"
-            printf '    </PackageUpdate>\n'
-          }
-
-          {
-            printf '<?xml version="1.0" encoding="UTF-8"?>\n'
-            printf '<Updates>\n'
-            printf '    <ApplicationName>Qt Dev Kit</ApplicationName>\n'
-            printf '    <ApplicationVersion>%s</ApplicationVersion>\n' "$VERSION"
-            entry "com.qt.dev.windows.mingw" "Qt Dev - Windows MinGW (x64)"  "qt-windows-mingw-release-dev.zip"       "qt-windows-mingw"
-            entry "com.qt.dev.android.arm64" "Qt Dev - Android ARM64-v8a"    "qt-android-arm64-v8a-release-dev.zip"   "qt-android-arm64-v8a"
-            entry "com.qt.dev.android.armv7" "Qt Dev - Android ARMv7"        "qt-android-armeabi-v7a-release-dev.zip" "qt-android-armeabi-v7a"
-            entry "com.qt.dev.macos"         "Qt Dev - macOS (Universal)"    "qt-macos-release-dev.zip"               "qt-macos"
-            entry "com.qt.dev.ios"           "Qt Dev - iOS"                  "qt-ios-release-dev.zip"                 "qt-ios"
-            printf '</Updates>\n'
-          } > Updates.xml
 
       - name: Create release
         uses: softprops/action-gh-release@v2
@@ -639,7 +623,8 @@ jobs:
             qt-ios/*.zip
             qt-dev-installer-windows/qt-dev-installer-windows.exe
             qt-dev-installer-macos/qt-dev-installer-macos.dmg
-            Updates.xml
+            repo-windows/**
+            repo-macos/**
 
       - name: Cleanup old releases
         uses: dev-drprasad/delete-older-releases@v0.3.4
