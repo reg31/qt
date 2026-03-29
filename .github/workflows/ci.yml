@@ -633,7 +633,7 @@ jobs:
 
             **Installers** (recommended — includes auto-update via maintenance tool):
             - `qt-dev-installer-windows.exe` — installs Windows + Android kits
-            - `qt-dev-installer-macos.zip` — installs macOS + iOS kits
+            - `qt-dev-installer-macos.dmg` — installs macOS + iOS kits
           files: |
             qt-windows-mingw/*.zip
             qt-android-armeabi-v7a/*.zip
