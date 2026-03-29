@@ -4,6 +4,6 @@
     <Description>Qt dev kit for Android ARMv7</Description>
     <Version>1.0.0</Version>
     <ReleaseDate>2024-01-01</ReleaseDate>
-    <Default>false</Default>
+    <Default>true</Default>
     <DownloadableArchives>qt-android-armeabi-v7a-release-dev.7z</DownloadableArchives>
 </Package>
