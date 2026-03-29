@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<Package>
-    <DisplayName>Qt Dev - Android ARMv7 (armeabi-v7a)</DisplayName>
-    <Description>Qt dev kit for Android ARMv7</Description>
-    <Version>1.0.0</Version>
-    <ReleaseDate>2024-01-01</ReleaseDate>
-    <Default>true</Default>
-    <DownloadableArchives>qt-android-armeabi-v7a-release-dev.zip</DownloadableArchives>
-</Package>
