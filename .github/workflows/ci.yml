@@ -583,7 +583,7 @@ jobs:
         run: |
           VERSION=$(date -u +%Y.%-m.%-d.0)
           DATE=$(date -u +%Y-%m-%d)
-          BASE_URL="https://github.com/reg31/qt/releases/latest/download/"
+          BASE_URL="https://github.com/reg31/qt/releases/latest/download"
 
           entry() {
             local name="$1" display="$2" file="$3" dir="$4" default="$5"
