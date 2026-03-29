@@ -23,7 +23,8 @@ env:
   EXTRA_FLAGS: -no-feature-qml-network -no-feature-qml-ssl -no-feature-quickcontrols2-fusion
   QT_BASE_CHERRY_PICK: 524178 680264 680265 712956 713974 652062 715215 723749
   QT_DECLARATIVE_CHERRY_PICK: 622692 695153 663127
-    
+  INSTALLER_BASE: https://raw.githubusercontent.com/reg31/qt/main/files/installer
+
 on:
   workflow_dispatch:
     inputs:
@@ -53,7 +54,7 @@ jobs:
           else
             echo "qt_branch=${{ env.QT_BRANCH }}" >> $GITHUB_OUTPUT
           fi
-          
+
   build-windows:
     needs: setup
     runs-on: windows-2022
@@ -67,7 +68,7 @@ jobs:
       - name: Configure Windows Defender exclusions
         shell: powershell
         run: Add-MpPreference -ExclusionPath ${{ github.workspace }}
-    
+
       - name: Checkout Qt
         uses: actions/checkout@v6
         with:
@@ -75,13 +76,13 @@ jobs:
           ref: ${{ needs.setup.outputs.qt_branch }}
           fetch-depth: 1
           submodules: false
-          
+
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.9
-            
+
       - name: Set up MinGW
         uses: egor-tensin/setup-mingw@v3
-   
+
       - name: Initialize Qt submodules
         run: init-repository.bat ${{ env.INIT_FLAGS }}
 
@@ -106,17 +107,15 @@ jobs:
           }
           [ -n "${QT_BASE_CHERRY_PICK}" ] && apply_changes qtbase ${QT_BASE_CHERRY_PICK}
           [ -n "${QT_DECLARATIVE_CHERRY_PICK}" ] && apply_changes qtdeclarative ${QT_DECLARATIVE_CHERRY_PICK}
-    
+
       - name: Experimental library improvement
         shell: bash
         run: |
           set -e
-          echo "Downloading experimental changes  ..."
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgthreadedrenderloop.cpp -o qtdeclarative/src/quick/scenegraph/qsgthreadedrenderloop.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgbatchrenderer.cpp -o qtdeclarative/src/quick/scenegraph/coreapi/qsgbatchrenderer.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgbatchrenderer_p.h -o qtdeclarative/src/quick/scenegraph/coreapi/qsgbatchrenderer_p.h
-          echo "Download completed  ..."
-          
+
       - name: Configure
         run: |
           set "CMAKE_C_COMPILER_LAUNCHER=sccache"
@@ -124,7 +123,6 @@ jobs:
           set "CC=C:\ProgramData\mingw64\mingw64\bin\x86_64-w64-mingw32-gcc.exe"
           set "CXX=C:\ProgramData\mingw64\mingw64\bin\x86_64-w64-mingw32-g++.exe"
           set "OUTPUT_DIR=%CD%\qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
-      
           mkdir build
           cd build
           ..\configure.bat -schannel -prefix "%OUTPUT_DIR%" ${{ env.SHARED_FLAGS }} ^
@@ -144,7 +142,7 @@ jobs:
               Write-Host "Patched: $($_.FullName)"
             }
           }
-              
+
       - name: List features
         run: configure.bat -list-features
 
@@ -153,13 +151,13 @@ jobs:
           cd build
           cmake --build . -j%NUMBER_OF_PROCESSORS%
           cmake --install .
-          
+
       - name: Package artifacts
         run: |
           set "OUTPUT_NAME=qt-windows-mingw-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
           Xcopy C:\ProgramData\mingw64\mingw64\bin\*.dll .\%OUTPUT_NAME%\bin\ /c /i /s /y /r
           7z a %OUTPUT_NAME%.zip .\%OUTPUT_NAME%\* -x!.\%OUTPUT_NAME%\share -x!.\%OUTPUT_NAME%\sbom -x!.\%OUTPUT_NAME%\doc
-          
+
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
         with:
@@ -180,7 +178,7 @@ jobs:
       - name: Configure Windows Defender exclusions
         shell: powershell
         run: Add-MpPreference -ExclusionPath ${{ github.workspace }}
-          
+
       - name: Checkout Qt
         uses: actions/checkout@v6
         with:
@@ -188,17 +186,17 @@ jobs:
           ref: ${{ needs.setup.outputs.qt_branch }}
           fetch-depth: 1
           submodules: false
-          
+
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.9
-            
+
       - name: Set up JDK
         uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: 25
           check-latest: true
-        
+
       - name: Initialize Qt submodules
         run: init-repository.bat ${{ env.INIT_FLAGS }}
 
@@ -231,7 +229,7 @@ jobs:
           set QT_ARCHIVE=qt-windows-mingw-release-dev.zip
           curl -fsSL -o %QT_ARCHIVE% https://github.com/reg31/qt/releases/latest/download/%QT_ARCHIVE%
           7z x %QT_ARCHIVE%
-          
+
       - name: Download prebuilt openssl
         run: |
           mkdir openssl
@@ -239,7 +237,7 @@ jobs:
           set OPENSSL_ARCHIVE=${{ env.OPENSSL_VERSION }}-${{ matrix.arch }}.zip
           curl -fsSL -o %OPENSSL_ARCHIVE% https://github.com/reg31/openssl/releases/latest/download/%OPENSSL_ARCHIVE%
           7z x %OPENSSL_ARCHIVE%
-    
+
       - name: Extract config folders
         run: |
           mkdir configFolders
@@ -265,12 +263,10 @@ jobs:
         shell: bash
         run: |
           set -e
-          echo "Downloading experimental changes  ..."
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgthreadedrenderloop.cpp -o qtdeclarative/src/quick/scenegraph/qsgthreadedrenderloop.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgbatchrenderer.cpp -o qtdeclarative/src/quick/scenegraph/coreapi/qsgbatchrenderer.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgbatchrenderer_p.h -o qtdeclarative/src/quick/scenegraph/coreapi/qsgbatchrenderer_p.h
-          echo "Download completed  ..."
-          
+
       - name: Configure Android Qt
         run: |
           set "OUTPUT_DIR=%CD:\=/%/qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
@@ -278,32 +274,30 @@ jobs:
           set "CMAKE_CXX_COMPILER_LAUNCHER=sccache"
           set "CMAKE_C_COMPILER_LAUNCHER=sccache"
           set "OPENSSL_ROOT=%CD:\=/%/openssl"
-          
           mkdir build
           cd build
-          
-            ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} -skip qtshadertools ^
-              -android-abis ${{ matrix.arch }} -android-ndk "%ANDROID_NDK_LATEST_HOME%" -android-sdk "%ANDROID_SDK_ROOT%" ^
-              -reduce-relocations -openssl-runtime -- -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT%" ${{ env.UNITY_BUILD }} ^
-              -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp -fno-semantic-interposition" ^
-              -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp -fno-semantic-interposition" ^
-              -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,--pack-dyn-relocs=android+relr,--use-android-relr-tags,--gc-sections -Wl,-Bsymbolic-functions"
-                      
+          ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} -skip qtshadertools ^
+            -android-abis ${{ matrix.arch }} -android-ndk "%ANDROID_NDK_LATEST_HOME%" -android-sdk "%ANDROID_SDK_ROOT%" ^
+            -reduce-relocations -openssl-runtime -- -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT%" ${{ env.UNITY_BUILD }} ^
+            -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp -fno-semantic-interposition" ^
+            -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp -fno-semantic-interposition" ^
+            -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,--pack-dyn-relocs=android+relr,--use-android-relr-tags,--gc-sections -Wl,-Bsymbolic-functions"
+
       - name: List features
-        run: configure.bat -list-features          
+        run: configure.bat -list-features
 
       - name: Build Android Qt
         run: |
-          cd build          
+          cd build
           cmake --build . -j%NUMBER_OF_PROCESSORS%
           cmake --install . --strip
-          
+
       - name: Package artifacts
         run: |
           set "OUTPUT_NAME=qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
-          Xcopy .\configFolders\bin\ .\%OUTPUT_NAME%\bin\ /c /i /s /y /r          
+          Xcopy .\configFolders\bin\ .\%OUTPUT_NAME%\bin\ /c /i /s /y /r
           7z a %OUTPUT_NAME%.zip .\%OUTPUT_NAME%\* -x!.\%OUTPUT_NAME%\share -x!.\%OUTPUT_NAME%\sbom -x!.\%OUTPUT_NAME%\doc
-          
+
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
         with:
@@ -360,11 +354,9 @@ jobs:
         shell: bash
         run: |
           set -e
-          echo "Downloading experimental changes  ..."
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgthreadedrenderloop.cpp -o qtdeclarative/src/quick/scenegraph/qsgthreadedrenderloop.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgbatchrenderer.cpp -o qtdeclarative/src/quick/scenegraph/coreapi/qsgbatchrenderer.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgbatchrenderer_p.h -o qtdeclarative/src/quick/scenegraph/coreapi/qsgbatchrenderer_p.h
-          echo "Download completed  ..."
 
       - name: Configure
         run: |
@@ -377,7 +369,6 @@ jobs:
             -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp" \
             -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp" \
             ${{ env.UNITY_BUILD }}
-
           ../configure -list-features
 
       - name: Build
@@ -397,8 +388,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: qt-macos
-          path: |
-            qt-macos-release-${{ needs.setup.outputs.qt_branch }}.zip
+          path: qt-macos-release-${{ needs.setup.outputs.qt_branch }}.zip
 
   build-ios:
     needs: setup
@@ -417,7 +407,7 @@ jobs:
 
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.9
-        
+
       - name: Initialize Qt submodules
         run: perl init-repository ${{ env.INIT_FLAGS }}
 
@@ -447,11 +437,9 @@ jobs:
         shell: bash
         run: |
           set -e
-          echo "Downloading experimental changes  ..."
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgthreadedrenderloop.cpp -o qtdeclarative/src/quick/scenegraph/qsgthreadedrenderloop.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgbatchrenderer.cpp -o qtdeclarative/src/quick/scenegraph/coreapi/qsgbatchrenderer.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgbatchrenderer_p.h -o qtdeclarative/src/quick/scenegraph/coreapi/qsgbatchrenderer_p.h
-          echo "Download completed  ..."
 
       - name: Extract config folder
         run: |
@@ -459,7 +447,7 @@ jobs:
           cd configFolder
           curl -fsSL -o ios_bin.7z https://raw.githubusercontent.com/reg31/qt/main/files/ios_bin.7z
           7z x ios_bin.7z
-      
+
       - name: Download prebuilt Qt Host
         run: |
           mkdir -p qt-macos-release-dev
@@ -469,7 +457,7 @@ jobs:
           7z x $QT_ARCHIVE
 
       - name: Configure and build for iOS
-        run: | 
+        run: |
           OUTPUT_DIR=$(pwd)/qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
           export CMAKE_CXX_COMPILER_LAUNCHER="sccache"
           export CMAKE_C_COMPILER_LAUNCHER="sccache"
@@ -477,17 +465,14 @@ jobs:
           EXTRA_FLAGS="-march=armv8.2-a+dotprod -Xclang -fno-pch-timestamp"
           mkdir -p build
           cd build
-          
           ../configure -platform macx-ios-clang ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} -securetransport -feature-appstore-compliant \
           -skip qtshadertools -gc-binaries -prefix $OUTPUT_DIR -qt-host-path $HOST_PATH -- -DCMAKE_OSX_ARCHITECTURES="arm64" \
             -DCMAKE_C_FLAGS="${{ env.SHARED_COMPILER_FLAGS }}  $EXTRA_FLAGS" -DCMAKE_CXX_FLAGS="${{ env.SHARED_COMPILER_FLAGS }} $EXTRA_FLAGS" \
             -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,-dead_strip,--gc-sections" ${{ env.UNITY_BUILD }}
-            
           ../configure -list-features
-          
           cmake --build . -j$(sysctl -n hw.ncpu)
           cmake --install . --strip
-          
+
       - name: Package artifacts
         run: |
           OUTPUT_NAME=qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
@@ -500,17 +485,196 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: qt-ios
-          path: |
-            qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
+          path: qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
+
+  build-installer-windows:
+    needs: [setup, build-windows, build-android]
+    runs-on: windows-2022
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Setup QtIFW
+        uses: jmarrec/setup-qtifw@v1
+        with:
+          qtifw-version: '4.x'
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: qt-windows-mingw
+          path: artifacts/
+
+      - name: Download Android ARM64 artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: qt-android-arm64-v8a
+          path: artifacts/
+
+      - name: Download Android ARMv7 artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: qt-android-armeabi-v7a
+          path: artifacts/
+
+      - name: Fetch installer files and build structure
+        run: |
+          B=${{ env.INSTALLER_BASE }}
+          mkdir -p installer/config
+          mkdir -p installer/packages/com.qt.dev.windows.mingw/meta
+          mkdir -p installer/packages/com.qt.dev.android.arm64/meta
+          mkdir -p installer/packages/com.qt.dev.android.armv7/meta
+          curl -fsSL $B/windows-config.xml              -o installer/config/config.xml
+          curl -fsSL $B/windows-controller.qs           -o installer/config/controller.qs
+          curl -fsSL $B/windows-mingw-package.xml       -o installer/packages/com.qt.dev.windows.mingw/meta/package.xml
+          curl -fsSL $B/windows-mingw-installscript.qs  -o installer/packages/com.qt.dev.windows.mingw/meta/installscript.qs
+          curl -fsSL $B/windows-android-arm64-package.xml -o installer/packages/com.qt.dev.android.arm64/meta/package.xml
+          curl -fsSL $B/windows-android-armv7-package.xml -o installer/packages/com.qt.dev.android.armv7/meta/package.xml
+
+      - name: Convert kits to QtIFW archives
+        run: |
+          convert_kit() {
+            local zip="$1" kit="$2"
+            mkdir -p tmp/$kit archives
+            unzip -q "$zip" -d tmp/$kit
+            archivegen archives/$kit.7z tmp/$kit/$kit
+            rm -rf tmp/$kit
+          }
+          convert_kit "artifacts/qt-windows-mingw-release-${{ needs.setup.outputs.qt_branch }}.zip" "qt-windows-mingw-release-dev"
+          convert_kit "artifacts/qt-android-arm64-v8a-release-${{ needs.setup.outputs.qt_branch }}.zip" "qt-android-arm64-v8a-release-dev"
+          convert_kit "artifacts/qt-android-armeabi-v7a-release-${{ needs.setup.outputs.qt_branch }}.zip" "qt-android-armeabi-v7a-release-dev"
+
+      - name: Build online-only installer
+        run: |
+          mkdir -p out
+          binarycreator --online-only \
+            --config installer/config/config.xml \
+            --packages installer/packages \
+            out/qt-dev-installer-windows.exe
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: qt-dev-installer-windows
+          path: out/qt-dev-installer-windows.exe
+
+      - name: Upload Windows kit archives
+        uses: actions/upload-artifact@v7
+        with:
+          name: archives-windows
+          path: archives/
+
+  build-installer-macos:
+    needs: [setup, build-macos, build-ios]
+    runs-on: macos-26
+    steps:
+      - name: Setup QtIFW
+        uses: jmarrec/setup-qtifw@v1
+        with:
+          qtifw-version: '4.x'
+
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: qt-macos
+          path: artifacts/
+
+      - name: Download iOS artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: qt-ios
+          path: artifacts/
+
+      - name: Fetch installer files and build structure
+        run: |
+          B=${{ env.INSTALLER_BASE }}
+          mkdir -p installer/config
+          mkdir -p installer/packages/com.qt.dev.macos/meta
+          mkdir -p installer/packages/com.qt.dev.ios/meta
+          curl -fsSL $B/macos-config.xml             -o installer/config/config.xml
+          curl -fsSL $B/macos-controller.qs           -o installer/config/controller.qs
+          curl -fsSL $B/macos-package.xml             -o installer/packages/com.qt.dev.macos/meta/package.xml
+          curl -fsSL $B/macos-installscript.qs        -o installer/packages/com.qt.dev.macos/meta/installscript.qs
+          curl -fsSL $B/ios-package.xml               -o installer/packages/com.qt.dev.ios/meta/package.xml
+          curl -fsSL $B/ios-installscript.qs          -o installer/packages/com.qt.dev.ios/meta/installscript.qs
+
+      - name: Convert kits to QtIFW archives
+        run: |
+          convert_kit() {
+            local zip="$1" kit="$2"
+            mkdir -p tmp/$kit archives
+            unzip -q "$zip" -d tmp/$kit
+            archivegen archives/$kit.7z tmp/$kit/$kit
+            rm -rf tmp/$kit
+          }
+          convert_kit "artifacts/qt-macos-release-${{ needs.setup.outputs.qt_branch }}.zip" "qt-macos-release-dev"
+          convert_kit "artifacts/qt-ios-release-${{ needs.setup.outputs.qt_branch }}.zip" "qt-ios-release-dev"
+
+      - name: Build online-only installer
+        run: |
+          mkdir -p out
+          binarycreator --online-only \
+            --config installer/config/config.xml \
+            --packages installer/packages \
+            out/qt-dev-installer-macos.app
+          cd out && zip -r qt-dev-installer-macos.zip qt-dev-installer-macos.app
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: qt-dev-installer-macos
+          path: out/qt-dev-installer-macos.zip
+
+      - name: Upload macOS kit archives
+        uses: actions/upload-artifact@v7
+        with:
+          name: archives-macos
+          path: archives/
 
   release:
-    needs: [setup, build-windows, build-android, build-macos, build-ios]
+    needs: [setup, build-windows, build-android, build-macos, build-ios, build-installer-windows, build-installer-macos]
     runs-on: ubuntu-latest
-    if: ${{ !cancelled() && needs.build-windows.result == 'success' && needs.build-macos.result == 'success'}}
+    if: ${{ !cancelled() && needs.build-windows.result == 'success' && needs.build-macos.result == 'success' }}
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v8
-          
+
+      - name: Generate Updates.xml
+        run: |
+          VERSION=$(date -u +%Y.%-m.%-d.0)
+          DATE=$(date -u +%Y-%m-%d)
+          BASE_URL="https://github.com/reg31/qt/releases/latest/download/"
+
+          entry() {
+            local name="$1" display="$2" file="$3" dir="$4" default="$5"
+            sha1=$(sha1sum "$dir/$file" | cut -d' ' -f1)
+            comp=$(stat -c%s "$dir/$file")
+            uncomp=$(7z l -slt "$dir/$file" | awk -F' = ' '/^Size/{sum+=$2} END{print sum}')
+            printf '    <PackageUpdate>\n'
+            printf '        <n>%s</n>\n' "$name"
+            printf '        <DisplayName>%s</DisplayName>\n' "$display"
+            printf '        <Version>%s</Version>\n' "$VERSION"
+            printf '        <ReleaseDate>%s</ReleaseDate>\n' "$DATE"
+            printf '        <Default>%s</Default>\n' "$default"
+            printf '        <DownloadableArchives>%s</DownloadableArchives>\n' "$file"
+            printf '        <UpdateFile CompressedSize="%s" UncompressedSize="%s" OS="Any" SHA1="%s"/>\n' "$comp" "$uncomp" "$sha1"
+            printf '    </PackageUpdate>\n'
+          }
+
+          {
+            printf '<?xml version="1.0" encoding="UTF-8"?>\n'
+            printf '<Updates>\n'
+            printf '    <ApplicationName>Qt Dev Kit</ApplicationName>\n'
+            printf '    <ApplicationVersion>%s</ApplicationVersion>\n' "$VERSION"
+            printf '    <ArchivesBaseUrl>%s</ArchivesBaseUrl>\n' "$BASE_URL"
+            entry "com.qt.dev.windows.mingw" "Qt Dev - Windows MinGW (x64)"  "qt-windows-mingw-release-dev.7z"       "archives-windows" "true"
+            entry "com.qt.dev.android.arm64" "Qt Dev - Android ARM64-v8a"    "qt-android-arm64-v8a-release-dev.7z"   "archives-windows" "true"
+            entry "com.qt.dev.android.armv7" "Qt Dev - Android ARMv7"        "qt-android-armeabi-v7a-release-dev.7z" "archives-windows" "false"
+            entry "com.qt.dev.macos"         "Qt Dev - macOS (Universal)"    "qt-macos-release-dev.7z"               "archives-macos"   "true"
+            entry "com.qt.dev.ios"           "Qt Dev - iOS"                  "qt-ios-release-dev.7z"                 "archives-macos"   "true"
+            printf '</Updates>\n'
+          } > Updates.xml
+
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
@@ -520,20 +684,29 @@ jobs:
           body: |
             Automated build of Qt ${{ needs.setup.outputs.qt_branch }} branch
             With qtbase and qtdeclarative, some features are disabled to minimize footprint
-            
+
             This build includes binaries for:
             - Windows MINGW (x64)
             - Android (armeabi-v7a, arm64-v8a)
             - iOS
             - macOS (Universal Binary)
+
+            **Installers** (recommended — includes auto-update via maintenance tool):
+            - `qt-dev-installer-windows.exe` — installs Windows + Android kits
+            - `qt-dev-installer-macos.zip` — installs macOS + iOS kits
           files: |
             qt-windows-mingw/*.zip
             qt-android-armeabi-v7a/*.zip
             qt-android-arm64-v8a/*.zip
             qt-macos/*.zip
             qt-ios/*.zip
-          
-      - name: Cleanup repository
+            qt-dev-installer-windows/qt-dev-installer-windows.exe
+            qt-dev-installer-macos/qt-dev-installer-macos.zip
+            archives-windows/*.7z
+            archives-macos/*.7z
+            Updates.xml
+
+      - name: Cleanup old releases
         uses: dev-drprasad/delete-older-releases@v0.3.4
         with:
           keep_latest: 3
