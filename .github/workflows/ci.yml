@@ -500,24 +500,6 @@ jobs:
         with:
           qtifw-version: '4.8.1'
 
-      - name: Download Windows artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: qt-windows-mingw
-          path: artifacts/
-
-      - name: Download Android ARM64 artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: qt-android-arm64-v8a
-          path: artifacts/
-
-      - name: Download Android ARMv7 artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: qt-android-armeabi-v7a
-          path: artifacts/
-
       - name: Fetch installer files and build structure
         run: |
           B=${{ env.INSTALLER_BASE }}
@@ -531,19 +513,6 @@ jobs:
           curl -fsSL $B/windows-mingw-installscript.qs  -o installer/packages/com.qt.dev.windows.mingw/meta/installscript.qs
           curl -fsSL $B/windows-android-arm64-package.xml -o installer/packages/com.qt.dev.android.arm64/meta/package.xml
           curl -fsSL $B/windows-android-armv7-package.xml -o installer/packages/com.qt.dev.android.armv7/meta/package.xml
-
-      - name: Convert kits to QtIFW archives
-        run: |
-          convert_kit() {
-            local zip="$1" kit="$2"
-            mkdir -p tmp/$kit archives
-            unzip -q "$zip" -d tmp/$kit
-            archivegen archives/$kit.7z tmp/$kit
-            rm -rf tmp/$kit
-          }
-          convert_kit "artifacts/qt-windows-mingw-release-${{ needs.setup.outputs.qt_branch }}.zip" "qt-windows-mingw-release-dev"
-          convert_kit "artifacts/qt-android-arm64-v8a-release-${{ needs.setup.outputs.qt_branch }}.zip" "qt-android-arm64-v8a-release-dev"
-          convert_kit "artifacts/qt-android-armeabi-v7a-release-${{ needs.setup.outputs.qt_branch }}.zip" "qt-android-armeabi-v7a-release-dev"
 
       - name: Build online-only installer
         run: |
@@ -559,11 +528,6 @@ jobs:
           name: qt-dev-installer-windows
           path: out/qt-dev-installer-windows.exe
 
-      - name: Upload Windows kit archives
-        uses: actions/upload-artifact@v7
-        with:
-          name: archives-windows
-          path: archives/
 
   build-installer-macos:
     needs: [setup, build-macos, build-ios]
@@ -574,18 +538,6 @@ jobs:
         uses: jmarrec/setup-qtifw@v1
         with:
           qtifw-version: '4.8.1'
-
-      - name: Download macOS artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: qt-macos
-          path: artifacts/
-
-      - name: Download iOS artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: qt-ios
-          path: artifacts/
 
       - name: Fetch installer files and build structure
         run: |
@@ -599,18 +551,6 @@ jobs:
           curl -fsSL $B/macos-installscript.qs        -o installer/packages/com.qt.dev.macos/meta/installscript.qs
           curl -fsSL $B/ios-package.xml               -o installer/packages/com.qt.dev.ios/meta/package.xml
           curl -fsSL $B/ios-installscript.qs          -o installer/packages/com.qt.dev.ios/meta/installscript.qs
-
-      - name: Convert kits to QtIFW archives
-        run: |
-          convert_kit() {
-            local zip="$1" kit="$2"
-            mkdir -p tmp/$kit archives
-            unzip -q "$zip" -d tmp/$kit
-            archivegen archives/$kit.7z tmp/$kit
-            rm -rf tmp/$kit
-          }
-          convert_kit "artifacts/qt-macos-release-${{ needs.setup.outputs.qt_branch }}.zip" "qt-macos-release-dev"
-          convert_kit "artifacts/qt-ios-release-${{ needs.setup.outputs.qt_branch }}.zip" "qt-ios-release-dev"
 
       - name: Build online-only installer
         run: |
@@ -630,11 +570,6 @@ jobs:
           name: qt-dev-installer-macos
           path: out/qt-dev-installer-macos.dmg
 
-      - name: Upload macOS kit archives
-        uses: actions/upload-artifact@v7
-        with:
-          name: archives-macos
-          path: archives/
 
   release:
     needs: [setup, build-windows, build-android, build-macos, build-ios, build-installer-windows, build-installer-macos]
@@ -672,11 +607,11 @@ jobs:
             printf '    <ApplicationName>Qt Dev Kit</ApplicationName>\n'
             printf '    <ApplicationVersion>%s</ApplicationVersion>\n' "$VERSION"
             printf '    <ArchivesBaseUrl>%s</ArchivesBaseUrl>\n' "$BASE_URL"
-            entry "com.qt.dev.windows.mingw" "Qt Dev - Windows MinGW (x64)"  "qt-windows-mingw-release-dev.7z"       "archives-windows" "true"
-            entry "com.qt.dev.android.arm64" "Qt Dev - Android ARM64-v8a"    "qt-android-arm64-v8a-release-dev.7z"   "archives-windows" "true"
-            entry "com.qt.dev.android.armv7" "Qt Dev - Android ARMv7"        "qt-android-armeabi-v7a-release-dev.7z" "archives-windows" "true"
-            entry "com.qt.dev.macos"         "Qt Dev - macOS (Universal)"    "qt-macos-release-dev.7z"               "archives-macos"   "true"
-            entry "com.qt.dev.ios"           "Qt Dev - iOS"                  "qt-ios-release-dev.7z"                 "archives-macos"   "true"
+            entry "com.qt.dev.windows.mingw" "Qt Dev - Windows MinGW (x64)"  "qt-windows-mingw-release-dev.zip"       "qt-windows-mingw" "true"
+            entry "com.qt.dev.android.arm64" "Qt Dev - Android ARM64-v8a"    "qt-android-arm64-v8a-release-dev.zip"   "qt-android-arm64-v8a" "true"
+            entry "com.qt.dev.android.armv7" "Qt Dev - Android ARMv7"        "qt-android-armeabi-v7a-release-dev.zip" "qt-android-armeabi-v7a" "true"
+            entry "com.qt.dev.macos"         "Qt Dev - macOS (Universal)"    "qt-macos-release-dev.zip"               "qt-macos" "true"
+            entry "com.qt.dev.ios"           "Qt Dev - iOS"                  "qt-ios-release-dev.zip"                 "qt-ios" "true"
             printf '</Updates>\n'
           } > Updates.xml
 
@@ -707,8 +642,6 @@ jobs:
             qt-ios/*.zip
             qt-dev-installer-windows/qt-dev-installer-windows.exe
             qt-dev-installer-macos/qt-dev-installer-macos.dmg
-            archives-windows/*.7z
-            archives-macos/*.7z
             Updates.xml
 
       - name: Cleanup old releases
