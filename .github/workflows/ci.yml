@@ -497,7 +497,7 @@ jobs:
       - name: Setup QtIFW
         uses: jmarrec/setup-qtifw@v1
         with:
-          qtifw-version: '4.7'
+          qtifw-version: '4.8.1'
 
       - name: Download Windows artifact
         uses: actions/download-artifact@v8
@@ -535,9 +535,9 @@ jobs:
         run: |
           convert_kit() {
             local zip="$1" kit="$2"
-            mkdir -p tmp/$kit archives
+            mkdir -p tmp archives
             unzip -q "$zip" -d tmp/$kit
-            archivegen archives/$kit.7z tmp/$kit/$kit
+            archivegen archives/$kit.7z tmp/$kit
             rm -rf tmp/$kit
           }
           convert_kit "artifacts/qt-windows-mingw-release-${{ needs.setup.outputs.qt_branch }}.zip" "qt-windows-mingw-release-dev"
@@ -571,7 +571,7 @@ jobs:
       - name: Setup QtIFW
         uses: jmarrec/setup-qtifw@v1
         with:
-          qtifw-version: '4.7'
+          qtifw-version: '4.8.1'
 
       - name: Download macOS artifact
         uses: actions/download-artifact@v8
@@ -602,9 +602,9 @@ jobs:
         run: |
           convert_kit() {
             local zip="$1" kit="$2"
-            mkdir -p tmp/$kit archives
+            mkdir -p tmp archives
             unzip -q "$zip" -d tmp/$kit
-            archivegen archives/$kit.7z tmp/$kit/$kit
+            archivegen archives/$kit.7z tmp/$kit
             rm -rf tmp/$kit
           }
           convert_kit "artifacts/qt-macos-release-${{ needs.setup.outputs.qt_branch }}.zip" "qt-macos-release-dev"
