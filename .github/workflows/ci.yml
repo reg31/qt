@@ -517,7 +517,7 @@ jobs:
       - name: Generate repository and build installer
         run: |
           mkdir -p out repo-windows
-          repogen --packages installer/packages --repository repo-windows
+          repogen -p installer/packages repo-windows
           binarycreator --online-only \
             --config installer/config/config.xml \
             --packages installer/packages \
@@ -563,7 +563,7 @@ jobs:
       - name: Generate repository and build installer
         run: |
           mkdir -p out repo-macos
-          repogen --packages installer/packages --repository repo-macos
+          repogen -p installer/packages repo-macos
           binarycreator --online-only \
             --config installer/config/config.xml \
             --packages installer/packages \
