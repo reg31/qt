@@ -618,6 +618,7 @@ void QSGRenderThread::teardownGraphics()
         QSGRhiSupport::instance()->destroyRhi(rhi, {});
     }
     rhi = nullptr;
+    wd->rhi = nullptr;
     rhiReady.store(false, std::memory_order_release);
     lastFrameValid = false;
 }
