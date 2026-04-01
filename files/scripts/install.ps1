@@ -37,7 +37,7 @@ function Find-QtRoot {
 $QtRoot = Find-QtRoot
 
 if (-not $QtRoot) {
-    Write-Host "Qt installation not found in common locations."
+    Write-Host "Qt installation not found in common locations..."
     $QtRoot = Read-Host "Enter your Qt installation path"
     if (-not (Test-Path $QtRoot)) {
         Write-Error "Directory does not exist: $QtRoot"
@@ -59,11 +59,14 @@ Write-Host ""
 $TmpDir = Join-Path $env:TEMP "qt-dev-install"
 New-Item -ItemType Directory -Force -Path $TmpDir | Out-Null
 
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$WebClient = New-Object System.Net.WebClient
+
 foreach ($Kit in $Kits) {
     $Zip = "$Kit.zip"
     $Url = "$GithubBase/$Zip"
 
-    Write-Host "Checking $Kit ..."
+    Write-Host "Checking $Kit"
 
     # Check if archive exists on GitHub
     try {
@@ -74,31 +77,32 @@ foreach ($Kit in $Kits) {
     }
 
     if ($Status -ne 200) {
-        Write-Host "  Not found on GitHub (HTTP $Status), skipping."
+        Write-Host ". Not found on GitHub (HTTP $Status), skipping."
         Write-Host ""
         continue
     }
 
     # Remove existing subfolder if present
     $KitDir = Join-Path $DevDir $Kit
-    Write-Host "  Removing existing installation..."
+    Write-Host ". Removing existing installation"
     Remove-Item -Recurse -Force $KitDir -ErrorAction SilentlyContinue
 
     # Download
     $ZipPath = Join-Path $TmpDir $Zip
-    Write-Host "  Downloading $Zip ..."
-    Invoke-WebRequest -Uri $Url -OutFile $ZipPath -UseBasicParsing
+    Write-Host ". Downloading $Zip"
+    $WebClient.DownloadFile($Url, $ZipPath)
 
     # Extract
-    Write-Host "  Extracting..."
+    Write-Host ". Extracting"
     New-Item -ItemType Directory -Force -Path $KitDir | Out-Null
-    Expand-Archive -Path $ZipPath -DestinationPath $KitDir -Force
+    [System.IO.Compression.ZipFile]::ExtractToDirectory($ZipPath, $KitDir)
     Remove-Item $ZipPath
 
-    Write-Host "  Installed: $KitDir"
+    Write-Host ". Installed: $KitDir"
     Write-Host ""
 }
 
+$WebClient.Dispose()
 Remove-Item -Recurse -Force $TmpDir -ErrorAction SilentlyContinue
 
 # ── PATH setup ───────────────────────────────────────────────────────────────
@@ -120,6 +124,10 @@ if (Test-Path $BinPath) {
 
 Write-Host ""
 Write-Host "Done. To register the kits in QtCreator:"
-Write-Host "  Tools -> Options -> Kits -> Qt Versions -> Add"
-Write-Host "  Point to: $DevDir\qt-windows-mingw-release-dev\bin\qmake.exe"
-Write-Host "  Then go to Kits and click Auto-detect."
+Write-Host ". Tools -> Options -> Kits -> Qt Versions -> Add"
+Write-Host ". Point to: $DevDir\qt-windows-mingw-release-dev\bin\qmake.exe"
+Write-Host ". Then go to Kits and click Auto-detect"
+
+Write-Host ""
+Write-Host "Press any key to exit..."
+$null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
