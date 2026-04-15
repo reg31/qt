@@ -21,8 +21,8 @@ env:
     -nomake examples -nomake tests -nomake benchmarks -nomake manual-tests -nomake minimal-static-tests -no-feature-sql -no-feature-gssapi -no-feature-accessibility
     -no-feature-graphicsframecapture -DFEATURE_no_direct_extern_access=ON
   EXTRA_FLAGS: -no-feature-qml-network -no-feature-qml-ssl -no-feature-quickcontrols2-fusion
-  QT_BASE_CHERRY_PICK: 524178 680264 680265 712956 713974 652062 715215 723749 726416 722747
-  QT_DECLARATIVE_CHERRY_PICK: 622692 695153 663127 721700
+  QT_BASE_CHERRY_PICK: 524178 680264 680265 712956 713974 652062 715215 723749 726416 722747 726828
+  QT_DECLARATIVE_CHERRY_PICK: 622692 695153 663127 721700 726143 726831
     
 on:
   workflow_dispatch:
