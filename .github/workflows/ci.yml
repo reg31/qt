@@ -281,9 +281,10 @@ jobs:
           
           mkdir build
           cd build
+          cmake -DACTION_RESOLVE_GRADLE=ON -DQT_ROOT_DIR=D:/a/qt/qt/qtbase -DGRADLE_PROJECT_DIR=D:/a/qt/qt/qtbase/src/android/jar -P D:/a/qt/qt/qtbase/cmake/QtSetupAndroid.cmake
           
             ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} -skip qtshadertools ^
-              -android-abis ${{ matrix.arch }} -android-ndk "%ANDROID_NDK_LATEST_HOME%" -android-sdk "%ANDROID_SDK_ROOT%" -DQT_ALLOW_DOWNLOAD=ON ^
+              -android-abis ${{ matrix.arch }} -android-ndk "%ANDROID_NDK_LATEST_HOME%" -android-sdk "%ANDROID_SDK_ROOT%" ^
               -reduce-relocations -openssl-runtime -- -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT%" ${{ env.UNITY_BUILD }} ^
               -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp -fno-semantic-interposition" ^
               -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp -fno-semantic-interposition" ^
