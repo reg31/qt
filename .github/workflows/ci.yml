@@ -270,7 +270,10 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgbatchrenderer.cpp -o qtdeclarative/src/quick/scenegraph/coreapi/qsgbatchrenderer.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgbatchrenderer_p.h -o qtdeclarative/src/quick/scenegraph/coreapi/qsgbatchrenderer_p.h
           echo "Download completed  ..."
-          
+
+      - name: Setup Android Tools
+        run:  cmake -DACTION_RESOLVE_GRADLE=ON -DQT_ROOT_DIR=D:/a/qt/qt/qtbase -DGRADLE_PROJECT_DIR=D:/a/qt/qt/qtbase/src/android/jar -P D:/a/qt/qt/qtbase/cmake/QtSetupAndroid.cmake
+        
       - name: Configure Android Qt
         run: |
           set "OUTPUT_DIR=%CD:\=/%/qt-android-${{ matrix.arch }}-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}"
@@ -281,7 +284,6 @@ jobs:
           
           mkdir build
           cd build
-          cmake -DACTION_RESOLVE_GRADLE=ON -DQT_ROOT_DIR=D:/a/qt/qt/qtbase -DGRADLE_PROJECT_DIR=D:/a/qt/qt/qtbase/src/android/jar -P D:/a/qt/qt/qtbase/cmake/QtSetupAndroid.cmake
           
             ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} -skip qtshadertools ^
               -android-abis ${{ matrix.arch }} -android-ndk "%ANDROID_NDK_LATEST_HOME%" -android-sdk "%ANDROID_SDK_ROOT%" ^
