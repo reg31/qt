@@ -42,6 +42,7 @@
 
 #include <qtquick_tracepoints_p.h>
 #include <algorithm>
+#include <mutex>
 
 #ifdef Q_OS_DARWIN
 #include <QtCore/private/qcore_mac_p.h>
@@ -307,6 +308,7 @@ public:
     bool lastFrameValid = false;
     bool pipelineCacheLoaded = false;
     std::atomic<bool> rhiReady{false};
+    std::atomic<bool> deferredExposeRequest{false};
 
     bool stopEventProcessing;
     QSGRenderThreadEventQueue eventQueue;
@@ -346,6 +348,30 @@ Q_GLOBAL_STATIC(QMutex, pipelineCacheFileMutex)
 static QByteArray g_pipelineCacheData;
 static bool g_pipelineCachePreloaded = false;
 
+static QByteArray ensurePipelineCacheDataLoaded()
+{
+    QMutexLocker fileLock(pipelineCacheFileMutex());
+    if (!g_pipelineCachePreloaded) {
+        QFile f(pipelineCachePath());
+        if (f.open(QIODevice::ReadOnly))
+            g_pipelineCacheData = f.readAll();
+        g_pipelineCachePreloaded = true;
+    }
+    return g_pipelineCacheData;
+}
+
+static void preloadPipelineCache()
+{
+    static std::once_flag preloadOnce;
+    std::call_once(preloadOnce, []() {
+        QThreadPool::globalInstance()->start([]() {
+            const QByteArray data = ensurePipelineCacheDataLoaded();
+            if (!data.isEmpty())
+                qCDebug(QSG_LOG_RENDERLOOP, "RHI pipeline cache preloaded (%lld bytes)", (long long)data.size());
+        });
+    });
+}
+
 static void savePipelineCache(QRhi *rhi)
 {
     QByteArray data = rhi->pipelineCacheData();
@@ -367,19 +393,7 @@ static void savePipelineCache(QRhi *rhi)
 
 static void loadPipelineCache(QRhi *rhi)
 {
-    QByteArray data;
-    {
-        QMutexLocker fileLock(pipelineCacheFileMutex());
-        if (g_pipelineCachePreloaded) {
-            data = g_pipelineCacheData;
-        } else {
-            QFile f(pipelineCachePath());
-            if (f.open(QIODevice::ReadOnly))
-                data = f.readAll();
-            g_pipelineCacheData = data;
-            g_pipelineCachePreloaded = true;
-        }
-    }
+    const QByteArray data = ensurePipelineCacheDataLoaded();
     if (!data.isEmpty()) {
         rhi->setPipelineCacheData(data);
         qCDebug(QSG_LOG_RENDERLOOP, "RHI pipeline cache loaded (%lld bytes)", (long long)data.size());
@@ -398,6 +412,7 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
             qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- window removed");
             window = nullptr;
             lastFrameValid = false;
+            deferredExposeRequest.store(false, std::memory_order_release);
         }
         return true;
     },
@@ -571,6 +586,7 @@ void QSGRenderThread::invalidateGraphics(QQuickWindow *window, bool inDestructor
         }
         rhi = nullptr;
         rhiReady.store(false, std::memory_order_release);
+        deferredExposeRequest.store(false, std::memory_order_release);
         dd->rhi = nullptr;
         qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- QRhi destroyed");
     } else {
@@ -620,6 +636,7 @@ void QSGRenderThread::teardownGraphics()
     rhi = nullptr;
     wd->rhi = nullptr;
     rhiReady.store(false, std::memory_order_release);
+    deferredExposeRequest.store(false, std::memory_order_release);
     lastFrameValid = false;
 }
 
@@ -827,6 +844,8 @@ void QSGRenderThread::ensureRhiDevice()
         }
         rhiReady.store(true, std::memory_order_release);
         rhiReady.notify_one();
+        if (deferredExposeRequest.load(std::memory_order_acquire) && window && window->isExposed())
+            QMetaObject::invokeMethod(window, &QQuickWindow::requestUpdate, Qt::QueuedConnection);
     } else {
         if (!rhiDeviceLost)
             rhiDoomed = true;
@@ -948,6 +967,8 @@ QSGThreadedRenderLoop::QSGThreadedRenderLoop()
     : sg(QSGContext::createDefaultContext())
     , m_animation_timer(0)
 {
+    preloadPipelineCache();
+
     m_animation_driver = sg->createAnimationDriver(this);
 
     connect(m_animation_driver, &QAnimationDriver::started, this, &QSGThreadedRenderLoop::animationStarted);
@@ -1233,21 +1254,22 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
             w->thread->sgrc->moveToThread(w->thread);
             w->thread->moveToThread(w->thread);
         }
+        w->thread->postEvent(WMExposedEvent(window));
+        w->thread->deferredExposeRequest.store(true, std::memory_order_release);
         w->thread->start();
+        if (w->thread->rhiReady.load(std::memory_order_acquire))
+            QMetaObject::invokeMethod(window, &QQuickWindow::requestUpdate, Qt::QueuedConnection);
         startOrStopAnimationTimer();
         return;
     } else {
         w->thread->postEvent(WMExposedEvent(w->window));
+        w->thread->deferredExposeRequest.store(true, std::memory_order_release);
         if (!w->thread->rhiReady.load(std::memory_order_acquire)) {
-            QThreadPool::globalInstance()->start([thread = w->thread, win = QPointer(w->window)]() {
-                thread->rhiReady.wait(false, std::memory_order_acquire);
-                if (win)
-                    QMetaObject::invokeMethod(win.data(), &QQuickWindow::requestUpdate, Qt::QueuedConnection);
-            });
             startOrStopAnimationTimer();
             return;
         }
     }
+    w->thread->deferredExposeRequest.store(false, std::memory_order_release);
     polishAndSync(w, true);
     startOrStopAnimationTimer();
 }
@@ -1297,8 +1319,12 @@ void QSGThreadedRenderLoop::handleUpdateRequest(QQuickWindow *window)
         if (!safeWindow) return;
         if (!QQuickWindowPrivate::get(safeWindow)->updatesEnabled) return;
         Window *w = windowFor(safeWindow);
-        if (w)
-            polishAndSync(w);
+        if (w) {
+            // Keep the lightweight expose path when the surface showed up before RHI warm-up finished.
+            const bool inExpose = safeWindow->isExposed()
+                && w->thread->deferredExposeRequest.exchange(false, std::memory_order_acq_rel);
+            polishAndSync(w, inExpose);
+        }
     }, Qt::QueuedConnection);
 }
 
