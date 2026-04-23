@@ -24,8 +24,10 @@
 #include <array>
 #include <bit>
 #include <functional>
+#include <memory>
 #include <numeric>
 #include <ranges>
+#include <utility>
 
 QT_BEGIN_NAMESPACE
 
@@ -2195,7 +2197,7 @@ void Renderer::applyClipStateToGraphicsState()
 
 QRhiGraphicsPipeline *Renderer::buildStencilPipeline(const Batch *batch, bool firstStencilClipInBatch)
 {
-    QRhiGraphicsPipeline *ps = m_rhi->newGraphicsPipeline();
+    auto ps = std::unique_ptr<QRhiGraphicsPipeline>(m_rhi->newGraphicsPipeline());
     ps->setFlags(QRhiGraphicsPipeline::UsesStencilRef);
     QRhiGraphicsPipeline::TargetBlend blend;
     blend.colorWrite = {};
@@ -2229,11 +2231,10 @@ QRhiGraphicsPipeline *Renderer::buildStencilPipeline(const Batch *batch, bool fi
 
     if (!ps->create()) {
         qWarning("Failed to build stencil clip pipeline");
-        delete ps;
         return nullptr;
     }
 
-    return ps;
+    return ps.release();
 }
 
 void Renderer::updateClipState(const QSGClipNode *clipList, Batch *batch)
@@ -2521,13 +2522,9 @@ static inline bool needsBlendConstant(QRhiGraphicsPipeline::BlendFactor f)
             || f == QRhiGraphicsPipeline::OneMinusConstantAlpha;
 }
 
-
 bool Renderer::ensurePipelineState(Element *e, const ShaderManager::Shader *sms, bool depthPostPass)
 {
-
-
-    const GraphicsPipelineStateKey k = GraphicsPipelineStateKey::create(m_gstate, sms, m_currentRpDescFormat, e->srb);
-
+    GraphicsPipelineStateKey k = GraphicsPipelineStateKey::create(m_gstate, sms, m_currentRpDescFormat, e->srb);
 
     auto it = m_shaderManager->pipelineCache.constFind(k);
     if (it != m_shaderManager->pipelineCache.constEnd()) {
@@ -2538,8 +2535,7 @@ bool Renderer::ensurePipelineState(Element *e, const ShaderManager::Shader *sms,
         return true;
     }
 
-
-    QRhiGraphicsPipeline *ps = m_rhi->newGraphicsPipeline();
+    auto ps = std::unique_ptr<QRhiGraphicsPipeline>(m_rhi->newGraphicsPipeline());
     ps->setShaderStages(sms->stages.cbegin(), sms->stages.cend());
     ps->setVertexInputLayout(sms->inputLayout);
     ps->setShaderResourceBindings(e->srb);
@@ -2595,15 +2591,15 @@ bool Renderer::ensurePipelineState(Element *e, const ShaderManager::Shader *sms,
 
     if (!ps->create()) {
         qWarning("Failed to build graphics pipeline state");
-        delete ps;
         return false;
     }
 
-    m_shaderManager->pipelineCache.insert(k, ps);
+    QRhiGraphicsPipeline *pipeline = ps.release();
+    m_shaderManager->pipelineCache.insert(std::move(k), pipeline);
     if (depthPostPass)
-        e->depthPostPassPs = ps;
+        e->depthPostPassPs = pipeline;
     else
-        e->ps = ps;
+        e->ps = pipeline;
     return true;
 }
 
@@ -2824,16 +2820,17 @@ void Renderer::updateMaterialDynamicData(ShaderManager::Shader *sms,
             for (QSGTexture *t : nextTex) {
                 const QSGSamplerDescription samplerDesc = QSGSamplerDescription::fromTexture(t);
 
-                QRhiSampler *sampler = m_samplers[samplerDesc];
+                auto samplerIt = m_samplers.constFind(samplerDesc);
+                QRhiSampler *sampler = samplerIt != m_samplers.constEnd() ? *samplerIt : nullptr;
 
                 if (!sampler) {
-                    sampler = newSampler(m_rhi, samplerDesc);
-                    if (!sampler->create()) {
+                    auto newSamplerHolder = std::unique_ptr<QRhiSampler>(newSampler(m_rhi, samplerDesc));
+                    if (!newSamplerHolder->create()) {
                         qWarning("Failed to build sampler");
-                        delete sampler;
                         continue;
                     }
-                    m_samplers[samplerDesc] = sampler;
+                    sampler = newSamplerHolder.release();
+                    m_samplers.insert(samplerDesc, sampler);
                 }
                 samplers.append(sampler);
             }
