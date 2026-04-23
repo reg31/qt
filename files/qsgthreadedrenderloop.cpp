@@ -14,6 +14,7 @@
 #include <QtCore/QThreadPool>
 #include <atomic>
 #include <variant>
+#include <utility>
 #include <vector>
 
 #include <QtGui/QGuiApplication>
@@ -336,6 +337,11 @@ namespace {
 template<class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
 template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
 
+static int nsecsToMillis(qint64 nsecs)
+{
+    return int(nsecs / 1000000);
+}
+
 static const QString &pipelineCachePath()
 {
     static const QString path = QStandardPaths::writableLocation(QStandardPaths::CacheLocation)
@@ -653,12 +659,22 @@ void QSGRenderThread::handleDeviceLoss()
 void QSGRenderThread::syncAndRender()
 {
     auto *cd = QQuickWindowPrivate::get(window);
-    const bool syncRequested = (pendingUpdate & SyncRequest);
-    const bool exposeRequested = (pendingUpdate & ExposeRequest) == ExposeRequest;
-    const bool repaintRequested = (pendingUpdate & RepaintRequest);
-    pendingUpdate = 0;
+    const uint update = std::exchange(pendingUpdate, 0);
+    const bool syncRequested = (update & SyncRequest);
+    const bool exposeRequested = (update & ExposeRequest) == ExposeRequest;
+    const bool repaintRequested = (update & RepaintRequest);
     [[assume(window != nullptr)]];
     [[assume(cd != nullptr)]];
+
+    const bool profileFrame = QSG_LOG_TIME_RENDERLOOP().isDebugEnabled();
+    QElapsedTimer frameTimer;
+    if (profileFrame)
+        frameTimer.start();
+    qint64 afterSyncTime = 0;
+    qint64 afterSwapchainTime = 0;
+    qint64 afterBeginFrameTime = 0;
+    qint64 afterRenderTime = 0;
+    qint64 afterEndFrameTime = 0;
 
     const bool animatorRunning = animatorDriver->isRunning();
     const bool hasValidSwapChain = (cd->swapchain && windowSize.isValid());
@@ -676,6 +692,8 @@ void QSGRenderThread::syncAndRender()
     if (syncRequested && !syncDoneBeforeEnsure) [[likely]] {
         sync();
     }
+    if (profileFrame)
+        afterSyncTime = frameTimer.nsecsElapsed();
 
     if (syncRequested && !syncResultedInChanges && !exposeRequested
         && lastFrameValid && !repaintRequested && !animatorRunning) {
@@ -709,6 +727,8 @@ void QSGRenderThread::syncAndRender()
                 cd->swapchainJustBecameRenderable = false;
                 cd->hasRenderableSwapchain = cd->hasActiveSwapchain;
             }
+            if (profileFrame)
+                afterSwapchainTime = frameTimer.nsecsElapsed();
 
             if (cd->hasActiveSwapchain) {
                 emit window->beforeFrameBegin();
@@ -721,6 +741,8 @@ void QSGRenderThread::syncAndRender()
                     emit window->afterFrameEnd();
                 }
             }
+            if (profileFrame)
+                afterBeginFrameTime = frameTimer.nsecsElapsed();
         }
     }
 
@@ -735,6 +757,8 @@ void QSGRenderThread::syncAndRender()
 
     if (gpuStarted && cd->renderer) [[likely]] {
         cd->renderSceneGraph();
+        if (profileFrame)
+            afterRenderTime = frameTimer.nsecsElapsed();
 
         const bool asyncPresent = rhi->backend() != QRhi::OpenGLES2;
         if (asyncPresent) {
@@ -763,10 +787,14 @@ void QSGRenderThread::syncAndRender()
                 waitCondition.wakeOne();
             }
         }
+        if (profileFrame)
+            afterEndFrameTime = frameTimer.nsecsElapsed();
 
         cd->fireFrameSwapped();
     } else if (gpuStarted) {
         rhi->endFrame(cd->swapchain, QRhi::SkipPresent);
+        if (profileFrame)
+            afterEndFrameTime = frameTimer.nsecsElapsed();
         lastFrameValid = false;
         renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
         renderCompletedSerial.notify_one();
@@ -780,6 +808,27 @@ void QSGRenderThread::syncAndRender()
         renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
         renderCompletedSerial.notify_one();
         waitCondition.wakeOne();
+    }
+
+    if (profileFrame) {
+        const qint64 totalTime = frameTimer.nsecsElapsed();
+        if (!afterSwapchainTime)
+            afterSwapchainTime = afterSyncTime;
+        if (!afterBeginFrameTime)
+            afterBeginFrameTime = afterSwapchainTime;
+        if (!afterRenderTime)
+            afterRenderTime = afterBeginFrameTime;
+        if (!afterEndFrameTime)
+            afterEndFrameTime = afterRenderTime;
+        qCDebug(QSG_LOG_TIME_RENDERLOOP,
+                "[window %p][render thread] frame: sync=%d ms, swapchain=%d ms, beginFrame=%d ms, renderSceneGraph=%d ms, endFrame=%d ms, total=%d ms",
+                window,
+                nsecsToMillis(afterSyncTime),
+                nsecsToMillis(afterSwapchainTime - afterSyncTime),
+                nsecsToMillis(afterBeginFrameTime - afterSwapchainTime),
+                nsecsToMillis(afterRenderTime - afterBeginFrameTime),
+                nsecsToMillis(afterEndFrameTime - afterRenderTime),
+                nsecsToMillis(totalTime));
     }
 }
 
@@ -816,18 +865,32 @@ void QSGRenderThread::ensureRhiDevice()
     if (rhi || rhiDoomed) [[likely]]
         return;
 
+    const bool profileRhiInit = QSG_LOG_TIME_RENDERLOOP().isDebugEnabled();
+    QElapsedTimer rhiInitTimer;
+    if (profileRhiInit)
+        rhiInitTimer.start();
+
     auto *rhiSupport = QSGRhiSupport::instance();
     auto rhiResult = rhiSupport->createRhi(window, offscreenSurface, swRastFallbackDueToSwapchainFailure);
+    qint64 createRhiTime = 0;
+    if (profileRhiInit)
+        createRhiTime = rhiInitTimer.nsecsElapsed();
     rhi = rhiResult.rhi;
     ownRhi = rhiResult.own;
     if (rhi) {
         rhiDeviceLost = false;
         rhiSampleCount = rhiSupport->chooseSampleCountForWindowWithRhi(window, rhi);
         rhi->makeThreadLocalNativeContextCurrent();
+        qint64 rhiSetupTime = 0;
+        if (profileRhiInit)
+            rhiSetupTime = rhiInitTimer.nsecsElapsed();
         if (!pipelineCacheLoaded) [[unlikely]] {
             loadPipelineCache(rhi);
             pipelineCacheLoaded = true;
         }
+        qint64 pipelineCacheTime = 0;
+        if (profileRhiInit)
+            pipelineCacheTime = rhiInitTimer.nsecsElapsed();
         if (!sgrc->rhi()) {
             const QSize pixelSize = m_lastPixelSize.isValid()
                 ? m_lastPixelSize
@@ -842,11 +905,29 @@ void QSGRenderThread::ensureRhiDevice()
                 sgrc->initialize(&params);
             }
         }
+        if (profileRhiInit) {
+            const qint64 totalTime = rhiInitTimer.nsecsElapsed();
+            qCDebug(QSG_LOG_TIME_RENDERLOOP,
+                    "[window %p][render thread] RHI warm-up: createRhi=%d ms, rhiSetup=%d ms, pipelineCache=%d ms, renderContext=%d ms, total=%d ms",
+                    window,
+                    nsecsToMillis(createRhiTime),
+                    nsecsToMillis(rhiSetupTime - createRhiTime),
+                    nsecsToMillis(pipelineCacheTime - rhiSetupTime),
+                    nsecsToMillis(totalTime - pipelineCacheTime),
+                    nsecsToMillis(totalTime));
+        }
         rhiReady.store(true, std::memory_order_release);
         rhiReady.notify_one();
         if (deferredExposeRequest.load(std::memory_order_acquire) && window && window->isExposed())
             QMetaObject::invokeMethod(window, &QQuickWindow::requestUpdate, Qt::QueuedConnection);
     } else {
+        if (profileRhiInit) {
+            qCDebug(QSG_LOG_TIME_RENDERLOOP,
+                    "[window %p][render thread] RHI warm-up failed after %d ms",
+                    window,
+                    nsecsToMillis(createRhiTime));
+        }
+        deferredExposeRequest.store(false, std::memory_order_release);
         if (!rhiDeviceLost)
             rhiDoomed = true;
     }
@@ -1320,8 +1401,16 @@ void QSGThreadedRenderLoop::handleUpdateRequest(QQuickWindow *window)
         if (!QQuickWindowPrivate::get(safeWindow)->updatesEnabled) return;
         Window *w = windowFor(safeWindow);
         if (w) {
+            const bool exposed = safeWindow->isExposed();
+            if (exposed
+                    && w->thread->deferredExposeRequest.load(std::memory_order_acquire)
+                    && !w->thread->rhiReady.load(std::memory_order_acquire)) {
+                qCDebug(QSG_LOG_RENDERLOOP, "- first expose update deferred while RHI warm-up is running");
+                return;
+            }
+
             // Keep the lightweight expose path when the surface showed up before RHI warm-up finished.
-            const bool inExpose = safeWindow->isExposed()
+            const bool inExpose = exposed
                 && w->thread->deferredExposeRequest.exchange(false, std::memory_order_acq_rel);
             polishAndSync(w, inExpose);
         }
