@@ -1158,57 +1158,13 @@ void QSGThreadedRenderLoop::startOrStopAnimationTimer()
     }
 }
 
-QSGThreadedRenderLoop::Window *QSGThreadedRenderLoop::ensureWindow(QQuickWindow *window)
-{
-    if (Window *w = windowFor(window))
-        return w;
-
-    auto *wd = QQuickWindowPrivate::get(window);
-    auto *renderContext = wd->context;
-    pendingRenderContexts.remove(renderContext);
-    m_windows.emplace_back();
-    Window *w = &m_windows.back();
-    w->window = window;
-    w->actualWindowFormat = window->format();
-    w->thread = new QSGRenderThread(this, renderContext);
-    w->updateDuringSync = false;
-    w->forceRenderPass = true;
-    w->badVSync = false;
-    w->prewarmed = false;
-    w->psTimeAccumulator = 0.0f;
-    w->psTimeSampleCount = 0;
-    w->timeBetweenPolishAndSyncs.start();
-    return w;
-}
-
-void QSGThreadedRenderLoop::startRenderThread(Window *w)
-{
-    if (!w || w->thread->isRunning())
-        return;
-
-    QQuickWindow *window = w->window;
-    w->thread->window = window;
-    if (!w->thread->rhi) {
-        auto *rhiSupport = QSGRhiSupport::instance();
-        if (!w->thread->offscreenSurface) [[unlikely]]
-            w->thread->offscreenSurface = rhiSupport->maybeCreateOffscreenSurface(window);
-        w->thread->windowSize = window->size();
-        w->thread->dpr = float(window->effectiveDevicePixelRatio());
-        w->thread->scProxyData = QRhi::updateSwapChainProxyData(rhiSupport->rhiBackend(), window);
-        window->installEventFilter(this);
-    }
-    if (auto *controller = QQuickWindowPrivate::get(window)->animationController.get();
-        controller->thread() != w->thread) [[unlikely]]
-        controller->moveToThread(w->thread);
-    w->thread->active.store(true, std::memory_order_relaxed);
-    if (w->thread->thread() == QThread::currentThread()) [[unlikely]] {
-        w->thread->sgrc->moveToThread(w->thread);
-        w->thread->moveToThread(w->thread);
-    }
-    w->thread->start();
-}
-
 namespace {
+QSet<QQuickWindow *> &prewarmedWindows()
+{
+    static QSet<QQuickWindow *> windows;
+    return windows;
+}
+
 template <typename Prewarm>
 inline bool prewarmIfVisibleButNotExposed(QQuickWindow *window, Prewarm &&prewarm)
 {
@@ -1220,16 +1176,6 @@ inline bool prewarmIfVisibleButNotExposed(QQuickWindow *window, Prewarm &&prewar
     std::forward<Prewarm>(prewarm)(safeWindow.data());
     return true;
 }
-}
-
-void QSGThreadedRenderLoop::show(QQuickWindow *window)
-{
-    // show() runs after visible flips true, but often before the platform expose.
-    prewarmIfVisibleButNotExposed(window, [this](QQuickWindow *safeWindow) {
-        Window *w = ensureWindow(safeWindow);
-        w->prewarmed = true;
-        startRenderThread(w);
-    });
 }
 
 void QSGThreadedRenderLoop::hide(QQuickWindow *window)
@@ -1257,6 +1203,7 @@ void QSGThreadedRenderLoop::resize(QQuickWindow *window)
 void QSGThreadedRenderLoop::windowDestroyed(QQuickWindow *window)
 {
     qCDebug(QSG_LOG_RENDERLOOP) << "begin windowDestroyed()" << window;
+    prewarmedWindows().remove(window);
 
     Window *w = windowFor(window);
     if (!w)
@@ -1333,12 +1280,40 @@ void QSGThreadedRenderLoop::exposureChanged(QQuickWindow *window)
         Window *w = windowFor(safeWindow);
         if (!w) {
             prewarmIfVisibleButNotExposed(safeWindow, [this](QQuickWindow *candidate) {
-                Window *w = ensureWindow(candidate);
-                w->prewarmed = true;
-                startRenderThread(w);
+                auto *wd = QQuickWindowPrivate::get(candidate);
+                auto *renderContext = wd->context;
+                pendingRenderContexts.remove(renderContext);
+                m_windows.emplace_back();
+                Window *w = &m_windows.back();
+                w->window = candidate;
+                w->actualWindowFormat = candidate->format();
+                w->thread = new QSGRenderThread(this, renderContext);
+                w->updateDuringSync = false;
+                w->forceRenderPass = true;
+                w->badVSync = false;
+                w->psTimeAccumulator = 0.0f;
+                w->psTimeSampleCount = 0;
+                w->timeBetweenPolishAndSyncs.start();
+                auto *rhiSupport = QSGRhiSupport::instance();
+                w->thread->offscreenSurface = rhiSupport->maybeCreateOffscreenSurface(candidate);
+                w->thread->window = candidate;
+                w->thread->windowSize = candidate->size();
+                w->thread->dpr = float(candidate->effectiveDevicePixelRatio());
+                w->thread->scProxyData = QRhi::updateSwapChainProxyData(rhiSupport->rhiBackend(), candidate);
+                candidate->installEventFilter(this);
+                if (auto *controller = wd->animationController.get();
+                    controller->thread() != w->thread) [[unlikely]]
+                    controller->moveToThread(w->thread);
+                w->thread->active.store(true, std::memory_order_relaxed);
+                if (w->thread->thread() == QThread::currentThread()) [[unlikely]] {
+                    w->thread->sgrc->moveToThread(w->thread);
+                    w->thread->moveToThread(w->thread);
+                }
+                prewarmedWindows().insert(candidate);
+                w->thread->start();
             });
-        } else if (w->prewarmed) {
-            startRenderThread(w);
+        } else if (prewarmedWindows().contains(safeWindow.data())) {
+            qCDebug(QSG_LOG_RENDERLOOP) << "- already pre-warmed";
         } else {
             handleObscurity(w);
         }
@@ -1347,18 +1322,51 @@ void QSGThreadedRenderLoop::exposureChanged(QQuickWindow *window)
 
 void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
 {
-    Window *w = windowFor(window);
-    if (w) [[likely]] {
+    auto it = std::ranges::find(m_windows, window, &Window::window);
+    Window *w = nullptr;
+    if (it != m_windows.end()) [[likely]] {
+        w = &*it;
         if (!QQuickWindowPrivate::get(window)->updatesEnabled) [[unlikely]] return;
     } else {
-        w = ensureWindow(window);
+        auto *wd = QQuickWindowPrivate::get(window);
+        auto *renderContext = wd->context;
+        pendingRenderContexts.remove(renderContext);
+        m_windows.emplace_back();
+        w = &m_windows.back();
+        w->window = window;
+        w->actualWindowFormat = window->format();
+        w->thread = new QSGRenderThread(this, renderContext);
+        w->updateDuringSync = false;
+        w->forceRenderPass = true;
+        w->badVSync = false;
+        w->psTimeAccumulator = 0.0f;
+        w->psTimeSampleCount = 0;
+        w->timeBetweenPolishAndSyncs.start();
     }
-    w->prewarmed = false;
+    prewarmedWindows().remove(window);
     if (!w->window->handle()) [[unlikely]] window->create();
     if (!w->thread->isRunning()) {
+        w->thread->window = window;
+        if (!w->thread->rhi) {
+            auto *rhiSupport = QSGRhiSupport::instance();
+            if (!w->thread->offscreenSurface) [[unlikely]]
+                w->thread->offscreenSurface = rhiSupport->maybeCreateOffscreenSurface(window);
+            w->thread->windowSize = window->size();
+            w->thread->dpr = float(window->effectiveDevicePixelRatio());
+            w->thread->scProxyData = QRhi::updateSwapChainProxyData(rhiSupport->rhiBackend(), window);
+            window->installEventFilter(this);
+        }
+        if (auto *controller = QQuickWindowPrivate::get(w->window)->animationController.get();
+            controller->thread() != w->thread) [[unlikely]]
+            controller->moveToThread(w->thread);
+        w->thread->active.store(true, std::memory_order_relaxed);
+        if (w->thread->thread() == QThread::currentThread()) [[unlikely]] {
+            w->thread->sgrc->moveToThread(w->thread);
+            w->thread->moveToThread(w->thread);
+        }
         w->thread->postEvent(WMExposedEvent(window));
         w->thread->deferredExposeRequest.store(true, std::memory_order_release);
-        startRenderThread(w);
+        w->thread->start();
         if (w->thread->rhiReady.load(std::memory_order_acquire))
             QMetaObject::invokeMethod(window, &QQuickWindow::requestUpdate, Qt::QueuedConnection);
         startOrStopAnimationTimer();
@@ -1382,6 +1390,7 @@ void QSGThreadedRenderLoop::handleObscurity(Window *w)
         return;
 
     qCDebug(QSG_LOG_RENDERLOOP) << "handleObscurity()" << w->window;
+    prewarmedWindows().remove(w->window);
     if (w->thread->isRunning()) {
         if (!QQuickWindowPrivate::get(w->window)->updatesEnabled) {
             qCDebug(QSG_LOG_RENDERLOOP, "- updatesEnabled is false, abort");
