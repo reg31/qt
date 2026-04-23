@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <memory>
 #include <numeric>
+#include <utility>
 
 QT_BEGIN_NAMESPACE
 
@@ -602,8 +603,10 @@ struct GraphicsPipelineStateKey
                                            const QList<quint32> &rtDesc,
                                            const QRhiShaderResourceBindings *srb)
     {
-        const QList<quint32> srbDesc = srb->serializedLayoutDescription();
-        return { state, sms, rtDesc, srbDesc, { qHash(rtDesc), qHash(srbDesc) } };
+        QList<quint32> srbDesc = srb->serializedLayoutDescription();
+        const size_t rtDescHash = qHash(rtDesc);
+        const size_t srbDescHash = qHash(srbDesc);
+        return { state, sms, rtDesc, std::move(srbDesc), { rtDescHash, srbDescHash } };
     }
 };
 
