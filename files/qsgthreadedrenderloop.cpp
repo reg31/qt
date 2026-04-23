@@ -336,27 +336,26 @@ public slots:
 namespace {
 template<class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
 template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
-}
 
-int QSGThreadedRenderLoop::nsecsToMillis(qint64 nsecs)
+int nsecsToMillis(qint64 nsecs)
 {
     return int(nsecs / 1000000);
 }
 
-const QString &QSGThreadedRenderLoop::pipelineCachePath()
+const QString &pipelineCachePath()
 {
     static const QString path = QStandardPaths::writableLocation(QStandardPaths::CacheLocation)
                                 + QLatin1String("/qsg_pipeline_cache.bin");
     return path;
 }
 
-QMutex *QSGThreadedRenderLoop::pipelineCacheFileMutex()
+QMutex *pipelineCacheFileMutex()
 {
     static QMutex mutex;
     return &mutex;
 }
 
-QByteArray QSGThreadedRenderLoop::ensurePipelineCacheDataLoaded()
+QByteArray ensurePipelineCacheDataLoaded()
 {
     QMutexLocker fileLock(pipelineCacheFileMutex());
     static QByteArray data;
@@ -370,7 +369,7 @@ QByteArray QSGThreadedRenderLoop::ensurePipelineCacheDataLoaded()
     return data;
 }
 
-void QSGThreadedRenderLoop::preloadPipelineCache()
+void preloadPipelineCache()
 {
     static std::once_flag preloadOnce;
     std::call_once(preloadOnce, []() {
@@ -382,7 +381,7 @@ void QSGThreadedRenderLoop::preloadPipelineCache()
     });
 }
 
-void QSGThreadedRenderLoop::savePipelineCache(QRhi *rhi)
+void savePipelineCache(QRhi *rhi)
 {
     QByteArray data = rhi->pipelineCacheData();
     if (data.isEmpty())
@@ -390,7 +389,7 @@ void QSGThreadedRenderLoop::savePipelineCache(QRhi *rhi)
     QString path = pipelineCachePath();
     QString dirPath = QFileInfo(path).absolutePath();
     QThreadPool::globalInstance()->start([data = std::move(data), path = std::move(path), dirPath = std::move(dirPath)]() {
-        QMutexLocker fileLock(QSGThreadedRenderLoop::pipelineCacheFileMutex());
+        QMutexLocker fileLock(pipelineCacheFileMutex());
         QDir().mkpath(dirPath);
         QSaveFile f(path);
         if (f.open(QIODevice::WriteOnly)) {
@@ -401,13 +400,15 @@ void QSGThreadedRenderLoop::savePipelineCache(QRhi *rhi)
     });
 }
 
-void QSGThreadedRenderLoop::loadPipelineCache(QRhi *rhi)
+void loadPipelineCache(QRhi *rhi)
 {
     const QByteArray data = ensurePipelineCacheDataLoaded();
     if (!data.isEmpty()) {
         rhi->setPipelineCacheData(data);
         qCDebug(QSG_LOG_RENDERLOOP, "RHI pipeline cache loaded (%lld bytes)", (long long)data.size());
     }
+}
+
 }
 
 bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
@@ -589,7 +590,7 @@ void QSGRenderThread::invalidateGraphics(QQuickWindow *window, bool inDestructor
             }
         }
         if (ownRhi) {
-            QSGThreadedRenderLoop::savePipelineCache(rhi);
+            savePipelineCache(rhi);
             QSGRhiSupport::instance()->destroyRhi(rhi, dd->graphicsConfig);
         }
         rhi = nullptr;
@@ -638,7 +639,7 @@ void QSGRenderThread::teardownGraphics()
     sgrc->invalidate();
     wm->releaseSwapchain(window);
     if (ownRhi) {
-        QSGThreadedRenderLoop::savePipelineCache(rhi);
+        savePipelineCache(rhi);
         QSGRhiSupport::instance()->destroyRhi(rhi, {});
     }
     rhi = nullptr;
@@ -825,12 +826,12 @@ void QSGRenderThread::syncAndRender()
         qCDebug(QSG_LOG_TIME_RENDERLOOP,
                 "[window %p][render thread] frame: sync=%d ms, swapchain=%d ms, beginFrame=%d ms, renderSceneGraph=%d ms, endFrame=%d ms, total=%d ms",
                 window,
-                QSGThreadedRenderLoop::nsecsToMillis(afterSyncTime),
-                QSGThreadedRenderLoop::nsecsToMillis(afterSwapchainTime - afterSyncTime),
-                QSGThreadedRenderLoop::nsecsToMillis(afterBeginFrameTime - afterSwapchainTime),
-                QSGThreadedRenderLoop::nsecsToMillis(afterRenderTime - afterBeginFrameTime),
-                QSGThreadedRenderLoop::nsecsToMillis(afterEndFrameTime - afterRenderTime),
-                QSGThreadedRenderLoop::nsecsToMillis(totalTime));
+                nsecsToMillis(afterSyncTime),
+                nsecsToMillis(afterSwapchainTime - afterSyncTime),
+                nsecsToMillis(afterBeginFrameTime - afterSwapchainTime),
+                nsecsToMillis(afterRenderTime - afterBeginFrameTime),
+                nsecsToMillis(afterEndFrameTime - afterRenderTime),
+                nsecsToMillis(totalTime));
     }
 }
 
@@ -887,7 +888,7 @@ void QSGRenderThread::ensureRhiDevice()
         if (profileRhiInit)
             rhiSetupTime = rhiInitTimer.nsecsElapsed();
         if (!pipelineCacheLoaded) [[unlikely]] {
-            QSGThreadedRenderLoop::loadPipelineCache(rhi);
+            loadPipelineCache(rhi);
             pipelineCacheLoaded = true;
         }
         qint64 pipelineCacheTime = 0;
@@ -912,11 +913,11 @@ void QSGRenderThread::ensureRhiDevice()
             qCDebug(QSG_LOG_TIME_RENDERLOOP,
                     "[window %p][render thread] RHI warm-up: createRhi=%d ms, rhiSetup=%d ms, pipelineCache=%d ms, renderContext=%d ms, total=%d ms",
                     window,
-                    QSGThreadedRenderLoop::nsecsToMillis(createRhiTime),
-                    QSGThreadedRenderLoop::nsecsToMillis(rhiSetupTime - createRhiTime),
-                    QSGThreadedRenderLoop::nsecsToMillis(pipelineCacheTime - rhiSetupTime),
-                    QSGThreadedRenderLoop::nsecsToMillis(totalTime - pipelineCacheTime),
-                    QSGThreadedRenderLoop::nsecsToMillis(totalTime));
+                    nsecsToMillis(createRhiTime),
+                    nsecsToMillis(rhiSetupTime - createRhiTime),
+                    nsecsToMillis(pipelineCacheTime - rhiSetupTime),
+                    nsecsToMillis(totalTime - pipelineCacheTime),
+                    nsecsToMillis(totalTime));
         }
         rhiReady.store(true, std::memory_order_release);
         rhiReady.notify_one();
@@ -927,7 +928,7 @@ void QSGRenderThread::ensureRhiDevice()
             qCDebug(QSG_LOG_TIME_RENDERLOOP,
                     "[window %p][render thread] RHI warm-up failed after %d ms",
                     window,
-                    QSGThreadedRenderLoop::nsecsToMillis(createRhiTime));
+                    nsecsToMillis(createRhiTime));
         }
         deferredExposeRequest.store(false, std::memory_order_release);
         if (!rhiDeviceLost)
