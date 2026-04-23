@@ -77,7 +77,7 @@ jobs:
           submodules: false
           
       - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.9
+        uses: mozilla-actions/sccache-action@v0.0.10
             
       - name: Set up MinGW
         uses: egor-tensin/setup-mingw@v3
@@ -190,7 +190,7 @@ jobs:
           submodules: false
           
       - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.9
+        uses: mozilla-actions/sccache-action@v0.0.10
             
       - name: Set up JDK
         uses: actions/setup-java@v5
@@ -329,7 +329,7 @@ jobs:
           submodules: false
 
       - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.9
+        uses: mozilla-actions/sccache-action@v0.0.10
 
       - name: Setup lld
         run: brew install lld
@@ -419,7 +419,7 @@ jobs:
           submodules: false
 
       - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.9
+        uses: mozilla-actions/sccache-action@v0.0.10
         
       - name: Initialize Qt submodules
         run: perl init-repository ${{ env.INIT_FLAGS }}
