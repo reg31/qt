@@ -4,7 +4,7 @@ env:
   SCCACHE_GHA_ENABLED: "true"
   OPENSSL_VERSION: openssl-3.6
   INIT_FLAGS: --module-subset=qtbase,qtdeclarative,-qtlanguageserver,-qtquicktimeline,-qtquick3d,-qtimageformats,-qtsvg --branch --no-update
-  SHARED_COMPILER_FLAGS: "-O2 -DNDEBUG -pipe -fPIC"
+  SHARED_COMPILER_FLAGS: "-O2 -DNDEBUG -pipe -fPIC -fmerge-all-constants"
   SHARED_LINKER_FLAGS: "-fuse-ld=lld -Wl,-S,--icf=safe"
   UNITY_BUILD: -DCMAKE_UNITY_BUILD=ON -DCMAKE_UNITY_BUILD_BATCH_SIZE=100000
   APPLY_CHERRY_PICK: true
@@ -223,6 +223,7 @@ jobs:
           }
           [ -n "${QT_BASE_CHERRY_PICK}" ] && apply_changes qtbase ${QT_BASE_CHERRY_PICK}
           [ -n "${QT_DECLARATIVE_CHERRY_PICK}" ] && apply_changes qtdeclarative ${QT_DECLARATIVE_CHERRY_PICK}
+
       - name: Download prebuilt Qt Host
         run: |
           mkdir qt-windows-mingw-release-dev
@@ -245,6 +246,7 @@ jobs:
           cd configFolders
           curl -fsSL -o android_bin.7z https://raw.githubusercontent.com/reg31/qt/main/files/android_bin.7z
           7z x android_bin.7z
+
       - name: Append Qt configuration
         if: matrix.arch == 'armeabi-v7a'
         run: Xcopy .\configFolders\bin\arm\ .\configFolders\bin\ /c /i /s /y /r
@@ -258,6 +260,7 @@ jobs:
           cd .\configFolders\bin
           rmdir /s /q arm
           rmdir /s /q arm64
+
       - name: Experimental library improvement
         shell: bash
         run: |
@@ -267,6 +270,7 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgbatchrenderer.cpp -o qtdeclarative/src/quick/scenegraph/coreapi/qsgbatchrenderer.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgbatchrenderer_p.h -o qtdeclarative/src/quick/scenegraph/coreapi/qsgbatchrenderer_p.h
           echo "Download completed  ..."
+
       - name: Setup Android Tools
         run:  cmake -DACTION_RESOLVE_GRADLE=ON -DQT_ROOT_DIR=D:/a/qt/qt/qtbase -DGRADLE_PROJECT_DIR=D:/a/qt/qt/qtbase/src/android/jar -P D:/a/qt/qt/qtbase/cmake/QtSetupAndroid.cmake
         
@@ -286,7 +290,7 @@ jobs:
               -reduce-relocations -openssl-runtime -- -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT%" ${{ env.UNITY_BUILD }} ^
               -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp -fno-semantic-interposition" ^
               -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp -fno-semantic-interposition" ^
-              -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,--pack-dyn-relocs=android+relr,--use-android-relr-tags -Wl,-Bsymbolic-functions"
+              -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,--pack-dyn-relocs=android+relr,--use-android-relr-tags -Wl,-Bsymbolic-functions,--hash-style=gnu"
                       
       - name: List features
         run: configure.bat -list-features          
@@ -354,6 +358,7 @@ jobs:
           }
           [ -n "${QT_BASE_CHERRY_PICK}" ] && apply_changes qtbase ${QT_BASE_CHERRY_PICK}
           [ -n "${QT_DECLARATIVE_CHERRY_PICK}" ] && apply_changes qtdeclarative ${QT_DECLARATIVE_CHERRY_PICK}
+
       - name: Experimental library improvement
         shell: bash
         run: |
@@ -363,6 +368,7 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgbatchrenderer.cpp -o qtdeclarative/src/quick/scenegraph/coreapi/qsgbatchrenderer.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgbatchrenderer_p.h -o qtdeclarative/src/quick/scenegraph/coreapi/qsgbatchrenderer_p.h
           echo "Download completed  ..."
+
       - name: Configure
         run: |
           OUTPUT_DIR=$(pwd)/qt-macos-release-${{ needs.setup.outputs.qt_branch }}
@@ -374,24 +380,29 @@ jobs:
             -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp" \
             -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp" \
             ${{ env.UNITY_BUILD }}
+
           ../configure -list-features
+
       - name: Build
         run: |
           cd build
           cmake --build . -j$(sysctl -n hw.ncpu)
           cmake --install . --strip
+
       - name: Package artifacts
         run: |
           OUTPUT_NAME=qt-macos-release-${{ needs.setup.outputs.qt_branch }}
           xattr -cr ./$OUTPUT_NAME
           find ./$OUTPUT_NAME -type f -exec chmod +x {} +
           7z a $OUTPUT_NAME.zip ./$OUTPUT_NAME/* -x!./$OUTPUT_NAME/share -x!./$OUTPUT_NAME/sbom -x!./$OUTPUT_NAME/doc
+
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
         with:
           name: qt-macos
           path: |
             qt-macos-release-${{ needs.setup.outputs.qt_branch }}.zip
+
   build-ios:
     needs: setup
     runs-on: macos-26
@@ -434,6 +445,7 @@ jobs:
           }
           [ -n "${QT_BASE_CHERRY_PICK}" ] && apply_changes qtbase ${QT_BASE_CHERRY_PICK}
           [ -n "${QT_DECLARATIVE_CHERRY_PICK}" ] && apply_changes qtdeclarative ${QT_DECLARATIVE_CHERRY_PICK}
+
       - name: Experimental library improvement
         shell: bash
         run: |
@@ -443,6 +455,7 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgbatchrenderer.cpp -o qtdeclarative/src/quick/scenegraph/coreapi/qsgbatchrenderer.cpp
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgbatchrenderer_p.h -o qtdeclarative/src/quick/scenegraph/coreapi/qsgbatchrenderer_p.h
           echo "Download completed  ..."
+
       - name: Extract config folder
         run: |
           mkdir configFolder
@@ -457,6 +470,7 @@ jobs:
           QT_ARCHIVE=qt-macos-release-dev.zip
           curl -fsSL -o $QT_ARCHIVE https://github.com/reg31/qt/releases/latest/download/$QT_ARCHIVE
           7z x $QT_ARCHIVE
+
       - name: Configure and build for iOS
         run: | 
           OUTPUT_DIR=$(pwd)/qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
@@ -484,12 +498,14 @@ jobs:
           xattr -cr ./$OUTPUT_NAME
           find ./$OUTPUT_NAME -type f -exec chmod +x {} +
           7z a $OUTPUT_NAME.zip ./$OUTPUT_NAME/* -x!./$OUTPUT_NAME/share -x!./$OUTPUT_NAME/sbom -x!./$OUTPUT_NAME/doc
+
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
         with:
           name: qt-ios
           path: |
             qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
+
   release:
     needs: [setup, build-windows, build-android, build-macos, build-ios]
     runs-on: ubuntu-latest
