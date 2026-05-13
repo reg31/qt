@@ -586,7 +586,8 @@ void QSGRenderThread::invalidateGraphics(QQuickWindow *window, bool inDestructor
                 wm->releaseSwapchain(window);
             } else {
                 qWarning("QSGThreadedRenderLoop cleanup with QQuickWindow %p swapchain %p still alive, this should not happen.",
-                         window, dd->swapchain);
+                         static_cast<void *>(window),
+                         static_cast<void *>(dd->swapchain));
             }
         }
         if (ownRhi) {
@@ -661,13 +662,14 @@ void QSGRenderThread::handleDeviceLoss()
 
 void QSGRenderThread::syncAndRender()
 {
+    Q_ASSERT(window);
     auto *cd = QQuickWindowPrivate::get(window);
+    Q_ASSERT(cd);
+
     const uint update = std::exchange(pendingUpdate, 0);
     const bool syncRequested = (update & SyncRequest);
     const bool exposeRequested = (update & ExposeRequest) == ExposeRequest;
     const bool repaintRequested = (update & RepaintRequest);
-    [[assume(window != nullptr)]];
-    [[assume(cd != nullptr)]];
 
     const bool profileFrame = QSG_LOG_TIME_RENDERLOOP().isDebugEnabled();
     QElapsedTimer frameTimer;
@@ -825,7 +827,7 @@ void QSGRenderThread::syncAndRender()
             afterEndFrameTime = afterRenderTime;
         qCDebug(QSG_LOG_TIME_RENDERLOOP,
                 "[window %p][render thread] frame: sync=%d ms, swapchain=%d ms, beginFrame=%d ms, renderSceneGraph=%d ms, endFrame=%d ms, total=%d ms",
-                window,
+                static_cast<void *>(window),
                 nsecsToMillis(afterSyncTime),
                 nsecsToMillis(afterSwapchainTime - afterSyncTime),
                 nsecsToMillis(afterBeginFrameTime - afterSwapchainTime),
@@ -912,7 +914,7 @@ void QSGRenderThread::ensureRhiDevice()
             const qint64 totalTime = rhiInitTimer.nsecsElapsed();
             qCDebug(QSG_LOG_TIME_RENDERLOOP,
                     "[window %p][render thread] RHI warm-up: createRhi=%d ms, rhiSetup=%d ms, pipelineCache=%d ms, renderContext=%d ms, total=%d ms",
-                    window,
+                    static_cast<void *>(window),
                     nsecsToMillis(createRhiTime),
                     nsecsToMillis(rhiSetupTime - createRhiTime),
                     nsecsToMillis(pipelineCacheTime - rhiSetupTime),
@@ -927,7 +929,7 @@ void QSGRenderThread::ensureRhiDevice()
         if (profileRhiInit) {
             qCDebug(QSG_LOG_TIME_RENDERLOOP,
                     "[window %p][render thread] RHI warm-up failed after %d ms",
-                    window,
+                    static_cast<void *>(window),
                     nsecsToMillis(createRhiTime));
         }
         deferredExposeRequest.store(false, std::memory_order_release);
@@ -1165,15 +1167,14 @@ QSet<QQuickWindow *> &prewarmedWindows()
     return windows;
 }
 
-template <typename Prewarm>
-inline bool prewarmIfVisibleButNotExposed(QQuickWindow *window, Prewarm &&prewarm)
+inline bool prewarmIfVisibleButNotExposed(QQuickWindow *window, auto &&prewarm)
 {
     QPointer<QQuickWindow> safeWindow = window;
     if (!safeWindow || !safeWindow->isVisible() || safeWindow->isExposed())
         return false;
 
     qCDebug(QSG_LOG_RENDERLOOP) << "pre-warming render thread for" << safeWindow;
-    std::forward<Prewarm>(prewarm)(safeWindow.data());
+    std::forward<decltype(prewarm)>(prewarm)(safeWindow.data());
     return true;
 }
 }
@@ -1313,7 +1314,10 @@ void QSGThreadedRenderLoop::exposureChanged(QQuickWindow *window)
                 w->thread->start();
             });
         } else if (prewarmedWindows().contains(safeWindow.data())) {
-            qCDebug(QSG_LOG_RENDERLOOP) << "- already pre-warmed";
+            if (safeWindow->isVisible())
+                qCDebug(QSG_LOG_RENDERLOOP) << "- already pre-warmed";
+            else
+                handleObscurity(w);
         } else {
             handleObscurity(w);
         }
@@ -1390,9 +1394,9 @@ void QSGThreadedRenderLoop::handleObscurity(Window *w)
         return;
 
     qCDebug(QSG_LOG_RENDERLOOP) << "handleObscurity()" << w->window;
-    prewarmedWindows().remove(w->window);
+    const bool wasPrewarmed = prewarmedWindows().remove(w->window);
     if (w->thread->isRunning()) {
-        if (!QQuickWindowPrivate::get(w->window)->updatesEnabled) {
+        if (!wasPrewarmed && !QQuickWindowPrivate::get(w->window)->updatesEnabled) {
             qCDebug(QSG_LOG_RENDERLOOP, "- updatesEnabled is false, abort");
             return;
         }
@@ -1530,8 +1534,11 @@ void QSGThreadedRenderLoop::update(QQuickWindow *window)
 void QSGThreadedRenderLoop::releaseResources(QQuickWindow *window)
 {
     Window *w = windowFor(window);
-    if (w)
+    if (w) {
+        if (prewarmedWindows().contains(window))
+            handleObscurity(w);
         releaseResources(w, false);
+    }
 }
 
 void QSGThreadedRenderLoop::releaseResources(Window *w, bool inDestructor)
@@ -1616,7 +1623,7 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
                         qCDebug(QSG_LOG_INFO, "Window %p is determined to have broken vsync throttling (%f < %f) "
                                               "switching to system timer to drive gui thread animations to remedy this "
                                               "(however, render thread animators will likely advance at an incorrect rate).",
-                                w->window, t, vsyncRate * PS_DETECT_THRESHOLD);
+                                static_cast<void *>(w->window), t, vsyncRate * PS_DETECT_THRESHOLD);
                         startOrStopAnimationTimer();
                     }
                     w->psTimeAccumulator = 0.0f;
@@ -1636,7 +1643,7 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
                         w->badVSync = false;
                         qCDebug(QSG_LOG_INFO, "Window %p vsync throttling has recovered (%f >= %f), "
                                               "switching back to vsync-based animation.",
-                                w->window, t, vsyncRate * PS_RECOVERY_THRESHOLD);
+                                static_cast<void *>(w->window), t, vsyncRate * PS_RECOVERY_THRESHOLD);
                         startOrStopAnimationTimer();
                     }
                     w->psTimeAccumulator = 0.0f;
@@ -1650,7 +1657,7 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
     timer.start();
     if (profileFrames) {
         qCDebug(QSG_LOG_TIME_RENDERLOOP, "[window %p][gui thread] polishAndSync: start, elapsed since last call: %d ms",
-                window,
+                static_cast<void *>(window),
                 int(elapsedSinceLastMs));
     }
     Q_QUICK_SG_PROFILE_START(QQuickProfiler::SceneGraphPolishAndSync);
@@ -1692,17 +1699,6 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
         const uint64_t serial = ++w->thread->lastPostedSyncSerial;
         w->thread->postEvent(WMSyncEvent(window, inExpose, w->forceRenderPass, std::move(scProxyData), serial));
         w->forceRenderPass = false;
-
-        if (inExpose && w->thread->rhiReady.load(std::memory_order_acquire)) {
-            qCDebug(QSG_LOG_RENDERLOOP, "- inExpose (pre-warmed): skipping sync wait for fast startup");
-            m_lockedForSync = false;
-            Q_TRACE(QSG_wait_exit);
-            Q_TRACE(QSG_sync_exit);
-            Q_TRACE(QSG_animations_exit);
-            Q_QUICK_SG_PROFILE_END(QQuickProfiler::SceneGraphPolishAndSync,
-                                   QQuickProfiler::SceneGraphPolishAndSyncAnimations);
-            return;
-        }
 
         if (profileFrames)
             waitTime = timer.nsecsElapsed();
@@ -1782,7 +1778,7 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
 
     if (profileFrames) {
         qCDebug(QSG_LOG_TIME_RENDERLOOP, "[window %p][gui thread] Frame prepared, polish=%d ms, lock=%d ms, sync+renderWait=%d ms, animations=%d ms",
-                window,
+                static_cast<void *>(window),
                 int(polishTime / 1000000),
                 int((waitTime - polishTime) / 1000000),
                 int((syncTime - waitTime) / 1000000),
