@@ -496,16 +496,21 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
         Q_ASSERT(e.window == window || !window);
         if (rhi) {
             QQuickWindowPrivate *cd = QQuickWindowPrivate::get(e.window);
-            cd->rhi->makeThreadLocalNativeContextCurrent();
-            cd->rhi->beginFrame(cd->swapchain);
-            if (!lastFrameValid) {
-                cd->syncSceneGraph();
-                sgrc->endSync();
-                cd->renderSceneGraph();
+            if (cd->swapchain) {
+                rhi->makeThreadLocalNativeContextCurrent();
+                if (rhi->beginFrame(cd->swapchain) == QRhi::FrameOpSuccess) {
+                    if (!lastFrameValid) {
+                        cd->syncSceneGraph();
+                        sgrc->endSync();
+                        cd->renderSceneGraph();
+                    }
+                    *e.image = QSGRhiSupport::instance()->grabAndBlockInCurrentFrame(rhi, cd->swapchain->currentFrameCommandBuffer());
+                    rhi->endFrame(cd->swapchain, QRhi::SkipPresent);
+                    e.image->setDevicePixelRatio(e.window->effectiveDevicePixelRatio());
+                } else if (rhi->isDeviceLost()) {
+                    handleDeviceLoss();
+                }
             }
-            *e.image = QSGRhiSupport::instance()->grabAndBlockInCurrentFrame(rhi, cd->swapchain->currentFrameCommandBuffer());
-            cd->rhi->endFrame(cd->swapchain, QRhi::SkipPresent);
-            e.image->setDevicePixelRatio(e.window->effectiveDevicePixelRatio());
         }
         qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- waking gui to handle result");
         e.done->store(true, std::memory_order_release);
