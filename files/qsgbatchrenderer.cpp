@@ -3065,11 +3065,12 @@ bool Renderer::prepareRenderMergedBatch(Batch *batch, PreparedRenderBatch *rende
 
     {
         char *directUpdatePtr = nullptr;
-        if (batch->ubuf->nativeBuffer().slotCount == 0)
-            directUpdatePtr = batch->ubuf->beginFullDynamicBufferUpdateForCurrentFrame();
-        const auto directUpdateGuard = qScopeGuard([batch, directUpdatePtr]() {
+        QRhiBuffer *ubuf = batch->ubuf;
+        if (ubuf && ubuf->nativeBuffer().slotCount == 0)
+            directUpdatePtr = ubuf->beginFullDynamicBufferUpdateForCurrentFrame();
+        const auto directUpdateGuard = qScopeGuard([ubuf, directUpdatePtr]() {
             if (directUpdatePtr)
-                batch->ubuf->endFullDynamicBufferUpdateForCurrentFrame();
+                ubuf->endFullDynamicBufferUpdateForCurrentFrame();
         });
         updateMaterialDynamicData(sms, renderState, material, batch, e, 0, ubufSize, directUpdatePtr);
     }
@@ -3255,11 +3256,12 @@ bool Renderer::prepareRenderUnmergedBatch(Batch *batch, PreparedRenderBatch *ren
 
     {
         char *directUpdatePtr = nullptr;
-        if (batch->ubuf->nativeBuffer().slotCount == 0)
-            directUpdatePtr = batch->ubuf->beginFullDynamicBufferUpdateForCurrentFrame();
-        const auto directUpdateGuard = qScopeGuard([batch, directUpdatePtr]() {
+        QRhiBuffer *ubuf = batch->ubuf;
+        if (ubuf && ubuf->nativeBuffer().slotCount == 0)
+            directUpdatePtr = ubuf->beginFullDynamicBufferUpdateForCurrentFrame();
+        const auto directUpdateGuard = qScopeGuard([ubuf, directUpdatePtr]() {
             if (directUpdatePtr)
-                batch->ubuf->endFullDynamicBufferUpdateForCurrentFrame();
+                ubuf->endFullDynamicBufferUpdateForCurrentFrame();
         });
 
         while (e) {
