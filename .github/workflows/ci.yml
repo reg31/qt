@@ -4,7 +4,7 @@ env:
   SCCACHE_GHA_ENABLED: "true"
   OPENSSL_VERSION: openssl-3.6
   INIT_FLAGS: --module-subset=qtbase,qtdeclarative,-qtlanguageserver,-qtquicktimeline,-qtquick3d,-qtimageformats,-qtsvg --branch --no-update
-  SHARED_COMPILER_FLAGS: "-O2 -DNDEBUG -pipe -fPIC -fmerge-all-constants"
+  SHARED_COMPILER_FLAGS: "-O2 -DNDEBUG -pipe -fPIC -fmerge-all-constants -fno-semantic-interposition"
   SHARED_LINKER_FLAGS: "-fuse-ld=lld -Wl,-S,--icf=safe"
   UNITY_BUILD: -DCMAKE_UNITY_BUILD=ON -DCMAKE_UNITY_BUILD_BATCH_SIZE=32
   APPLY_CHERRY_PICK: true
@@ -128,8 +128,8 @@ jobs:
           mkdir build
           cd build
           ..\configure.bat -schannel -prefix "%OUTPUT_DIR%" ${{ env.SHARED_FLAGS }} ^
-           -- -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s -fno-semantic-interposition" ^
-              -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s -fno-semantic-interposition" ^
+           -- -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s -fpch-preprocess" ^
+              -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s -fpch-preprocess" ^
               -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }}" ^
               ${{ env.UNITY_BUILD }}
 
