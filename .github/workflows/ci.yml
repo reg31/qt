@@ -196,7 +196,7 @@ jobs:
         uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
-          java-version: 25
+          java-version: 26
           check-latest: true
         
       - name: Initialize Qt submodules
@@ -480,7 +480,7 @@ jobs:
           export CMAKE_CXX_COMPILER_LAUNCHER="sccache"
           export CMAKE_C_COMPILER_LAUNCHER="sccache"
           HOST_PATH=$(pwd)/qt-macos-release-dev
-          EXTRA_FLAGS="-march=armv8.2-a+dotprod -Xclang -fno-pch-timestamp -fno-plt"
+          EXTRA_FLAGS="-march=armv8.2-a+dotprod -Xclang -fno-pch-timestamp"
           mkdir -p build
           cd build
           
