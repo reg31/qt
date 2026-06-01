@@ -5,7 +5,7 @@ env:
   OPENSSL_VERSION: openssl-3.6
   INIT_FLAGS: --module-subset=qtbase,qtdeclarative,-qtlanguageserver,-qtquicktimeline,-qtquick3d,-qtimageformats,-qtsvg --branch --no-update
   SHARED_COMPILER_FLAGS: "-O2 -DNDEBUG -pipe -fPIC -fmerge-all-constants"
-  SHARED_LINKER_FLAGS: "-fuse-ld=lld -Wl,-S,--icf=safe"
+  SHARED_LINKER_FLAGS: "-Wl,-S,--icf=safe"
   APPLY_CHERRY_PICK: true
   SHARED_FLAGS: -release -no-feature-testlib -DQT_NO_PACKAGE_VERSION_CHECK=ON -DQT_NO_PACKAGE_VERSION_INCOMPATIBLE_WARNING=ON -c++std c++2b
     -no-feature-hijricalendar -no-feature-islamiccivilcalendar -nomake tests -nomake examples -submodules qtbase,qtdeclarative -no-feature-whatsthis
@@ -129,8 +129,8 @@ jobs:
           
           ..\configure.bat -schannel -prefix "%OUTPUT_DIR%" ${{ env.SHARED_FLAGS }} -unity-build-batch-size %NUMBER_OF_PROCESSORS% ^
            -- -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s -fno-semantic-interposition -fpch-preprocess" ^
-              -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s -fno-semantic-interposition -fpch-preprocess" #^
-              #-DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }}"
+              -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s -fno-semantic-interposition -fpch-preprocess" ^
+              -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }}"
 
       - name: Patch build.ninja
         shell: pwsh
