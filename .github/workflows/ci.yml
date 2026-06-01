@@ -131,18 +131,6 @@ jobs:
            -- -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s -fno-semantic-interposition -fpch-preprocess" ^
               -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s -fno-semantic-interposition -fpch-preprocess" ^
               -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }}"
-
-      - name: Patch build.ninja
-        shell: pwsh
-        run: |
-          Get-ChildItem -Path build -Filter "*.ninja" -Recurse | ForEach-Object {
-            $content = Get-Content $_.FullName -Raw
-            $patched = $content -replace ' -Wl,--version-script,[^\s]+', ''
-            if ($content -ne $patched) {
-              Set-Content $_.FullName $patched
-              Write-Host "Patched: $($_.FullName)"
-            }
-          }
               
       - name: List features
         run: configure.bat -list-features
