@@ -129,8 +129,8 @@ jobs:
           
           ..\configure.bat -schannel -prefix "%OUTPUT_DIR%" ${{ env.SHARED_FLAGS }} -unity-build-batch-size %NUMBER_OF_PROCESSORS% ^
            -- -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s -fno-semantic-interposition -fpch-preprocess" ^
-              -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s -fno-semantic-interposition -fpch-preprocess" ^
-              -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }}"
+              -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s -fno-semantic-interposition -fpch-preprocess" #^
+              #-DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }}"
 
       - name: Patch build.ninja
         shell: pwsh
