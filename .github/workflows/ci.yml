@@ -18,10 +18,10 @@ env:
     -no-feature-textmarkdownreader -no-feature-textmarkdownwriter -no-feature-movie -no-feature-undocommand -no-feature-concatenatetablesproxymodel -no-cups
     -no-feature-undogroup -no-feature-ctf -no-feature-widgets -no-feature-imageformat_xbm -no-feature-sortfilterproxymodel -no-feature-filesystemwatcher
     -nomake examples -nomake tests -nomake benchmarks -nomake manual-tests -nomake minimal-static-tests -no-feature-gssapi -no-feature-accessibility
-    -no-feature-sql -no-feature-graphicsframecapture -DFEATURE_no_direct_extern_access=ON -unity-build -DQT_FEATURE_quickcontrols2_stylekit=OFF -no-feature-quickcontrols2-fusion
+    -no-feature-sql -no-feature-graphicsframecapture -DFEATURE_no_direct_extern_access=ON -unity-build
   EXTRA_FLAGS: -no-feature-qml-network -no-feature-qml-ssl -no-feature-quickcontrols2-fusion
-  QT_BASE_CHERRY_PICK: 712956 524178 652062 680266 737729 737903 737904 737152 743831 644401 745589
-  QT_DECLARATIVE_CHERRY_PICK: 695153 727806 744730 743838
+  QT_BASE_CHERRY_PICK:
+  QT_DECLARATIVE_CHERRY_PICK:
     
 on:
   workflow_dispatch:
