@@ -68,7 +68,7 @@ jobs:
         run: Add-MpPreference -ExclusionPath ${{ github.workspace }}
     
       - name: Checkout Qt
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: qt/qt5
           ref: ${{ needs.setup.outputs.qt_branch }}
@@ -166,7 +166,7 @@ jobs:
         run: Add-MpPreference -ExclusionPath ${{ github.workspace }}
           
       - name: Checkout Qt
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: qt/qt5
           ref: ${{ needs.setup.outputs.qt_branch }}
@@ -303,7 +303,7 @@ jobs:
         build_type: [release]
     steps:
       - name: Checkout Qt
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: qt/qt5
           ref: ${{ needs.setup.outputs.qt_branch }}
@@ -394,7 +394,7 @@ jobs:
         build_type: [release]
     steps:
       - name: Checkout Qt
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: qt/qt5
           ref: ${{ needs.setup.outputs.qt_branch }}
