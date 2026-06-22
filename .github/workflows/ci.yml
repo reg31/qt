@@ -21,7 +21,7 @@ env:
     -no-feature-sql -no-feature-graphicsframecapture -DFEATURE_no_direct_extern_access=ON -unity-build
   EXTRA_FLAGS: -no-feature-qml-network -no-feature-qml-ssl -no-feature-quickcontrols2-fusion
   QT_BASE_CHERRY_PICK: 712956 524178 652062 680266 737729 737903 737904 737152 743831 644401 746671 744751
-  QT_DECLARATIVE_CHERRY_PICK: 622692 695153 727806 744730 743838 745803
+  QT_DECLARATIVE_CHERRY_PICK: 622692 695153 727806 744730 743838 745803 742963
     
 on:
   workflow_dispatch:
