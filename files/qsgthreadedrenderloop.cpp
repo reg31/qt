@@ -9,6 +9,8 @@
 #include <QtCore/QTimer>
 #include <QtCore/QStandardPaths>
 #include <QtCore/QFile>
+#include <QtCore/QHash>
+#include <QtCore/QSet>
 #include <QtCore/QSaveFile>
 #include <QtCore/QDir>
 #include <QtCore/QThreadPool>
@@ -43,13 +45,14 @@
 
 #include <qtquick_tracepoints_p.h>
 #include <algorithm>
-#include <mutex>
 
 #ifdef Q_OS_DARWIN
 #include <QtCore/private/qcore_mac_p.h>
 #endif
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 Q_TRACE_POINT(qtquick, QSG_polishAndSync_entry)
 Q_TRACE_POINT(qtquick, QSG_polishAndSync_exit)
@@ -337,47 +340,80 @@ namespace {
 template<class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
 template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
 
-int nsecsToMillis(qint64 nsecs)
+constexpr qint64 NsecsPerMillisecond = 1000000;
+constexpr qsizetype PipelineCachePathExtraReserve = 32;
+constexpr auto PipelineCacheFilePrefix = "/qsg_pipeline_cache_backend_"_L1;
+constexpr auto PipelineCacheFileSuffix = ".bin"_L1;
+
+constexpr int nsecsToMillis(qint64 nsecs) noexcept
 {
-    return int(nsecs / 1000000);
+    return int(nsecs / NsecsPerMillisecond);
 }
 
-const QString &pipelineCachePath()
+constexpr int pipelineCacheBackendKey(QRhi::Implementation backend) noexcept
 {
-    static const QString path = QStandardPaths::writableLocation(QStandardPaths::CacheLocation)
-                                + QLatin1String("/qsg_pipeline_cache.bin");
+    return int(backend);
+}
+
+QString pipelineCachePath(const QString &cacheDir, QRhi::Implementation backend)
+{
+    QString path = cacheDir;
+    path.reserve(cacheDir.size() + PipelineCachePathExtraReserve);
+    path += PipelineCacheFilePrefix;
+    path += QString::number(pipelineCacheBackendKey(backend));
+    path += PipelineCacheFileSuffix;
     return path;
 }
 
-QMutex *pipelineCacheFileMutex()
+QString pipelineCachePath(QRhi::Implementation backend)
+{
+    return pipelineCachePath(QStandardPaths::writableLocation(QStandardPaths::CacheLocation), backend);
+}
+
+QMutex *pipelineCacheMutex()
 {
     static QMutex mutex;
     return &mutex;
 }
 
-QByteArray ensurePipelineCacheDataLoaded()
+QHash<int, QByteArray> &pipelineCacheDataByBackend()
 {
-    QMutexLocker fileLock(pipelineCacheFileMutex());
-    static QByteArray data;
-    static bool preloaded = false;
-    if (!preloaded) {
-        QFile f(pipelineCachePath());
-        if (f.open(QIODevice::ReadOnly))
-            data = f.readAll();
-        preloaded = true;
-    }
-    return data;
+    static QHash<int, QByteArray> dataByBackend;
+    return dataByBackend;
 }
 
-void preloadPipelineCache()
+QByteArray ensurePipelineCacheDataLoaded(QRhi::Implementation backend)
 {
-    static std::once_flag preloadOnce;
-    std::call_once(preloadOnce, []() {
-        QThreadPool::globalInstance()->start([]() {
-            const QByteArray data = ensurePipelineCacheDataLoaded();
-            if (!data.isEmpty())
-                qCDebug(QSG_LOG_RENDERLOOP, "RHI pipeline cache preloaded (%lld bytes)", (long long)data.size());
-        });
+    const int key = pipelineCacheBackendKey(backend);
+    {
+        QMutexLocker lock(pipelineCacheMutex());
+        QHash<int, QByteArray> &dataByBackend = pipelineCacheDataByBackend();
+        const auto it = dataByBackend.constFind(key);
+        if (it != dataByBackend.constEnd())
+            return it.value();
+    }
+
+    QByteArray data;
+    QFile f(pipelineCachePath(backend));
+    if (f.open(QIODevice::ReadOnly))
+        data = f.readAll();
+
+    QMutexLocker lock(pipelineCacheMutex());
+    QHash<int, QByteArray> &dataByBackend = pipelineCacheDataByBackend();
+    auto it = dataByBackend.find(key);
+    if (it == dataByBackend.end())
+        it = dataByBackend.insert(key, std::move(data));
+    return it.value();
+}
+
+void preloadPipelineCache(QRhi::Implementation backend)
+{
+    QThreadPool::globalInstance()->start([backend]() {
+        const QByteArray data = ensurePipelineCacheDataLoaded(backend);
+        if (!data.isEmpty()) {
+            qCDebug(QSG_LOG_RENDERLOOP, "RHI %s pipeline cache preloaded for backend %d (%lld bytes)",
+                    QRhi::backendName(backend), pipelineCacheBackendKey(backend), (long long)data.size());
+        }
     });
 }
 
@@ -386,26 +422,38 @@ void savePipelineCache(QRhi *rhi)
     QByteArray data = rhi->pipelineCacheData();
     if (data.isEmpty())
         return;
-    QString path = pipelineCachePath();
-    QString dirPath = QFileInfo(path).absolutePath();
-    QThreadPool::globalInstance()->start([data = std::move(data), path = std::move(path), dirPath = std::move(dirPath)]() {
-        QMutexLocker fileLock(pipelineCacheFileMutex());
+    const QRhi::Implementation backend = rhi->backend();
+    const int key = pipelineCacheBackendKey(backend);
+    QString dirPath = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
+    QString path = pipelineCachePath(dirPath, backend);
+    QThreadPool::globalInstance()->start([backend, key, data = std::move(data), path = std::move(path), dirPath = std::move(dirPath)]() {
+        {
+            QMutexLocker lock(pipelineCacheMutex());
+            pipelineCacheDataByBackend().insert(key, data);
+        }
+
         QDir().mkpath(dirPath);
         QSaveFile f(path);
+        bool saved = false;
         if (f.open(QIODevice::WriteOnly)) {
             f.write(data);
-            f.commit();
+            saved = f.commit();
         }
-        qCDebug(QSG_LOG_RENDERLOOP, "RHI pipeline cache saved (%lld bytes)", (long long)data.size());
+        if (saved) {
+            qCDebug(QSG_LOG_RENDERLOOP, "RHI %s pipeline cache saved for backend %d (%lld bytes)",
+                    QRhi::backendName(backend), key, (long long)data.size());
+        }
     });
 }
 
 void loadPipelineCache(QRhi *rhi)
 {
-    const QByteArray data = ensurePipelineCacheDataLoaded();
+    const QRhi::Implementation backend = rhi->backend();
+    const QByteArray data = ensurePipelineCacheDataLoaded(backend);
     if (!data.isEmpty()) {
         rhi->setPipelineCacheData(data);
-        qCDebug(QSG_LOG_RENDERLOOP, "RHI pipeline cache loaded (%lld bytes)", (long long)data.size());
+        qCDebug(QSG_LOG_RENDERLOOP, "RHI %s pipeline cache loaded for backend %d (%lld bytes)",
+                QRhi::backendName(backend), pipelineCacheBackendKey(backend), (long long)data.size());
     }
 }
 
@@ -1058,7 +1106,7 @@ QSGThreadedRenderLoop::QSGThreadedRenderLoop()
     : sg(QSGContext::createDefaultContext())
     , m_animation_timer(0)
 {
-    preloadPipelineCache();
+    preloadPipelineCache(QSGRhiSupport::instance()->rhiBackend());
 
     m_animation_driver = sg->createAnimationDriver(this);
 
