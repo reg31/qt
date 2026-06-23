@@ -4,7 +4,7 @@ env:
   SCCACHE_GHA_ENABLED: "true"
   OPENSSL_VERSION: openssl-3.6
   INIT_FLAGS: --module-subset=qtbase,qtdeclarative,-qtlanguageserver,-qtquicktimeline,-qtquick3d,-qtimageformats,-qtsvg --branch --no-update
-  SHARED_COMPILER_FLAGS: "-O2 -DNDEBUG -pipe -fPIC -fmerge-all-constants"
+  SHARED_COMPILER_FLAGS: "-O2 -DNDEBUG -pipe -fPIC"
   SHARED_LINKER_FLAGS: "-fuse-ld=lld -Wl,-S,--icf=safe"
   APPLY_CHERRY_PICK: true
   SHARED_FLAGS: -release -no-feature-testlib -DQT_NO_PACKAGE_VERSION_CHECK=ON -DQT_NO_PACKAGE_VERSION_INCOMPATIBLE_WARNING=ON -c++std c++2b
@@ -20,7 +20,7 @@ env:
     -nomake examples -nomake tests -nomake benchmarks -nomake manual-tests -nomake minimal-static-tests -no-feature-gssapi -no-feature-accessibility
     -no-feature-sql -no-feature-graphicsframecapture -DFEATURE_no_direct_extern_access=ON -unity-build
   EXTRA_FLAGS: -no-feature-qml-network -no-feature-qml-ssl -no-feature-quickcontrols2-fusion
-  QT_BASE_CHERRY_PICK: 712956 524178 652062 680266 737729 737903 737904 737152 743831
+  QT_BASE_CHERRY_PICK: 712956 524178 644402 652062 680266 737729 737903 737904 737152 743831
   QT_DECLARATIVE_CHERRY_PICK: 622692 695153 727806 744730 743838 747021 747023 747266 747329
     
 on:
