@@ -723,6 +723,11 @@ void QSGRenderThread::syncAndRender()
     const bool syncRequested = (update & SyncRequest);
     const bool exposeRequested = (update & ExposeRequest) == ExposeRequest;
     const bool repaintRequested = (update & RepaintRequest);
+    const auto notifyRenderCompleted = [this]() {
+        renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
+        renderCompletedSerial.notify_one();
+        waitCondition.wakeOne();
+    };
 
     const bool profileFrame = QSG_LOG_TIME_RENDERLOOP().isDebugEnabled();
     QElapsedTimer frameTimer;
@@ -756,9 +761,7 @@ void QSGRenderThread::syncAndRender()
     if (syncRequested && !syncResultedInChanges && !exposeRequested
         && lastFrameValid && !repaintRequested && !animatorRunning) {
         qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- sync produced no changes, skipping render");
-        renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
-        renderCompletedSerial.notify_one();
-        waitCondition.wakeOne();
+        notifyRenderCompleted();
         return;
     }
 
@@ -805,6 +808,7 @@ void QSGRenderThread::syncAndRender()
     }
 
     if (exposeRequested && !gpuStarted) {
+        notifyRenderCompleted();
         QMetaObject::invokeMethod(wm, [wm = this->wm, win = this->window]() {
             if (QSGThreadedRenderLoop::Window *w = wm->windowFor(win))
                 w->forceRenderPass = true;
@@ -819,31 +823,23 @@ void QSGRenderThread::syncAndRender()
             afterRenderTime = frameTimer.nsecsElapsed();
 
         const bool asyncPresent = rhi->backend() != QRhi::OpenGLES2;
-        if (asyncPresent) {
-            renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
-            renderCompletedSerial.notify_one();
-            waitCondition.wakeOne();
-        }
+        const bool notifyBeforePresent = asyncPresent && !exposeRequested && lastFrameValid;
+        if (notifyBeforePresent)
+            notifyRenderCompleted();
 
         if (rhi->endFrame(cd->swapchain) != QRhi::FrameOpSuccess) [[unlikely]] {
             if (rhi->isDeviceLost())
                 handleDeviceLoss();
             QMetaObject::invokeMethod(window, &QQuickWindow::update, Qt::QueuedConnection);
             lastFrameValid = false;
-            if (!asyncPresent) {
-                renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
-                renderCompletedSerial.notify_one();
-                waitCondition.wakeOne();
-            }
+            if (!notifyBeforePresent)
+                notifyRenderCompleted();
         } else {
             lastFrameValid = true;
             if (animatorRunning)
                 pendingUpdate |= RepaintRequest;
-            if (!asyncPresent) {
-                renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
-                renderCompletedSerial.notify_one();
-                waitCondition.wakeOne();
-            }
+            if (!notifyBeforePresent)
+                notifyRenderCompleted();
         }
         if (profileFrame)
             afterEndFrameTime = frameTimer.nsecsElapsed();
@@ -854,18 +850,14 @@ void QSGRenderThread::syncAndRender()
         if (profileFrame)
             afterEndFrameTime = frameTimer.nsecsElapsed();
         lastFrameValid = false;
-        renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
-        renderCompletedSerial.notify_one();
-        waitCondition.wakeOne();
+        notifyRenderCompleted();
     }
 
     if (hasValidSwapChain) [[likely]]
         emit window->afterFrameEnd();
 
     if (!gpuStarted) {
-        renderCompletedSerial.store(currentSyncSerial, std::memory_order_release);
-        renderCompletedSerial.notify_one();
-        waitCondition.wakeOne();
+        notifyRenderCompleted();
     }
 
     if (profileFrame) {
