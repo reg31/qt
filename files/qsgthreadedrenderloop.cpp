@@ -101,11 +101,11 @@ public:
 class WMTryReleaseEvent : public WMWindowEvent
 {
 public:
-    WMTryReleaseEvent(QQuickWindow *win, bool destroy, bool needsFallbackSurface, RenderThreadWaitToken done)
+    WMTryReleaseEvent(QQuickWindow *win, bool destroy, bool needsFallbackSurface, RenderThreadWaitToken waitToken)
         : WMWindowEvent(win)
         , inDestructor(destroy)
         , needsFallbackSurface(needsFallbackSurface)
-        , done(std::move(done))
+        , done(std::move(waitToken))
     {}
 
     bool inDestructor;
@@ -137,8 +137,8 @@ public:
 class WMGrabEvent : public WMWindowEvent
 {
 public:
-    WMGrabEvent(QQuickWindow *c, QImage *result, RenderThreadWaitToken done) :
-        WMWindowEvent(c), image(result), done(std::move(done)) {}
+    WMGrabEvent(QQuickWindow *c, QImage *result, RenderThreadWaitToken waitToken) :
+        WMWindowEvent(c), image(result), done(std::move(waitToken)) {}
     QImage *image;
     RenderThreadWaitToken done;
 };
@@ -154,8 +154,8 @@ public:
 class WMReleaseSwapchainEvent : public WMWindowEvent
 {
 public:
-    WMReleaseSwapchainEvent(QQuickWindow *c, RenderThreadWaitToken done) :
-        WMWindowEvent(c), done(std::move(done)) { }
+    WMReleaseSwapchainEvent(QQuickWindow *c, RenderThreadWaitToken waitToken) :
+        WMWindowEvent(c), done(std::move(waitToken)) { }
     RenderThreadWaitToken done;
 };
 
