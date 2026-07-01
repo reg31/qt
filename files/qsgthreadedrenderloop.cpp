@@ -548,7 +548,9 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
         Q_ASSERT(e.window == window || !window);
         if (rhi) {
             QQuickWindowPrivate *cd = QQuickWindowPrivate::get(e.window);
-            if (cd->swapchain) {
+            if (cd->swapchain
+                    && !surfaceAboutToBeDestroyed.load(std::memory_order_acquire)
+                    && e.window->isExposed()) {
                 rhi->makeThreadLocalNativeContextCurrent();
                 if (rhi->beginFrame(cd->swapchain) == QRhi::FrameOpSuccess) {
                     if (!lastFrameValid) {
@@ -562,6 +564,8 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
                 } else if (rhi->isDeviceLost()) {
                     handleDeviceLoss();
                 }
+            } else {
+                qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- skipping grab, surface is not presentable");
             }
         }
         qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- waking gui to handle result");
@@ -750,6 +754,9 @@ void QSGRenderThread::syncAndRender()
 
     const bool animatorRunning = animatorDriver->isRunning();
     const bool hasValidSwapChain = (cd->swapchain && windowSize.isValid());
+    const auto surfaceIsPresentable = [this] {
+        return !surfaceAboutToBeDestroyed.load(std::memory_order_acquire) && window->isExposed();
+    };
 
     if (hasValidSwapChain && !rhi->isRecordingFrame()) [[likely]] {
         rhi->makeThreadLocalNativeContextCurrent();
@@ -774,8 +781,7 @@ void QSGRenderThread::syncAndRender()
         return;
     }
 
-    if (hasValidSwapChain
-            && (surfaceAboutToBeDestroyed.load(std::memory_order_acquire) || !window->isExposed())) {
+    if (hasValidSwapChain && !surfaceIsPresentable()) {
         qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- surface is not presentable, skipping render");
         cd->hasRenderableSwapchain = false;
         lastFrameValid = false;
@@ -810,6 +816,14 @@ void QSGRenderThread::syncAndRender()
                 afterSwapchainTime = frameTimer.nsecsElapsed();
 
             if (cd->hasActiveSwapchain) {
+                if (!surfaceIsPresentable()) {
+                    qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- surface became non-presentable before beginFrame, skipping render");
+                    cd->hasRenderableSwapchain = false;
+                    lastFrameValid = false;
+                    notifyRenderCompleted();
+                    return;
+                }
+
                 emit window->beforeFrameBegin();
 
                 if (rhi->beginFrame(cd->swapchain) == QRhi::FrameOpSuccess) {
@@ -845,7 +859,7 @@ void QSGRenderThread::syncAndRender()
         if (notifyBeforePresent)
             notifyRenderCompleted();
 
-        const bool skipPresent = surfaceAboutToBeDestroyed.load(std::memory_order_acquire) || !window->isExposed();
+        const bool skipPresent = !surfaceIsPresentable();
         const QRhi::FrameOpResult endFrameResult = skipPresent
                 ? rhi->endFrame(cd->swapchain, QRhi::SkipPresent)
                 : rhi->endFrame(cd->swapchain);
