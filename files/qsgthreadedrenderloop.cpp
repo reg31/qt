@@ -466,7 +466,6 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
     return std::visit(overloaded {
     [&](WMObscureEvent &) {
         qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "WM_Obscure");
-        surfaceAboutToBeDestroyed.store(true, std::memory_order_release);
         if (window) {
             QQuickWindowPrivate::get(window)->fireAboutToStop();
             qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- window removed");
@@ -478,7 +477,6 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
     },
     [&](WMExposedEvent &e) {
         qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "WM_Exposed");
-        surfaceAboutToBeDestroyed.store(false, std::memory_order_release);
         window = e.window;
         windowSize = e.size;
         dpr = e.dpr;
@@ -590,7 +588,6 @@ bool QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
         qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "WM_ReleaseSwapchain");
         Q_ASSERT(e.window);
 
-        surfaceAboutToBeDestroyed.store(true, std::memory_order_release);
         if (rhi)
             rhi->makeThreadLocalNativeContextCurrent();
         
@@ -1430,6 +1427,8 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
         w->timeBetweenPolishAndSyncs.start();
     }
     prewarmedWindows().remove(window);
+    // Surface validity is GUI-thread-owned; queued render events may be stale.
+    w->thread->surfaceAboutToBeDestroyed.store(false, std::memory_order_release);
     if (!w->window->handle()) [[unlikely]] window->create();
     if (!w->thread->isRunning()) {
         w->thread->window = window;
