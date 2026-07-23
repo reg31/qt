@@ -2,7 +2,7 @@ name: Build Qt Library
 env:
   QT_BRANCH: 'dev'
   SCCACHE_GHA_ENABLED: "true"
-  OPENSSL_VERSION: openssl-3.6
+  OPENSSL_VERSION: openssl-4.0
   INIT_FLAGS: --module-subset=qtbase,qtdeclarative,-qtlanguageserver,-qtquicktimeline,-qtquick3d,-qtimageformats,-qtsvg --branch --no-update
   SHARED_COMPILER_FLAGS: "-O2 -DNDEBUG -pipe -fPIC"
   SHARED_LINKER_FLAGS: "-fuse-ld=lld -Wl,-S,--icf=safe"
