@@ -23,6 +23,7 @@
 #include <vector>
 
 #include <QtGui/QOffscreenSurface>
+#include <QtGui/QGuiApplication>
 #include <QtGui/QPlatformSurfaceEvent>
 
 #include <QtQuick/QQuickWindow>
@@ -1153,6 +1154,10 @@ QSGThreadedRenderLoop::QSGThreadedRenderLoop()
     : sg(QSGContext::createDefaultContext())
     , m_animation_timer(0)
 {
+#ifdef Q_OS_ANDROID
+    qGuiApp->installEventFilter(this);
+#endif
+
     preloadPipelineCache(QSGRhiSupport::instance()->rhiBackend());
 
     m_animation_driver = sg->createAnimationDriver(this);
@@ -1502,6 +1507,24 @@ void QSGThreadedRenderLoop::handleObscurity(Window *w)
 bool QSGThreadedRenderLoop::eventFilter(QObject *watched, QEvent *event)
 {
     switch (event->type()) {
+#ifdef Q_OS_ANDROID
+    case QEvent::ApplicationStateChange:
+        if (watched == qGuiApp
+                && static_cast<QApplicationStateChangeEvent *>(event)->applicationState()
+                <= Qt::ApplicationHidden) {
+            // Stop presentation before Android destroys the native surface.
+            for (Window &w : m_windows) {
+                w.thread->surfaceAboutToBeDestroyed.store(true, std::memory_order_release);
+                if (!w.thread->isRunning())
+                    continue;
+
+                auto isDone = std::make_shared<std::atomic<bool>>(false);
+                w.thread->postEvent(WMReleaseSwapchainEvent(w.window, isDone));
+                isDone->wait(false, std::memory_order_acquire);
+            }
+        }
+        break;
+#endif
     case QEvent::PlatformSurface:
         if (static_cast<QPlatformSurfaceEvent *>(event)->surfaceEventType() == QPlatformSurfaceEvent::SurfaceAboutToBeDestroyed) {
             QQuickWindow *window = qobject_cast<QQuickWindow *>(watched);
