@@ -2,53 +2,49 @@
 // Copyright (C) 2016 Jolla Ltd, author: <gunnar.sletta@jollamobile.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-
-#include <QtCore/QMutex>
-#include <QtCore/QWaitCondition>
-#include <QtCore/QAnimationDriver>
-#include <QtCore/QCoreApplication>
-#include <QtCore/QTimer>
-#include <QtCore/QStandardPaths>
-#include <QtCore/QFile>
-#include <QtCore/QHash>
-#include <QtCore/QPointer>
-#include <QtCore/QSet>
-#include <QtCore/QSaveFile>
-#include <QtCore/QDir>
-#include <QtCore/QThreadPool>
-#include <atomic>
-#include <memory>
-#include <variant>
-#include <utility>
-#include <vector>
-
-#include <QtGui/QOffscreenSurface>
-#include <QtGui/QGuiApplication>
-#include <QtGui/QPlatformSurfaceEvent>
-
-#include <QtQuick/QQuickWindow>
-#include <private/qquickwindow_p.h>
-#include <QtGui/qpa/qplatformwindow_p.h>
-
-#include <QtQuick/private/qsgrenderer_p.h>
-
 #include "qsgthreadedrenderloop_p.h"
 #include "qsgrhisupport_p.h"
-#include <private/qquickanimatorcontroller_p.h>
 
-#include <private/qquickprofiler_p.h>
-#include <private/qqmldebugserviceinterfaces_p.h>
-#include <private/qqmldebugconnector_p.h>
-
-#include <private/qsgrhishadereffectnode_p.h>
-#include <private/qsgdefaultrendercontext_p.h>
-
+#include <QtCore/QAnimationDriver>
+#include <QtCore/QCoreApplication>
+#include <QtCore/QDir>
+#include <QtCore/QFile>
+#include <QtCore/QHash>
+#include <QtCore/QMutex>
+#include <QtCore/QPointer>
+#include <QtCore/QSaveFile>
+#include <QtCore/QStandardPaths>
+#include <QtCore/QThreadPool>
+#include <QtCore/QTimer>
+#include <QtCore/QWaitCondition>
+#include <QtGui/QGuiApplication>
+#include <QtGui/QOffscreenSurface>
+#include <QtGui/QPlatformSurfaceEvent>
+#include <QtGui/qpa/qplatformwindow_p.h>
+#include <QtQuick/QQuickWindow>
+#include <QtQuick/private/qquickanimatorcontroller_p.h>
+#include <QtQuick/private/qquickprofiler_p.h>
+#include <QtQuick/private/qquickwindow_p.h>
+#include <QtQuick/private/qsgdefaultrendercontext_p.h>
+#include <QtQuick/private/qsgrenderer_p.h>
+#include <QtQml/private/qqmldebugconnector_p.h>
+#include <QtQml/private/qqmldebugserviceinterfaces_p.h>
 #include <qtquick_tracepoints_p.h>
-#include <algorithm>
+
+#if QT_CONFIG(quick_shadereffect)
+#include <QtQuick/private/qsgrhishadereffectnode_p.h>
+#endif
 
 #ifdef Q_OS_DARWIN
 #include <QtCore/private/qcore_mac_p.h>
 #endif
+
+#include <algorithm>
+#include <atomic>
+#include <memory>
+#include <utility>
+#include <variant>
+#include <vector>
 
 QT_BEGIN_NAMESPACE
 
@@ -225,6 +221,7 @@ public:
         : wm(w)
         , rhi(nullptr)
         , ownRhi(true)
+        , sgrc(static_cast<QSGDefaultRenderContext *>(renderContext))
         , offscreenSurface(nullptr)
         , animatorDriver(nullptr)
         , pendingUpdate(0)
@@ -234,7 +231,6 @@ public:
         , stopEventProcessing(false)
         , syncResultedInChanges(false)
     {
-        sgrc = static_cast<QSGDefaultRenderContext *>(renderContext);
 #if defined(Q_OS_QNX) || defined(Q_OS_INTEGRITY)
         setStackSize(1024 * 1024);
 #endif
@@ -266,7 +262,6 @@ public:
     void processEvents();
     void postEvent(QSGRenderThreadEvent &&e);
 
-public:
     enum {
         SyncRequest         = 0x01,
         RepaintRequest      = 0x02,
@@ -300,6 +295,7 @@ public:
     bool rhiDoomed = false;
     bool swRastFallbackDueToSwapchainFailure = false;
     bool lastFrameValid = false;
+    bool prewarmed = false;
     std::atomic<bool> rhiReady{false};
     std::atomic<bool> deferredExposeRequest{false};
     std::atomic<bool> surfaceAboutToBeDestroyed{false};
@@ -406,7 +402,8 @@ void preloadPipelineCache(QRhi::Implementation backend)
         const QByteArray data = ensurePipelineCacheDataLoaded(backend);
         if (!data.isEmpty()) {
             qCDebug(QSG_LOG_RENDERLOOP, "RHI %s pipeline cache preloaded for backend %d (%lld bytes)",
-                    QRhi::backendName(backend), pipelineCacheBackendKey(backend), (long long)data.size());
+                    QRhi::backendName(backend), pipelineCacheBackendKey(backend),
+                    static_cast<long long>(data.size()));
         }
     });
 }
@@ -441,7 +438,7 @@ void savePipelineCache(QRhi *rhi)
         }
         if (saved) {
             qCDebug(QSG_LOG_RENDERLOOP, "RHI %s pipeline cache saved for backend %d (%lld bytes)",
-                    QRhi::backendName(backend), key, (long long)data.size());
+                    QRhi::backendName(backend), key, static_cast<long long>(data.size()));
         }
     });
 }
@@ -453,7 +450,8 @@ void loadPipelineCache(QRhi *rhi)
     if (!data.isEmpty()) {
         rhi->setPipelineCacheData(data);
         qCDebug(QSG_LOG_RENDERLOOP, "RHI %s pipeline cache loaded for backend %d (%lld bytes)",
-                QRhi::backendName(backend), pipelineCacheBackendKey(backend), (long long)data.size());
+                QRhi::backendName(backend), pipelineCacheBackendKey(backend),
+                static_cast<long long>(data.size()));
     }
 }
 
@@ -504,29 +502,25 @@ void QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
     },
     [&](WMTryReleaseEvent &e) {
         qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "WM_TryRelease");
-        {
-            if (!window || e.inDestructor) {
-                qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- setting exit flag and invalidating");
-                invalidateGraphics(e.window, e.inDestructor, e.needsFallbackSurface);
-                active.store(rhi != nullptr, std::memory_order_relaxed);
-                Q_ASSERT_X(!e.inDestructor || !active, "QSGRenderThread::invalidateGraphics()", "Thread's active state is not set to false when shutting down");
-                if (sleeping)
-                    stopEventProcessing = true;
-            } else {
-                qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- not releasing because window is still active");
-                if (window) {
-                    QQuickWindowPrivate *d = QQuickWindowPrivate::get(window);
-                    qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- requesting external renderers such as Quick 3D to release cached resources");
-                    emit d->context->releaseCachedResourcesRequested();
-                    if (d->renderer) {
-                        qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- requesting renderer to release cached resources");
-                        d->renderer->releaseCachedResources();
-                    }
-#if QT_CONFIG(quick_shadereffect)
-                    QSGRhiShaderEffectNode::garbageCollectMaterialTypeCache(window);
-#endif
-                }
+        if (!window || e.inDestructor) {
+            qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- setting exit flag and invalidating");
+            invalidateGraphics(e.window, e.inDestructor, e.needsFallbackSurface);
+            active.store(rhi != nullptr, std::memory_order_relaxed);
+            Q_ASSERT_X(!e.inDestructor || !active, "QSGRenderThread::invalidateGraphics()", "Thread's active state is not set to false when shutting down");
+            if (sleeping)
+                stopEventProcessing = true;
+        } else {
+            qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- not releasing because window is still active");
+            QQuickWindowPrivate *d = QQuickWindowPrivate::get(window);
+            qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- requesting external renderers such as Quick 3D to release cached resources");
+            emit d->context->releaseCachedResourcesRequested();
+            if (d->renderer) {
+                qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- requesting renderer to release cached resources");
+                d->renderer->releaseCachedResources();
             }
+#if QT_CONFIG(quick_shadereffect)
+            QSGRhiShaderEffectNode::garbageCollectMaterialTypeCache(window);
+#endif
         }
         e.done->store(true, std::memory_order_release);
         e.done->notify_one();
@@ -599,7 +593,7 @@ void QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
 
         if (rhi)
             rhi->makeThreadLocalNativeContextCurrent();
-        
+
         wm->releaseSwapchain(e.window);
         lastFrameValid = false;
         qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- swapchain released");
@@ -621,8 +615,8 @@ void QSGRenderThread::invalidateGraphics(QQuickWindow *window, bool inDestructor
         return;
     }
 
-    bool wipeSG = inDestructor || !window->isPersistentSceneGraph();
-    bool wipeGraphics = inDestructor || (wipeSG && !window->isPersistentGraphics());
+    const bool wipeSG = inDestructor || !window->isPersistentSceneGraph();
+    const bool wipeGraphics = inDestructor || (wipeSG && !window->isPersistentGraphics());
 
     if (!needsFallbackSurface)
         rhi->makeThreadLocalNativeContextCurrent();
@@ -675,7 +669,7 @@ void QSGRenderThread::invalidateGraphics(QQuickWindow *window, bool inDestructor
 void QSGRenderThread::sync()
 {
     auto *d = QQuickWindowPrivate::get(window);
-    bool canSync = (rhi && windowSize.isValid());
+    const bool canSync = rhi && windowSize.isValid();
 
     if (canSync) [[likely]] {
         rhi->makeThreadLocalNativeContextCurrent();
@@ -1155,6 +1149,7 @@ QSGThreadedRenderLoop::QSGThreadedRenderLoop()
     , m_animation_timer(0)
 {
 #ifdef Q_OS_ANDROID
+    // Remove once qtbase change 735089 is part of the minimum Qt version.
     qGuiApp->installEventFilter(this);
 #endif
 
@@ -1265,14 +1260,6 @@ void QSGThreadedRenderLoop::startOrStopAnimationTimer()
     }
 }
 
-namespace {
-QSet<QQuickWindow *> &prewarmedWindows()
-{
-    static QSet<QQuickWindow *> windows;
-    return windows;
-}
-}
-
 void QSGThreadedRenderLoop::hide(QQuickWindow *window)
 {
     qCDebug(QSG_LOG_RENDERLOOP) << "hide()" << window;
@@ -1298,11 +1285,11 @@ void QSGThreadedRenderLoop::resize(QQuickWindow *window)
 void QSGThreadedRenderLoop::windowDestroyed(QQuickWindow *window)
 {
     qCDebug(QSG_LOG_RENDERLOOP) << "begin windowDestroyed()" << window;
-    prewarmedWindows().remove(window);
 
     Window *w = windowFor(window);
     if (!w)
         return;
+    w->thread->prewarmed = false;
 
     handleObscurity(w);
     releaseResources(w, true);
@@ -1406,10 +1393,10 @@ void QSGThreadedRenderLoop::exposureChanged(QQuickWindow *window)
                     w->thread->sgrc->moveToThread(w->thread);
                     w->thread->moveToThread(w->thread);
                 }
-                prewarmedWindows().insert(candidate);
+                w->thread->prewarmed = true;
                 w->thread->start();
             }
-        } else if (prewarmedWindows().contains(safeWindow.data())) {
+        } else if (w->thread->prewarmed) {
             if (safeWindow->isVisible())
                 qCDebug(QSG_LOG_RENDERLOOP) << "- already pre-warmed";
             else
@@ -1443,7 +1430,7 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
         w->psTimeSampleCount = 0;
         w->timeBetweenPolishAndSyncs.start();
     }
-    prewarmedWindows().remove(window);
+    w->thread->prewarmed = false;
     // Surface validity is GUI-thread-owned; queued render events may be stale.
     w->thread->surfaceAboutToBeDestroyed.store(false, std::memory_order_release);
     if (!w->window->handle()) [[unlikely]] window->create();
@@ -1492,7 +1479,7 @@ void QSGThreadedRenderLoop::handleObscurity(Window *w)
         return;
 
     qCDebug(QSG_LOG_RENDERLOOP) << "handleObscurity()" << w->window;
-    const bool wasPrewarmed = prewarmedWindows().remove(w->window);
+    const bool wasPrewarmed = std::exchange(w->thread->prewarmed, false);
     w->thread->surfaceAboutToBeDestroyed.store(true, std::memory_order_release);
     if (w->thread->isRunning()) {
         if (!wasPrewarmed && !QQuickWindowPrivate::get(w->window)->updatesEnabled) {
@@ -1632,7 +1619,7 @@ void QSGThreadedRenderLoop::update(QQuickWindow *window)
     if (QPlatformWindow *platformWindow = window->handle()) {
         if (isRenderThread && !platformWindow->allowsIndependentThreadedRendering()) {
             qCDebug(QSG_LOG_RENDERLOOP) << "window is resizing. update on window" << w->window;
-            QTimer::singleShot(0, window, [=]{ window->requestUpdate(); });
+            QTimer::singleShot(0, window, &QWindow::requestUpdate);
             return;
         }
     }
@@ -1653,7 +1640,7 @@ void QSGThreadedRenderLoop::releaseResources(QQuickWindow *window)
 {
     Window *w = windowFor(window);
     if (w) {
-        if (prewarmedWindows().contains(window))
+        if (w->thread->prewarmed)
             handleObscurity(w);
         releaseResources(w, false);
     }
@@ -1797,6 +1784,7 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
     Q_QUICK_SG_PROFILE_RECORD(QQuickProfiler::SceneGraphPolishAndSync,
                               QQuickProfiler::SceneGraphPolishAndSyncPolish);
 
+    w = windowFor(window);
     if (!canSyncWindow()) {
         qCDebug(QSG_LOG_RENDERLOOP, "- removed after polishing, abort");
         return;
