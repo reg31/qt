@@ -18,7 +18,7 @@ env:
     -no-feature-textmarkdownreader -no-feature-textmarkdownwriter -no-feature-movie -no-feature-undocommand -no-feature-concatenatetablesproxymodel -no-cups
     -no-feature-undogroup -no-feature-ctf -no-feature-widgets -no-feature-imageformat_xbm -no-feature-sortfilterproxymodel -no-feature-filesystemwatcher
     -nomake examples -nomake tests -nomake benchmarks -nomake manual-tests -nomake minimal-static-tests -no-feature-gssapi -no-feature-accessibility
-    -no-feature-sql -no-feature-graphicsframecapture -DFEATURE_no_direct_extern_access=ON
+    -no-feature-sql -no-feature-graphicsframecapture -DFEATURE_no_direct_extern_access=ON -unity-build
   EXTRA_FLAGS: -no-feature-qml-network -no-feature-qml-ssl -no-feature-quickcontrols2-fusion
   QT_BASE_CHERRY_PICK: 712956 524178 644402 680266 737729 754065 753848 752561 754129 754130 751156 751138 751141 751142 751140 751139 751157 737729 756473
   QT_DECLARATIVE_CHERRY_PICK: 622692 695153 727806 743838 754298 754121 754107 753876
@@ -116,6 +116,7 @@ jobs:
           
       - name: Configure
         run: |
+          set "SCCACHE_CLIENT_SIDE=true"
           set "CMAKE_C_COMPILER_LAUNCHER=sccache"
           set "CMAKE_CXX_COMPILER_LAUNCHER=sccache"
           set "CC=C:\ProgramData\mingw64\mingw64\bin\x86_64-w64-mingw32-gcc.exe"
@@ -263,11 +264,12 @@ jobs:
           set "CMAKE_CXX_COMPILER_LAUNCHER=sccache"
           set "CMAKE_C_COMPILER_LAUNCHER=sccache"
           set "OPENSSL_ROOT=%CD:\=/%/openssl"
+          set "SCCACHE_CLIENT_SIDE=true"
           
           mkdir build
           cd build
           
-            ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} -skip qtshadertools  -unity-build ^
+            ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} -skip qtshadertools -unity-build ^
               -android-abis ${{ matrix.arch }} -android-ndk "%ANDROID_NDK_LATEST_HOME%" -android-sdk "%ANDROID_SDK_ROOT%" -openssl-runtime ^
               -unity-build-batch-size %NUMBER_OF_PROCESSORS% -reduce-relocations -- -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT%" ^
               -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp -fno-semantic-interposition" ^
@@ -356,6 +358,7 @@ jobs:
           EXTRA_FLAGS="-Xclang -fno-pch-timestamp"
           export CMAKE_CXX_COMPILER_LAUNCHER="sccache"
           export CMAKE_C_COMPILER_LAUNCHER="sccache"
+          export SCCACHE_CLIENT_SIDE="true"
           
           mkdir -p build && cd build
           
@@ -455,11 +458,14 @@ jobs:
       - name: Configure and build for iOS
         run: | 
           OUTPUT_DIR=$(pwd)/qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
-          export CMAKE_CXX_COMPILER_LAUNCHER="sccache"
-          export CMAKE_C_COMPILER_LAUNCHER="sccache"
+          EXTRA_FLAGS="-march=armv8.2-a+dotprod -Xclang -fno-pch-timestamp"          
           HOST_PATH=$(pwd)/qt-macos-release-dev
           CPU_COUNT=$(sysctl -n hw.logicalcpu)
-          EXTRA_FLAGS="-march=armv8.2-a+dotprod -Xclang -fno-pch-timestamp"
+          
+          export CMAKE_CXX_COMPILER_LAUNCHER="sccache"
+          export CMAKE_C_COMPILER_LAUNCHER="sccache"
+          export SCCACHE_CLIENT_SIDE="true"
+          
           mkdir -p build
           cd build
           
