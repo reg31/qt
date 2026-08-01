@@ -420,7 +420,7 @@ jobs:
               info=$(curl -sf "https://codereview.qt-project.org/changes/qt%2F${repo}~${change}?o=CURRENT_REVISION" | tail -n +2)
               read -r commit status < <(jq -r '[.current_revision // "", .status // "UNKNOWN"] | @tsv' <<< "$info")
               [ "$status" = "MERGED" ] && echo "Change $change is already merged" || echo "Change $change status: $status"
-              echo "::error::Change $change not found in $repo"; exit 1; }
+              [ -z "$commit" ] && { echo "::error::Change $change not found in $repo"; exit 1; }
               git fetch https://codereview.qt-project.org/qt/$repo "$commit" || exit 1
               git cherry-pick --no-commit FETCH_HEAD || { echo "::error::Cherry-pick failed for $change"; git cherry-pick --abort; exit 1; }
             done
