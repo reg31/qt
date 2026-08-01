@@ -267,7 +267,7 @@ jobs:
           mkdir build
           cd build
           
-            ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} -skip qtshadertools -unity-build ^
+            ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} -skip qtshadertools ^
               -android-abis ${{ matrix.arch }} -android-ndk "%ANDROID_NDK_LATEST_HOME%" -android-sdk "%ANDROID_SDK_ROOT%" -openssl-runtime ^
               -unity-build-batch-size %NUMBER_OF_PROCESSORS% -reduce-relocations -- -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT%" ^
               -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp -fno-semantic-interposition" ^
@@ -359,7 +359,7 @@ jobs:
           
           mkdir -p build && cd build
           
-          ../configure ${{ env.SHARED_FLAGS }} -unity-build -securetransport -feature-appstore-compliant -prefix $OUTPUT_DIR -framework -unity-build-batch-size $CPU_COUNT \
+          ../configure ${{ env.SHARED_FLAGS }} -securetransport -feature-appstore-compliant -prefix $OUTPUT_DIR -framework -unity-build-batch-size $CPU_COUNT \
           -- -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,-dead_strip" \
             -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} $EXTRA_FLAGS" \
             -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} $EXTRA_FLAGS"
@@ -465,7 +465,7 @@ jobs:
           mkdir -p build
           cd build
           
-          ../configure -platform macx-ios-clang ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} -unity-build -feature-appstore-compliant -unity-build-batch-size $CPU_COUNT \
+          ../configure -platform macx-ios-clang ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} -feature-appstore-compliant -unity-build-batch-size $CPU_COUNT \
           -skip qtshadertools -gc-binaries -securetransport -prefix $OUTPUT_DIR -qt-host-path $HOST_PATH -framework -- -DCMAKE_OSX_ARCHITECTURES="arm64" \
             -DCMAKE_C_FLAGS="${{ env.SHARED_COMPILER_FLAGS }}  $EXTRA_FLAGS" \
             -DCMAKE_CXX_FLAGS="${{ env.SHARED_COMPILER_FLAGS }} $EXTRA_FLAGS" \
