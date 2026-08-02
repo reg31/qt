@@ -669,7 +669,7 @@ void QSGRenderThread::invalidateGraphics(QQuickWindow *window, bool inDestructor
 void QSGRenderThread::sync()
 {
     auto *d = QQuickWindowPrivate::get(window);
-    const bool canSync = rhi && windowSize.isValid();
+    const bool canSync = rhi && windowSize.isValid() && (!d->rhi || d->swapchain);
 
     if (canSync) [[likely]] {
         rhi->makeThreadLocalNativeContextCurrent();
@@ -1116,7 +1116,9 @@ void QSGRenderThread::run()
 
         if (window) [[likely]] {
             syncDoneBeforeEnsure = false;
-            if ((pendingUpdate & SyncRequest) && rhi && !QQuickWindowPrivate::get(window)->swapchain) [[unlikely]] {
+            const auto *windowData = QQuickWindowPrivate::get(window);
+            // A retained QRhi with a released swapchain must be recreated before syncing.
+            if ((pendingUpdate & SyncRequest) && rhi && !windowData->rhi && !windowData->swapchain) [[unlikely]] {
                 syncDoneBeforeEnsure = true;
                 sync();
             }
