@@ -297,7 +297,7 @@ jobs:
 
   build-macos:
     needs: setup
-    runs-on: macos-26
+    runs-on: macos-latest
     strategy:
       matrix:
         build_type: [release]
@@ -388,7 +388,7 @@ jobs:
 
   build-ios:
     needs: setup
-    runs-on: macos-26
+    runs-on: macos-latest
     strategy:
       matrix:
         build_type: [release]
