@@ -7,7 +7,7 @@ env:
   SHARED_COMPILER_FLAGS: "-O2 -DNDEBUG -pipe -fPIC"
   SHARED_LINKER_FLAGS: "-fuse-ld=lld -Wl,-S,--icf=safe"
   APPLY_CHERRY_PICK: true
-  UNITY_BUILD_BATCH_SIZE: 16
+  UNITY_BUILD_BATCH_SIZE: 32
   SHARED_FLAGS: -release -no-feature-testlib -DQT_NO_PACKAGE_VERSION_CHECK=ON -DQT_NO_PACKAGE_VERSION_INCOMPATIBLE_WARNING=ON -c++std c++2b
     -no-feature-hijricalendar -no-feature-islamiccivilcalendar -nomake tests -nomake examples -submodules qtbase,qtdeclarative -no-feature-whatsthis
     -skip qtlanguageserver,qtquicktimeline,qtquick3d,qtimageformats,qtsvg -qt-zlib -qt-libjpeg -qt-libpng -qt-pcre -qt-harfbuzz -qt-freetype -reduce-exports
