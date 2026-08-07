@@ -82,6 +82,9 @@ jobs:
             
       - name: Set up MinGW
         uses: egor-tensin/setup-mingw@v3
+        with:
+          platform: x64
+          version: 15.2.0
    
       - name: Initialize Qt submodules
         run: init-repository.bat ${{ env.INIT_FLAGS }}
