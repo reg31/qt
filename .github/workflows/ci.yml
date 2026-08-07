@@ -20,7 +20,7 @@ env:
     -no-feature-textmarkdownreader -no-feature-textmarkdownwriter -no-feature-movie -no-feature-undocommand -no-feature-concatenatetablesproxymodel -no-cups
     -no-feature-undogroup -no-feature-ctf -no-feature-widgets -no-feature-imageformat_xbm -no-feature-sortfilterproxymodel -no-feature-filesystemwatcher
     -nomake examples -nomake tests -nomake benchmarks -nomake manual-tests -nomake minimal-static-tests -no-feature-gssapi -no-feature-accessibility
-    -no-feature-sql -no-feature-graphicsframecapture -DFEATURE_no_direct_extern_access=ON
+    -no-feature-sql -no-feature-graphicsframecapture -DFEATURE_no_direct_extern_access=ON -unity-build
   EXTRA_FLAGS: -no-feature-qml-network -no-feature-qml-ssl -no-feature-quickcontrols2-fusion
   QT_BASE_CHERRY_PICK: 712956 524178 644402 680266 754065 753848 752561 754129 754130 751156 751157 754389 758382 758221 737729 756473 757958 758243 758244 757959 #757976
   QT_DECLARATIVE_CHERRY_PICK: 622692 695153 727806 743838 754298 754121 754107 753876 757036
@@ -269,7 +269,7 @@ jobs:
           mkdir build
           cd build
           
-            ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} -unity-build -skip qtshadertools ^
+            ..\configure.bat -prefix "%OUTPUT_DIR%" -qt-host-path "%QT_ROOT_DIR%" ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} -skip qtshadertools ^
               -android-abis ${{ matrix.arch }} -android-ndk "%ANDROID_NDK_LATEST_HOME%" -android-sdk "%ANDROID_SDK_ROOT%" -openssl-runtime ^
               -unity-build-batch-size ${{ env.UNITY_BUILD_BATCH_SIZE_WINDOWS }} -reduce-relocations -- -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT%" ^
               -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp -fno-semantic-interposition" ^
@@ -360,7 +360,7 @@ jobs:
           
           mkdir -p build && cd build
           
-          ../configure ${{ env.SHARED_FLAGS }} -securetransport -feature-appstore-compliant -prefix $OUTPUT_DIR -framework -unity-build -unity-build-batch-size ${{ env.UNITY_BUILD_BATCH_SIZE_MACOS }} \
+          ../configure ${{ env.SHARED_FLAGS }} -securetransport -feature-appstore-compliant -prefix $OUTPUT_DIR -framework -unity-build-batch-size ${{ env.UNITY_BUILD_BATCH_SIZE_MACOS }} \
           -- -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,-dead_strip" \
             -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} $EXTRA_FLAGS" \
             -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} $EXTRA_FLAGS"
@@ -465,7 +465,7 @@ jobs:
           mkdir -p build
           cd build
           
-          ../configure -platform macx-ios-clang ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} -feature-appstore-compliant -unity-build -unity-build-batch-size ${{ env.UNITY_BUILD_BATCH_SIZE_MACOS }} \
+          ../configure -platform macx-ios-clang ${{ env.SHARED_FLAGS }} ${{ env.EXTRA_FLAGS }} -feature-appstore-compliant -unity-build-batch-size ${{ env.UNITY_BUILD_BATCH_SIZE_MACOS }} \
           -skip qtshadertools -gc-binaries -securetransport -prefix $OUTPUT_DIR -qt-host-path $HOST_PATH -framework -- -DCMAKE_OSX_ARCHITECTURES="arm64" \
             -DCMAKE_C_FLAGS="${{ env.SHARED_COMPILER_FLAGS }}  $EXTRA_FLAGS" \
             -DCMAKE_CXX_FLAGS="${{ env.SHARED_COMPILER_FLAGS }} $EXTRA_FLAGS" \
