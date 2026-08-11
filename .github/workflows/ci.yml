@@ -185,8 +185,7 @@ jobs:
         uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
-          java-version: 25
-          check-latest: true
+          java-version: latest
         
       - name: Initialize Qt submodules
         run: init-repository.bat ${{ env.INIT_FLAGS }}
