@@ -22,7 +22,7 @@ env:
     -nomake examples -nomake tests -nomake benchmarks -nomake manual-tests -nomake minimal-static-tests -no-feature-gssapi -no-feature-accessibility
     -no-feature-sql -no-feature-graphicsframecapture -DFEATURE_no_direct_extern_access=ON -unity-build
   EXTRA_FLAGS: -no-feature-qml-network -no-feature-qml-ssl -no-feature-quickcontrols2-fusion
-  QT_BASE_CHERRY_PICK: 712956 524178 644402 680266 754065 753848 752561 754129 754130 751156 751157 754389 758382 758221 737729 756473 757958 758243 758244 757959 758793 #757976
+  QT_BASE_CHERRY_PICK: 712956 524178 644402 680266 754065 753848 751156 751157 754389 758382 758221 737729 756473 757958 758243 758244 757959 758793 757976 759358 757976 759360 
   QT_DECLARATIVE_CHERRY_PICK: 622692 695153 727806 743838 754298 754121 754107 753876 757036
     
 on:
