@@ -1,369 +1,200 @@
-# Qt Quick Threaded Render Loop — Optimisation Changelog
+# Qt Quick Threaded Render Loop Modifications
 
-> ⚠️ **EXPERIMENTAL** — Modifies Qt private internals (`qsgthreadedrenderloop.cpp`). Not officially supported by The Qt Company. Tested against Qt 6.x source. Requires C++20 or later.
+> This README documents only the experimental `qsgthreadedrenderloop.cpp` replacement. The code
+> tracks the Qt dev branch, is built as C++23, and is not a supported Qt public API. It requires no
+> change to `qsgthreadedrenderloop_p.h`, and `QSGThreadedRenderLoop` method signatures are unchanged.
 
----
+## Purpose
 
-## Overview
+The modified `qsgthreadedrenderloop.cpp` focuses on two areas:
 
-This document describes surgical modifications to `qsgthreadedrenderloop.cpp` relative to the original Qt 6 implementation. The changes address three distinct problem areas:
+- Overlap RHI device creation with the interval between window visibility and surface exposure.
+- Prevent rendering against an Android surface while the platform is destroying or recreating it.
 
-1. **Startup Performance** — Eliminate GPU driver initialisation from the `show()` critical path
-2. **Correctness** — Race conditions on window close, missing active flag checks, cross-thread update scheduling
-3. **Modernisation** — C++20 ranges, move semantics, branch prediction attributes
+The implementation also uses value-based render-thread events and modern C++ synchronization,
+without changing Qt Quick's scene graph or rendering contracts.
 
----
+## RHI Warm-Up
 
-## Change 1 — RHI Device Creation Split: `ensureRhiDevice()`
+`QSGRenderThread::ensureRhiDevice()` separates device and render-context initialization from
+swapchain creation. When a window is visible but not yet exposed, `exposureChanged()` can create
+and start its render thread. The thread then creates the QRhi before the first scene graph sync.
 
-### Problem
-`ensureRhi()` performed RHI device creation, pipeline cache loading, render context initialisation, and swapchain creation in a single function. All of this blocked the GUI thread via `polishAndSync` on the first `show()` call, causing ~100ms startup latency.
+This prewarm window is platform-dependent and may be short or absent. A window with
+`visible: false` is not prewarmed. `maybeUpdate()` creates the platform window when necessary,
+but `exposureChanged()` starts prewarming only when the window is visible.
 
-### Fix
-Introduced `ensureRhiDevice()` — a new function that handles only the GPU device creation and pipeline cache loading. This subset of work does **not** require a native window handle and can run on the render thread before `show()` is ever called.
+OpenGL still requires a compatible surface. The GUI thread therefore creates Qt's fallback
+offscreen surface before the render thread starts. Vulkan, D3D, Metal, and OpenGL continue to use
+`QSGRhiSupport::createRhi()` and their normal Qt initialization paths.
 
-```cpp
-void QSGRenderThread::ensureRhiDevice()
-{
-    if (rhi || rhiDoomed) [[likely]]
-        return;
+`ensureRhi()` completes the work that requires exposure:
 
-    auto *rhiSupport = QSGRhiSupport::instance();
-    auto rhiResult = rhiSupport->createRhi(window, offscreenSurface, swRastFallbackDueToSwapchainFailure);
-    rhi = rhiResult.rhi;
-    ownRhi = rhiResult.own;
-    if (rhi) {
-        rhiDeviceLost = false;
-        rhiSampleCount = rhiSupport->chooseSampleCountForWindowWithRhi(window, rhi);
-        rhi->makeThreadLocalNativeContextCurrent();
-        if (!pipelineCacheLoaded) [[unlikely]] {
-            loadPipelineCache(rhi);
-            pipelineCacheLoaded = true;
-        }
-        rhiReady.store(true, std::memory_order_release);
-    } else {
-        if (!rhiDeviceLost)
-            rhiDoomed = true;
-    }
-}
+1. Initialize the render context if warm-up could not do so.
+2. Create the swapchain and depth/stencil buffer.
+3. Apply the surface format, sample count, proxy data, and renderer viewport.
+
+The native driver initialization cost is not eliminated. Warm-up only overlaps that cost with
+other startup work when the platform provides enough time before exposure.
+
+## Pipeline Cache
+
+There is no custom pipeline-cache implementation in this file. The Qt dev branch already loads
+and saves the automatic QRhi pipeline cache in `QSGRhiSupport::createRhi()` and `destroyRhi()`.
+
+The automatic cache remains enabled by default unless the application disables it through
+`QQuickGraphicsConfiguration`. Consequently, the measured `createRhi` duration includes Qt's
+built-in cache preparation as well as native device or context creation.
+
+## First Exposure
+
+The render thread publishes `rhiReady` after successful device setup. `deferredExposeRequest`
+coordinates the first update while warm-up is still running:
+
+1. `handleExposure()` posts the expose event and starts or wakes the render thread.
+2. If the RHI is not ready, the GUI thread returns without starting scene graph synchronization.
+3. Once initialization completes, the render thread queues `requestUpdate()`.
+4. `handleUpdateRequest()` performs the deferred expose sync after `rhiReady` becomes true.
+
+This avoids synchronizing against a partially initialized graphics stack. It does not promise a
+specific startup improvement because surface timing and driver initialization vary by backend and
+device.
+
+`exposureChanged()` also validates the surface size. An exposed window with an empty swapchain or
+platform-surface size is marked non-renderable and retried after 16 ms. The retry captures the
+window with `QPointer`, so destruction during the delay safely cancels the work.
+
+## Render-Thread Events
+
+Private GUI-to-render-thread requests are stored by value in a `std::variant` and queued in two
+reused `std::vector` buffers. Draining swaps the producer and consumer buffers, preserving FIFO
+order while avoiding a heap allocation for each event object.
+
+The event alternatives cover expose, obscure, sync, resource release, grab, render jobs, and
+swapchain release. `WMJobEvent` owns its `QRunnable` with `std::unique_ptr` while queued.
+
+Operations that must wait for render-thread completion use a shared atomic token with
+`wait()`/`notify_one()`. Per-frame synchronization uses a monotonically increasing serial:
+
+- The GUI thread posts `WMSyncEvent` with a new serial.
+- The render thread stores the completed serial with release ordering.
+- The GUI thread waits until the acknowledged serial reaches the posted serial.
+
+On the normal sync path, acknowledgement occurs after `syncSceneGraph()` and `sgrc->endSync()`,
+but before deferred-deletion processing. Bailout paths acknowledge without attempting an invalid
+sync. This keeps the GUI-thread stall as short as the scene graph contract permits.
+
+The per-frame sync event itself needs no heap allocation. Low-frequency blocking operations such
+as grabs and resource release still allocate a shared wait token for safe fire-and-wait ownership.
+
+## Surface Lifecycle Safety
+
+`surfaceAboutToBeDestroyed` is an atomic cross-thread barrier. Rendering and grabs check it before
+touching a presentable surface, while `postJob()` rejects new render jobs after teardown begins.
+The render path checks surface validity before `beginFrame()` and again before presentation; if
+the surface disappears during a frame, the frame ends with `QRhi::SkipPresent`.
+
+The event filter handles two teardown signals:
+
+- `ApplicationStateChange` on Android marks every surface unavailable and waits for each running
+  render thread to release its swapchain.
+- `QPlatformSurfaceEvent::SurfaceAboutToBeDestroyed` performs the same handshake for one window.
+
+The Android application event filter is temporary but still required. Remove it only after the
+QtBase asynchronous Android EGL/Vulkan surface change (`735089`) is included in the minimum
+supported Qt version. `handleObscurity()` sets the barrier before queuing its render-thread event;
+`handleExposure()` clears it for the next surface lifecycle.
+
+## Device Loss and Swapchain Recovery
+
+`beginFrame()` and `endFrame()` results are checked. Device loss tears down the scene graph and
+owned RHI. An out-of-date swapchain is marked non-renderable and an update is queued so it can be
+recreated later.
+
+If initial swapchain creation fails and `QSGRhiSupport` permits a software fallback, the render
+loop tears down its graphics state and retries with software rendering preferred. If initial QRhi
+creation itself fails, `TriggerContextCreationFailure` is posted to the window instead of leaving
+the GUI thread waiting indefinitely.
+
+When an RHI is retained while the window swapchain has been released, the render loop handles the
+pending sync before `ensureRhi()` reattaches window graphics resources. `syncDoneBeforeEnsure`
+then prevents the same request from being synchronized twice in that frame.
+
+`lastFrameValid` allows unchanged frames to end with `QRhi::SkipPresent`, avoiding redundant scene
+rendering and presentation when synchronization produced no changes. A frame is considered valid
+only after a successful presentation.
+
+Normal resource release continues to honor `isPersistentSceneGraph()` and
+`isPersistentGraphics()`. A QRhi supplied by the application is detached but never destroyed by
+the render loop. Grabs use the same surface and frame-result checks; a failed grab returns an empty
+image, and an out-of-date swapchain schedules recovery.
+
+## Update Scheduling
+
+Updates requested from outside the GUI thread are queued back to the render loop instead of being
+dropped. The queued callback retains the window through `QPointer` and looks up its current
+`Window` record before use, avoiding stale pointers during shutdown. Scheduling stops when the
+render thread is inactive; render-thread-originated updates are also rejected after device loss.
+If surface teardown has begun, the later `polishAndSync()` presentability guard safely drops the
+work.
+
+When an update is requested during scene graph synchronization, the next request is paced against
+the remaining vsync interval instead of being posted immediately when time remains. Vsync health
+sampling ignores large timing outliers, switches broken throttling to the system animation timer,
+and switches back after a shorter recovery sample confirms normal throttling.
+
+## C++ Usage
+
+The implementation uses modern language and library features where they simplify ownership or
+synchronization:
+
+- `std::ranges::find` and `std::ranges::any_of`
+- `std::variant` and `std::visit`
+- `std::unique_ptr` for queued render jobs
+- `std::exchange` for state transitions
+- `std::atomic::wait()` and `notify_one()`
+- Explicit atomic memory ordering at GUI/render-thread boundaries
+- `[[likely]]` and `[[unlikely]]` on measured hot and exceptional paths
+
+This render-loop replacement changes no `QSGThreadedRenderLoop` method signature or framework
+header.
+
+## Timing Logs
+
+With `qt.scenegraph.time.renderloop` enabled, a warm Windows MinGW Debug launch using Qt's
+default animation driver reported:
+
+```text
+RHI warm-up: createRhi=76 ms, rhiSetup=0 ms, renderContext=0 ms, total=76 ms
+Frame prepared, polish=0 ms, lock=0 ms, sync=5 ms, animations=4 ms
+frame: sync=3 ms, swapchain=2 ms, beginFrame=0 ms, renderSceneGraph=5 ms, endFrame=3 ms, total=14 ms
 ```
 
-`ensureRhi()` is updated to call `ensureRhiDevice()` first, then proceed with render context and swapchain setup as before. `run()` calls `ensureRhiDevice()` (not `ensureRhi()`) at thread start so the GPU context is initialised immediately when the thread boots, before any sync event arrives.
+These are measured values, not expected targets. A cold run of the same configuration reported
+102 ms in `createRhi` and 24 ms for the first render-thread frame, demonstrating the startup
+variance introduced by native driver and operating-system state. Testing with
+`QSG_USE_SIMPLE_ANIMATION_DRIVER` showed no startup difference.
 
-**Benefit:** GPU driver load (~100ms) runs on the render thread in parallel with application startup rather than blocking `show()`.
+The warm-up fields measure:
 
----
+- `createRhi`: the complete `QSGRhiSupport::createRhi()` call, including native driver
+  device/context creation and Qt's built-in pipeline-cache preparation.
+- `rhiSetup`: sample-count selection and making the native context current.
+- `renderContext`: conditional `QSGDefaultRenderContext::initialize()` work.
+- `total`: elapsed time for the complete warm-up function after successful RHI creation.
 
-## Change 2 — Pipeline Cache: Memory Mapping + Early Load
+Each field is truncated independently to whole milliseconds, so the displayed components may
+differ from `total` by a few milliseconds. Frame logs separately report sync, swapchain,
+begin-frame, scene rendering, end-frame, and total time.
 
-### Original
-```cpp
-static void loadPipelineCache(QRhi *rhi)
-{
-    QFile f(pipelineCachePath());
-    if (!f.open(QIODevice::ReadOnly))
-        return;
-    const QByteArray data = f.readAll();   // heap allocation + user-space copy
-    rhi->setPipelineCacheData(data);
-}
-```
+## Validation
 
-Pipeline cache was loaded inside `syncAndRender()`, which only executes after `show()` is called — on the `show()` critical path.
+The current source passes C++23 syntax checks against local Qt dev branch builds with:
 
-### Fix
-```cpp
-static void loadPipelineCache(QRhi *rhi)
-{
-    QFile f(pipelineCachePath());
-    if (!f.open(QIODevice::ReadOnly))
-        return;
-    if (uchar *mapped = f.map(0, f.size())) {
-        rhi->setPipelineCacheData(QByteArray::fromRawData(
-            reinterpret_cast<const char *>(mapped), f.size()));
-        f.unmap(mapped);
-    } else {
-        rhi->setPipelineCacheData(f.readAll());
-    }
-}
-```
+- MinGW 64-bit
+- Android NDK ARM64-v8a
+- Android NDK armeabi-v7a
 
-Loading moved into `ensureRhiDevice()`, guarded by `pipelineCacheLoaded`. The render thread loads the cache during the background warmup phase while the window is still hidden.
-
-**Benefit:** Disk I/O completely off the `show()` critical path. Memory mapping avoids heap allocation and user-space copy.
-
----
-
-## Change 3 — `rhiReady` Flag: Warm vs Cold Start Detection
-
-### Problem
-The async expose optimisation (returning immediately from `polishAndSync` on expose) causes a blank/black window flash on cold start because the GPU context hasn't been initialised yet — the OS displays the window container before any frame has been rendered.
-
-### Fix
-Added `std::atomic<bool> rhiReady{false}` to `QSGRenderThread`. Set to `true` inside `ensureRhiDevice()` after successful RHI creation. Cleared to `false` in both `teardownGraphics()` and `invalidateGraphics()` when the RHI is destroyed.
-
-The async expose in `polishAndSync` is gated on this flag:
-
-```cpp
-if (inExpose && w->thread->rhiReady.load(std::memory_order_acquire)) {
-    // Pre-warmed: return immediately, show() is instant
-    m_lockedForSync = false;
-    // ... trace points ...
-    return;
-}
-// Cold start: fall through to standard blocking wait
-```
-
-**Behaviour:**
-- **Warm start** (`visible: false` window shown later): `rhiReady` is true, `show()` returns in ~0ms
-- **Cold start** (`visible: true` at launch): `rhiReady` is false, GUI blocks until first frame is ready — no visual glitch
-
----
-
-## Change 4 — Automatic Pre-Warm via `update()` / `maybeUpdate()` Interception
-
-### Problem
-The render thread pre-warm requires the window to be registered in `m_windows`, which only happens via `exposureChanged`. For `visible: false` windows, Qt never creates a platform window handle and never calls `exposureChanged`, so the pre-warm never starts.
-
-### Fix
-`update()` and `maybeUpdate()` now intercept calls on unknown, non-exposed windows and route them into `exposureChanged()`:
-
-```cpp
-void QSGThreadedRenderLoop::maybeUpdate(QQuickWindow *window)
-{
-    Window *w = windowFor(window);
-    if (w) {
-        maybeUpdate(w);
-        return;
-    }
-    if (!window->isExposed()) [[unlikely]] {
-        if (!window->handle())
-            window->create();
-        exposureChanged(window);
-    }
-}
-
-void QSGThreadedRenderLoop::update(QQuickWindow *window)
-{
-    Window *w = windowFor(window);
-    if (!w) {
-        if (!window->isExposed()) [[unlikely]] {
-            if (!window->handle())
-                window->create();
-            exposureChanged(window);
-        }
-        return;
-    }
-    // ... existing logic ...
-}
-```
-
-When the QML engine constructs child items inside a `visible: false` window, those items organically call `update()`. This intercept boots the render thread immediately, kicking off RHI initialisation in parallel with the rest of QML parsing. The pre-warm fires exactly once — the second `update()` call finds `w` in `m_windows` and takes the normal path.
-
-**Benefit:** Zero QML or application code changes required. Standard `Window { visible: false; Rectangle { ... } }` automatically pre-warms the render thread.
-
----
-
-## Change 5 — Safety Gate in `polishAndSync`
-
-### Problem
-With async expose, the GUI thread returns from `polishAndSync` before the render thread has finished reading the scene graph. If a subsequent `polishAndSync` call runs immediately, `polishItems()` can modify `QQuickItem` properties while the render thread is still reading them — a data race.
-
-### Fix
-A gate at the top of `polishAndSync`, before `polishItems()`, waits efficiently if a previous async sync is still in flight:
-
-```cpp
-if (w->thread->lastPostedSyncSerial > 0) [[likely]] {
-    uint64_t observed = w->thread->syncAcknowledgedSerial.load(std::memory_order_acquire);
-    if (observed < w->thread->lastPostedSyncSerial) [[unlikely]] {
-        while (observed < w->thread->lastPostedSyncSerial) {
-            w->thread->syncAcknowledgedSerial.wait(observed, std::memory_order_acquire);
-            observed = w->thread->syncAcknowledgedSerial.load(std::memory_order_acquire);
-        }
-    }
-}
-```
-
-`std::atomic::wait()` yields the CPU entirely — zero spinning. The `[[unlikely]]` hint means the gate costs a single unpredicted branch check in steady state (serial already satisfied).
-
-**Benefit:** Data race between GUI polish and render thread sync is impossible by construction. In steady state (render thread keeps up) the gate is free.
-
----
-
-## Change 6 — `maybeUpdate`: Cross-Thread Safety Fix
-
-### Original
-```cpp
-if (current != QCoreApplication::instance()->thread() && (current != w->thread || !m_lockedForSync)) {
-    qWarning() << "Updates can only be scheduled from GUI thread or from QQuickItem::updatePaintNode()";
-    return;
-}
-```
-
-The warning fired during window close when deferred deletes triggered `maybeUpdate` from the render thread while `m_lockedForSync` was false.
-
-### Fix
-Combined all early-return guards into one condition. Replaced the warning with a queued invoke to the GUI thread:
-
-```cpp
-void QSGThreadedRenderLoop::maybeUpdate(Window *w)
-{
-    if (!QCoreApplication::instance() || !w || !w->thread->isRunning() || !w->thread->active)
-        return;
-
-    QThread *current = QThread::currentThread();
-    if (current == w->thread && w->thread->rhi && w->thread->rhi->isDeviceLost())
-        return;
-    if (current != QCoreApplication::instance()->thread() && (current != w->thread || !m_lockedForSync)) {
-        QMetaObject::invokeMethod(this, [this, w]() { maybeUpdate(w); }, Qt::QueuedConnection);
-        return;
-    }
-    // ...
-}
-```
-
-The `!w->thread->active` check prevents spurious updates during render thread shutdown. The queued invoke correctly reschedules the update on the GUI thread rather than silently dropping it.
-
----
-
-## Change 7 — `exposureChanged`: Removed `handle()` Gate for Pre-Warm
-
-### Original
-```cpp
-if (!w && safeWindow->handle()) {
-    // start pre-warm thread
-}
-```
-
-The pre-warm branch required a platform window handle, which doesn't exist for `visible: false` windows. Combined with Change 4, the handle is now force-created via `window->create()` before this path is reached, so the gate is removed:
-
-```cpp
-if (!w) {
-    // start pre-warm thread (handle guaranteed by caller)
-}
-```
-
----
-
-## Change 8 — `loadPipelineCache` / `rhiReady` Cleared on Teardown
-
-`rhiReady` is explicitly cleared on every path that destroys the RHI device:
-
-```cpp
-// teardownGraphics()
-rhi = nullptr;
-rhiReady.store(false, std::memory_order_release);
-
-// invalidateGraphics() — where RHI is destroyed
-rhi = nullptr;
-rhiReady.store(false, std::memory_order_release);
-dd->rhi = nullptr;
-```
-
-This ensures that after a device loss and recovery cycle, the next `show()` correctly detects a cold start and blocks rather than attempting an async expose with no GPU context.
-
----
-
-## Change 9 — C++20 Modernisation
-
-### `std::ranges::find` with member projection
-
-```cpp
-// Before
-QSGThreadedRenderLoop::Window *QSGThreadedRenderLoop::windowFor(QQuickWindow *window)
-{
-    for (auto &t : m_windows) {
-        if (t.window == window)
-            return &t;
-    }
-    return nullptr;
-}
-
-// After
-QSGThreadedRenderLoop::Window *QSGThreadedRenderLoop::windowFor(QQuickWindow *window)
-{
-    auto it = std::ranges::find(m_windows, window, &Window::window);
-    return it != m_windows.end() ? &*it : nullptr;
-}
-```
-
-Same applied to `handleExposure`. Member pointer projection avoids lambda closure instantiation.
-
-### `std::move` for `QRhiSwapChainProxyData`
-
-`scProxyData` is declared non-const in `polishAndSync` and moved into `WMSyncEvent`. In `processEvent`, it is moved from the event into the render thread's local storage:
-
-```cpp
-// polishAndSync
-w->thread->postEvent(WMSyncEvent(window, inExpose, w->forceRenderPass, std::move(scProxyData), serial));
-
-// processEvent WMSyncEvent handler  
-scProxyData = std::move(e.scProxyData);
-```
-
-Eliminates struct copy on every frame.
-
-### `[[likely]]` / `[[unlikely]]` branch hints
-
-Applied throughout hot paths:
-- `ensureRhiDevice()` early return: `[[likely]]`
-- Safety gate inner condition: `[[unlikely]]`
-- `pipelineCacheLoaded` check: `[[unlikely]]`
-- VSync sample threshold: `[[unlikely]]`
-- `inExpose && rhiReady` async expose: existing `[[unlikely]]` on cold-start fallthrough
-
----
-
-## Summary
-
-### Functions Modified
-
-| Function | Change |
-|----------|--------|
-| `loadPipelineCache()` | `readAll()` → `mmap` with fallback; moved to `ensureRhiDevice()` |
-| `ensureRhiDevice()` | New function: RHI device + pipeline cache only, no handle required |
-| `ensureRhi()` | Delegates device creation to `ensureRhiDevice()`; swapchain unchanged |
-| `run()` | Calls `ensureRhiDevice()` at thread start instead of `ensureRhi()` |
-| `teardownGraphics()` | Add `rhiReady = false` |
-| `invalidateGraphics()` | Add `rhiReady = false` |
-| `polishAndSync()` | Safety gate before `polishItems()`; async expose gated on `rhiReady`; `std::move(scProxyData)` |
-| `processEvent()` WMSyncEvent | `std::move(e.scProxyData)` into thread local |
-| `maybeUpdate(QQuickWindow*)` | Auto pre-warm interception for hidden windows |
-| `maybeUpdate(Window*)` | Merged guards; queued invoke instead of warning; `active` flag check |
-| `update(QQuickWindow*)` | Auto pre-warm interception for hidden windows |
-| `windowFor()` | `std::ranges::find` with member projection |
-| `handleExposure()` | `std::ranges::find` with member projection; removed `handle()` gate |
-| `exposureChanged()` | Removed `handle()` gate on pre-warm branch |
-| `QSGRenderThread` class | Added `rhiReady`, `pipelineCacheLoaded` members |
-
----
-
-## Startup Performance Impact
-
-| Scenario | Before | After |
-|----------|--------|-------|
-| `visible: false` → work → `show()` | `show()` blocks for full RHI init (~100ms) | `show()` returns in ~0ms |
-| `visible: true` at launch (cold) | `show()` blocks for full RHI init (~100ms) | `show()` blocks for remainder of RHI init (overlap with QML parse time) |
-| Driver already loaded when `show()` called | Not possible without explicit pre-warm API | Automatic — triggered by first child item construction |
-| Visual glitch on cold start | N/A (always blocked) | None — `rhiReady` gate prevents async expose until GPU is ready |
-
-### What the render thread now does in the background (before `show()`)
-
-1. GPU device creation (`createRhi`) — heaviest operation, ~50–100ms
-2. Pipeline cache memory-map from disk
-3. Render context initialisation (`sgrc->initialize`) — default Qt Quick shader compilation
-
-### What still requires `show()` (unavoidable)
-
-1. Swapchain creation — requires OS compositor to map window to a screen surface
-2. Scene graph sync (`syncSceneGraph`) — requires final item geometry from `polishItems()`
-
----
-
-## Correctness Fixes
-
-| Issue | Fix |
-|-------|-----|
-| `maybeUpdate` warning fired on window close | Queued invoke to GUI thread; `active` flag check |
-| Async expose data race (GUI modifies items while RT reads) | Safety gate using `syncAcknowledgedSerial.wait()` |
-| Cold start blank window flash | `rhiReady` flag gates async expose |
-| `rhiReady` stale after device loss | Cleared in all RHI teardown paths |
+These are compile checks, not a substitute for runtime lifecycle testing. Android testing should
+cover launch, background/foreground, screen rotation, surface recreation, window destruction,
+device loss where available, and both OpenGL and Vulkan backends.
