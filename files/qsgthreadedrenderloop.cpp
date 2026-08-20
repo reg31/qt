@@ -945,7 +945,7 @@ void QSGRenderThread::ensureRhi()
 
     if (!cd->swapchain && surfaceExposed.load(std::memory_order_acquire)) [[unlikely]] {
         cd->rhi = rhi;
-        const auto requestedFormat = window->format();
+        const auto requestedFormat = window->requestedFormat();
         QRhiSwapChain::Flags flags = QRhiSwapChain::UsedAsTransferSource;
 
         if (requestedFormat.alphaBufferSize() > 0) flags |= QRhiSwapChain::SurfaceHasPreMulAlpha;
