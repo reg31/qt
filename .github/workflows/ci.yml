@@ -5,10 +5,8 @@ env:
   OPENSSL_VERSION: openssl-4.0
   INIT_FLAGS: --module-subset=qtbase,qtdeclarative,-qtlanguageserver,-qtquicktimeline,-qtquick3d,-qtimageformats,-qtsvg --branch --no-update
   SHARED_COMPILER_FLAGS: "-O2 -DNDEBUG -pipe -fPIC"
-  ANDROID_LINKER_FLAGS: "-fuse-ld=lld -Wl,-S,--icf=safe"
+  SHARED_LINKER_FLAGS: "-fuse-ld=lld -Wl,-S,--icf=safe"
   APPLE_LINKER_FLAGS: "-Wl,-S,-dead_strip"
-  MINGW_COMPILER_FLAGS: "-ffunction-sections -fdata-sections"
-  MINGW_LINKER_FLAGS: "-Wl,--gc-sections -s"
   APPLY_CHERRY_PICK: true
   UNITY_BUILD_BATCH_SIZE_WINDOWS: 16
   UNITY_BUILD_BATCH_SIZE_MACOS: 32
@@ -134,11 +132,8 @@ jobs:
           cd build
           
           ..\configure.bat -schannel -prefix "%OUTPUT_DIR%" ${{ env.SHARED_FLAGS }} -unity-build-batch-size ${{ env.UNITY_BUILD_BATCH_SIZE_WINDOWS }} ^
-           -- -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} ${{ env.MINGW_COMPILER_FLAGS }} -fpch-preprocess" ^
-              -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} ${{ env.MINGW_COMPILER_FLAGS }} -fpch-preprocess" ^
-              -DCMAKE_EXE_LINKER_FLAGS_RELEASE="${{ env.MINGW_LINKER_FLAGS }}" ^
-              -DCMAKE_SHARED_LINKER_FLAGS_RELEASE="${{ env.MINGW_LINKER_FLAGS }}" ^
-              -DCMAKE_MODULE_LINKER_FLAGS_RELEASE="${{ env.MINGW_LINKER_FLAGS }}"
+           -- -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s -fno-semantic-interposition -fpch-preprocess" ^
+              -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -s -fno-semantic-interposition -fpch-preprocess"
               
       - name: List features
         run: configure.bat -list-features
@@ -279,7 +274,7 @@ jobs:
               -unity-build-batch-size ${{ env.UNITY_BUILD_BATCH_SIZE_WINDOWS }} -reduce-relocations -- -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT%" ^
               -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp -fno-semantic-interposition" ^
               -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} -Xclang -fno-pch-timestamp -fno-semantic-interposition" ^
-              -DCMAKE_SHARED_LINKER_FLAGS="${{ env.ANDROID_LINKER_FLAGS }} -Wl,--pack-dyn-relocs=android+relr,--use-android-relr-tags -Wl,-Bsymbolic-functions,--hash-style=gnu"
+              -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,--pack-dyn-relocs=android+relr,--use-android-relr-tags -Wl,-Bsymbolic-functions,--hash-style=gnu"
                       
       - name: List features
         run: configure.bat -list-features          
@@ -320,6 +315,8 @@ jobs:
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.11
 
+      - name: Setup lld
+        run: brew install lld
 
       - name: Initialize Qt submodules
         run: perl init-repository ${{ env.INIT_FLAGS }}
@@ -362,7 +359,7 @@ jobs:
           mkdir -p build && cd build
           
           ../configure ${{ env.SHARED_FLAGS }} -securetransport -feature-appstore-compliant -prefix $OUTPUT_DIR -framework -unity-build-batch-size ${{ env.UNITY_BUILD_BATCH_SIZE_MACOS }} \
-          -- -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DCMAKE_SHARED_LINKER_FLAGS="${{ env.APPLE_LINKER_FLAGS }}" \
+          -- -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,-dead_strip" \
             -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} $EXTRA_FLAGS" \
             -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} $EXTRA_FLAGS"
           ../configure -list-features
