@@ -23,7 +23,7 @@ env:
     -nomake examples -nomake tests -nomake benchmarks -nomake manual-tests -nomake minimal-static-tests -no-feature-gssapi -no-feature-accessibility
     -no-feature-sql -no-feature-graphicsframecapture -DFEATURE_no_direct_extern_access=ON -unity-build
   EXTRA_FLAGS: -no-feature-qml-network -no-feature-qml-ssl -no-feature-quickcontrols2-fusion
-  QT_BASE_CHERRY_PICK: 712956 524178 644402 680266 751156 751157 758382 758221 737729 756473 757958 758243 758244 757959 754065 748481 763369 763511 #752561 753848 754129 754130 
+  QT_BASE_CHERRY_PICK: 712956 524178 644402 680266 751156 751157 758382 758221 737729 756473 757958 758243 758244 757959 754065 748481 763369 #752561 753848 754129 754130 
   QT_DECLARATIVE_CHERRY_PICK: 622692 695153 727806 754298 757036 761560 758142 759199 #753876
     
 on:
@@ -183,11 +183,10 @@ jobs:
         uses: mozilla-actions/sccache-action@v0.0.11
             
       - name: Set up JDK
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v6
         with:
           distribution: 'temurin'
-          java-version: 26
-          check-latest: true
+          java-version: latest
         
       - name: Initialize Qt submodules
         run: init-repository.bat ${{ env.INIT_FLAGS }}
@@ -212,6 +211,7 @@ jobs:
           }
           [ -n "${QT_BASE_CHERRY_PICK}" ] && apply_changes qtbase ${QT_BASE_CHERRY_PICK}
           [ -n "${QT_DECLARATIVE_CHERRY_PICK}" ] && apply_changes qtdeclarative ${QT_DECLARATIVE_CHERRY_PICK}
+          
       - name: Download prebuilt Qt Host
         run: |
           mkdir qt-windows-mingw-release-dev
@@ -234,6 +234,7 @@ jobs:
           cd configFolders
           curl -fsSL -o android_bin.7z https://raw.githubusercontent.com/reg31/qt/main/files/android_bin.7z
           7z x android_bin.7z
+          
       - name: Append Qt configuration
         if: matrix.arch == 'armeabi-v7a'
         run: Xcopy .\configFolders\bin\arm\ .\configFolders\bin\ /c /i /s /y /r
@@ -247,6 +248,7 @@ jobs:
           cd .\configFolders\bin
           rmdir /s /q arm
           rmdir /s /q arm64
+          
       - name: Experimental library improvement
         shell: bash
         run: |
@@ -254,6 +256,7 @@ jobs:
           echo "Downloading experimental changes  ..."
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgthreadedrenderloop.cpp -o qtdeclarative/src/quick/scenegraph/qsgthreadedrenderloop.cpp
           echo "Download completed  ..."
+          
       - name: Setup Android Tools
         run:  cmake -DACTION_RESOLVE_GRADLE=ON -DQT_ROOT_DIR=D:/a/qt/qt/qtbase -DGRADLE_PROJECT_DIR=D:/a/qt/qt/qtbase/src/android/jar -P D:/a/qt/qt/qtbase/cmake/QtSetupAndroid.cmake
         
@@ -341,6 +344,7 @@ jobs:
           }
           [ -n "${QT_BASE_CHERRY_PICK}" ] && apply_changes qtbase ${QT_BASE_CHERRY_PICK}
           [ -n "${QT_DECLARATIVE_CHERRY_PICK}" ] && apply_changes qtdeclarative ${QT_DECLARATIVE_CHERRY_PICK}
+          
       - name: Experimental library improvement
         shell: bash
         run: |
@@ -348,6 +352,7 @@ jobs:
           echo "Downloading experimental changes  ..."
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgthreadedrenderloop.cpp -o qtdeclarative/src/quick/scenegraph/qsgthreadedrenderloop.cpp
           echo "Download completed  ..."
+          
       - name: Configure
         run: |
           OUTPUT_DIR=$(pwd)/qt-macos-release-${{ needs.setup.outputs.qt_branch }}
@@ -363,6 +368,7 @@ jobs:
             -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} $EXTRA_FLAGS" \
             -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} $EXTRA_FLAGS"
           ../configure -list-features
+          
       - name: Build
         run: |
           cd build
@@ -374,12 +380,14 @@ jobs:
           xattr -cr ./$OUTPUT_NAME
           find ./$OUTPUT_NAME -type f -exec chmod +x {} +
           7z a $OUTPUT_NAME.zip ./$OUTPUT_NAME/* -x!./$OUTPUT_NAME/share -x!./$OUTPUT_NAME/sbom -x!./$OUTPUT_NAME/doc
+          
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
         with:
           name: qt-macos
           path: |
             qt-macos-release-${{ needs.setup.outputs.qt_branch }}.zip
+            
   build-ios:
     needs: setup
     runs-on: macos-latest
@@ -421,6 +429,7 @@ jobs:
           }
           [ -n "${QT_BASE_CHERRY_PICK}" ] && apply_changes qtbase ${QT_BASE_CHERRY_PICK}
           [ -n "${QT_DECLARATIVE_CHERRY_PICK}" ] && apply_changes qtdeclarative ${QT_DECLARATIVE_CHERRY_PICK}
+          
       - name: Experimental library improvement
         shell: bash
         run: |
@@ -428,6 +437,7 @@ jobs:
           echo "Downloading experimental changes  ..."
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgthreadedrenderloop.cpp -o qtdeclarative/src/quick/scenegraph/qsgthreadedrenderloop.cpp
           echo "Download completed  ..."
+          
       - name: Extract config folder
         run: |
           mkdir configFolder
@@ -442,6 +452,7 @@ jobs:
           QT_ARCHIVE=qt-macos-release-dev.zip
           curl -fsSL -o $QT_ARCHIVE https://github.com/reg31/qt/releases/latest/download/$QT_ARCHIVE
           7z x $QT_ARCHIVE
+          
       - name: Configure and build for iOS
         run: | 
           OUTPUT_DIR=$(pwd)/qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}
@@ -473,12 +484,14 @@ jobs:
           xattr -cr ./$OUTPUT_NAME
           find ./$OUTPUT_NAME -type f -exec chmod +x {} +
           7z a $OUTPUT_NAME.zip ./$OUTPUT_NAME/* -x!./$OUTPUT_NAME/share -x!./$OUTPUT_NAME/sbom -x!./$OUTPUT_NAME/doc
+          
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
         with:
           name: qt-ios
           path: |
             qt-ios-${{ matrix.build_type }}-${{ needs.setup.outputs.qt_branch }}.zip
+            
   release:
     needs: [setup, build-windows, build-android, build-macos, build-ios]
     runs-on: ubuntu-latest
