@@ -290,6 +290,7 @@ public:
     bool prewarmed = false;
     std::atomic<bool> rhiReady{false};
     std::atomic<bool> deferredExposeRequest{false};
+    std::atomic<bool> updateRequestPending{false};
     std::atomic<bool> surfaceExposed{false};
     std::atomic<bool> surfaceAboutToBeDestroyed{false};
     bool insideSync = false;
@@ -1209,6 +1210,8 @@ void QSGThreadedRenderLoop::exposureChanged(QQuickWindow *window)
     if (!safeWindow) return;
 
     QQuickWindowPrivate *wd = QQuickWindowPrivate::get(safeWindow);
+    constexpr auto retryTimerName = "_q_sg_exposureRetry";
+    auto *retryTimer = safeWindow->findChild<QTimer *>(retryTimerName, Qt::FindDirectChildrenOnly);
     if (!safeWindow->isExposed())
         wd->hasRenderableSwapchain = false;
 
@@ -1224,12 +1227,24 @@ void QSGThreadedRenderLoop::exposureChanged(QQuickWindow *window)
         if (surfaceSize.isEmpty()) {
             wd->hasRenderableSwapchain = false;
             skipThisExpose = true;
-            QTimer::singleShot(16, this, [this, safeWindow]() {
-                if (safeWindow && safeWindow->isExposed())
-                    exposureChanged(safeWindow);
-            });
+            if (!retryTimer) {
+                retryTimer = new QTimer(safeWindow);
+                retryTimer->setObjectName(retryTimerName);
+                retryTimer->setSingleShot(true);
+                retryTimer->setTimerType(Qt::PreciseTimer);
+                connect(retryTimer, &QTimer::timeout, this, [this, safeWindow]() {
+                    if (safeWindow && safeWindow->isExposed())
+                        exposureChanged(safeWindow);
+                });
+                connect(this, &QObject::destroyed, retryTimer, [retryTimer] { delete retryTimer; });
+            }
+            if (!retryTimer->isActive())
+                retryTimer->start(16);
         }
     }
+
+    if (!skipThisExpose && retryTimer)
+        retryTimer->stop();
 
     if (safeWindow->isExposed() && !wd->hasRenderableSwapchain && wd->hasActiveSwapchain
             && wd->swapchain
@@ -1465,10 +1480,17 @@ void QSGThreadedRenderLoop::maybeUpdate(Window *w)
         return;
     if (current != QCoreApplication::instance()->thread()
             && (current != w->thread || !w->thread->insideSync)) {
+        if (w->thread->updateRequestPending.exchange(true, std::memory_order_acq_rel))
+            return;
         QPointer<QQuickWindow> safeWindow = w->window;
-        QMetaObject::invokeMethod(this, [this, safeWindow]() {
+        QPointer<QSGRenderThread> safeThread = w->thread;
+        QMetaObject::invokeMethod(this, [this, safeWindow, safeThread]() {
+            if (!safeThread)
+                return;
+            // Allow updates arriving during delivery to queue the next callback.
+            safeThread->updateRequestPending.exchange(false, std::memory_order_acq_rel);
             if (safeWindow)
-                if (Window *safeW = windowFor(safeWindow))
+                if (Window *safeW = windowFor(safeWindow); safeW && safeW->thread == safeThread)
                     maybeUpdate(safeW);
         }, Qt::QueuedConnection);
         return;
@@ -1712,7 +1734,7 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
         const int remaining = static_cast<int>(vsyncMs - frameElapsedMs) - 1;
         if (remaining > 1)
             QTimer::singleShot(remaining, Qt::PreciseTimer, w->window,
-                               [window = QPointer(w->window)]() { if (window) window->requestUpdate(); });
+                               &QWindow::requestUpdate);
         else
             postUpdateRequest(w);
     }
