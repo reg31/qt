@@ -452,7 +452,6 @@ void QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
             if (rhi)
                 rhi->makeThreadLocalNativeContextCurrent();
             e.job->run();
-            // Destroy before the next drained render-thread event can run.
             e.job.reset();
             qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- job done");
         }
@@ -1000,8 +999,6 @@ void QSGRenderThread::run()
         if (window) [[likely]] {
             syncDoneBeforeEnsure = false;
             const auto *windowData = QQuickWindowPrivate::get(window);
-            // Sync retained scene-graph state while the GUI is blocked,
-            // before recreating the swapchain.
             if ((pendingUpdate & SyncRequest) && rhi && !windowData->rhi && !windowData->swapchain) [[unlikely]] {
                 syncDoneBeforeEnsure = true;
                 sync();
@@ -1012,6 +1009,7 @@ void QSGRenderThread::run()
         }
 
         if (active.load(std::memory_order_relaxed) && (pendingUpdate == 0 || !window)) [[unlikely]] {
+            acknowledgeSync();
             sleeping = true;
             processEventsAndWaitForMore();
             sleeping = false;
@@ -1036,7 +1034,6 @@ QSGThreadedRenderLoop::QSGThreadedRenderLoop()
     , m_lockedForSync(false)
 {
 #ifdef Q_OS_ANDROID
-    // Remove once qtbase change 735089 is part of the minimum Qt version.
     qGuiApp->installEventFilter(this);
 #endif
 
@@ -1312,6 +1309,9 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
     Window *w = nullptr;
     if (it != m_windows.end()) [[likely]] {
         w = &*it;
+        w->thread->prewarmed = false;
+        w->thread->surfaceAboutToBeDestroyed.store(false, std::memory_order_release);
+        w->thread->surfaceExposed.store(true, std::memory_order_release);
         if (!QQuickWindowPrivate::get(window)->updatesEnabled) [[unlikely]] return;
     } else {
         auto *wd = QQuickWindowPrivate::get(window);
@@ -1330,7 +1330,6 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
         w->timeBetweenPolishAndSyncs.start();
     }
     w->thread->prewarmed = false;
-    // Surface validity is GUI-thread-owned; queued render events may be stale.
     w->thread->surfaceAboutToBeDestroyed.store(false, std::memory_order_release);
     w->thread->surfaceExposed.store(true, std::memory_order_release);
     if (!w->window->handle()) [[unlikely]] window->create();
@@ -1400,7 +1399,6 @@ bool QSGThreadedRenderLoop::eventFilter(QObject *watched, QEvent *event)
         if (watched == qGuiApp
                 && static_cast<QApplicationStateChangeEvent *>(event)->applicationState()
                 <= Qt::ApplicationHidden) {
-            // Stop presentation before Android destroys the native surface.
             for (Window &w : m_windows)
                 w.thread->surfaceAboutToBeDestroyed.store(true, std::memory_order_release);
 
@@ -1449,7 +1447,6 @@ void QSGThreadedRenderLoop::handleUpdateRequest(QQuickWindow *window)
         return;
     }
 
-    // Keep the lightweight expose path when the surface showed up before RHI warm-up finished.
     const bool inExpose =
             w->thread->deferredExposeRequest.exchange(false, std::memory_order_acq_rel);
     polishAndSync(w, inExpose);
@@ -1487,7 +1484,6 @@ void QSGThreadedRenderLoop::maybeUpdate(Window *w)
         QMetaObject::invokeMethod(this, [this, safeWindow, safeThread]() {
             if (!safeThread)
                 return;
-            // Allow updates arriving during delivery to queue the next callback.
             safeThread->updateRequestPending.exchange(false, std::memory_order_acq_rel);
             if (safeWindow)
                 if (Window *safeW = windowFor(safeWindow); safeW && safeW->thread == safeThread)
