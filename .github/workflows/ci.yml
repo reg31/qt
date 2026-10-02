@@ -187,6 +187,7 @@ jobs:
         uses: actions/setup-java@v6
         with:
           distribution: 'temurin'
+          check-latest: true
           java-version: 26
         
       - name: Initialize Qt submodules
