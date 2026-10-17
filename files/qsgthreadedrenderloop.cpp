@@ -947,7 +947,9 @@ void QSGRenderThread::ensureRhi()
 
         cd->swapchain = rhi->newSwapChain();
         if (depthBufferEnabled()) [[likely]] {
-            cd->depthStencilForSwapchain = rhi->newRenderBuffer(QRhiRenderBuffer::DepthStencil, {}, rhiSampleCount, QRhiRenderBuffer::UsedWithSwapChainOnly);
+            cd->depthStencilForSwapchain = rhi->newRenderBuffer(
+                    QRhiRenderBuffer::DepthStencil, {}, rhiSampleCount,
+                    QRhiRenderBuffer::UsedWithSwapChainOnly | QSGRhiSupport::depthStencilBufferFlags());
             cd->swapchain->setDepthStencil(cd->depthStencilForSwapchain);
         }
 
