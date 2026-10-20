@@ -11,7 +11,6 @@
 #include <QtCore/QPointer>
 #include <QtCore/QTimer>
 #include <QtCore/QWaitCondition>
-#include <QtGui/QGuiApplication>
 #include <QtGui/QOffscreenSurface>
 #include <QtGui/QPlatformSurfaceEvent>
 #include <QtGui/qpa/qplatformwindow_p.h>
@@ -311,6 +310,27 @@ template<class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
 template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
 
 constexpr qint64 NsecsPerMillisecond = 1000000;
+constexpr auto ExposureRetryTimerName = "_q_sg_exposureRetry";
+
+void scheduleExposureRetry(QSGThreadedRenderLoop *loop, QQuickWindow *window)
+{
+    if (!window->isExposed())
+        return;
+    auto *timer = window->findChild<QTimer *>(ExposureRetryTimerName, Qt::FindDirectChildrenOnly);
+    if (!timer) {
+        timer = new QTimer(window);
+        timer->setObjectName(ExposureRetryTimerName);
+        timer->setSingleShot(true);
+        timer->setTimerType(Qt::PreciseTimer);
+        QObject::connect(timer, &QTimer::timeout, loop, [loop, window = QPointer(window)] {
+            if (window && window->isExposed())
+                loop->exposureChanged(window);
+        });
+        QObject::connect(loop, &QObject::destroyed, timer, [timer] { delete timer; });
+    }
+    if (!timer->isActive())
+        timer->start(16);
+}
 
 bool depthBufferEnabled()
 {
@@ -330,8 +350,8 @@ void QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
     std::visit(overloaded {
     [&](WMObscureEvent &) {
         qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "WM_Obscure");
-        surfaceExposed.store(false, std::memory_order_release);
         if (window) {
+            QQuickWindowPrivate::get(window)->hasRenderableSwapchain = false;
             QQuickWindowPrivate::get(window)->fireAboutToStop();
             qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- window removed");
             window = nullptr;
@@ -340,12 +360,19 @@ void QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
     },
     [&](WMExposedEvent &e) {
         qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "WM_Exposed");
-        surfaceExposed.store(true, std::memory_order_release);
         window = e.window;
         windowSize = e.size;
         dpr = e.dpr;
         m_lastPixelSize = QSize(static_cast<int>(e.size.width() * e.dpr),
                                 static_cast<int>(e.size.height() * e.dpr));
+        auto *cd = QQuickWindowPrivate::get(window);
+        const bool renderable = surfaceExposed.load(std::memory_order_acquire)
+                && !surfaceAboutToBeDestroyed.load(std::memory_order_acquire)
+                && cd->hasActiveSwapchain && cd->swapchain
+                && !cd->swapchain->surfacePixelSize().isEmpty();
+        if (renderable && !cd->hasRenderableSwapchain)
+            cd->swapchainJustBecameRenderable = true;
+        cd->hasRenderableSwapchain = renderable;
     },
     [&](WMSyncEvent &e) {
         qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "WM_RequestSync");
@@ -603,14 +630,20 @@ void QSGRenderThread::syncAndRender()
         return surfaceExposed.load(std::memory_order_acquire)
                 && !surfaceAboutToBeDestroyed.load(std::memory_order_acquire);
     };
-    const auto requestRenderRetry = [this](bool forceRenderPass) {
+    const auto requestRenderRetry = [this](bool forceRenderPass, bool emptySurface = false) {
         if (forceRenderPass) {
-            QMetaObject::invokeMethod(wm, [wm = this->wm, win = this->window]() {
-                if (QSGThreadedRenderLoop::Window *w = wm->windowFor(win))
-                    w->forceRenderPass = true;
+            QMetaObject::invokeMethod(wm, [wm = this->wm, win = QPointer(window), emptySurface]() {
+                if (win) {
+                    if (QSGThreadedRenderLoop::Window *w = wm->windowFor(win)) {
+                        w->forceRenderPass = true;
+                        if (emptySurface)
+                            scheduleExposureRetry(wm, win);
+                    }
+                }
             }, Qt::QueuedConnection);
         }
-        QMetaObject::invokeMethod(window, &QQuickWindow::update, Qt::QueuedConnection);
+        if (!emptySurface)
+            QMetaObject::invokeMethod(window, &QQuickWindow::update, Qt::QueuedConnection);
     };
     const auto handleEndFrameFailure = [this, cd](QRhi::FrameOpResult result) {
         if (result == QRhi::FrameOpDeviceLost) {
@@ -647,11 +680,13 @@ void QSGRenderThread::syncAndRender()
     }
 
     bool gpuStarted = false;
+    bool emptySurface = windowSize.isEmpty();
     if (hasValidSwapChain) [[likely]] {
         cd->swapchain->setProxyData(scProxyData);
         const QSize effectiveOutputSize = cd->swapchain->surfacePixelSize();
+        emptySurface = effectiveOutputSize.isEmpty();
 
-        if (!effectiveOutputSize.isEmpty()) [[likely]] {
+        if (!emptySurface) [[likely]] {
             const QSize previousOutputSize = cd->swapchain->currentPixelSize();
             if (previousOutputSize != effectiveOutputSize || cd->swapchainJustBecameRenderable) [[unlikely]] {
                 cd->hasActiveSwapchain = cd->swapchain->createOrResize();
@@ -715,10 +750,12 @@ void QSGRenderThread::syncAndRender()
     }
 
     if (!gpuStarted) {
+        if (emptySurface)
+            cd->hasRenderableSwapchain = false;
         if (syncRequested && !syncDoneBeforeEnsure)
             acknowledgeSync();
         if (exposeRequested)
-            requestRenderRetry(true);
+            requestRenderRetry(true, emptySurface);
         abortProfile();
         return;
     }
@@ -1029,11 +1066,6 @@ QSGThreadedRenderLoop::QSGThreadedRenderLoop()
     , m_animation_timer(0)
     , m_lockedForSync(false)
 {
-#ifdef Q_OS_ANDROID
-    // Remove event filter and associated code once qtbase change 735089 is merged.
-    qGuiApp->installEventFilter(this);
-#endif
-
     m_animation_driver = sg->createAnimationDriver(this);
 
     connect(m_animation_driver, &QAnimationDriver::started, this, &QSGThreadedRenderLoop::animationStarted);
@@ -1201,50 +1233,27 @@ void QSGThreadedRenderLoop::exposureChanged(QQuickWindow *window)
 {
     QPointer<QQuickWindow> safeWindow = window;
 
-    QQuickWindowPrivate *wd = QQuickWindowPrivate::get(safeWindow);
-    constexpr auto retryTimerName = "_q_sg_exposureRetry";
-    auto *retryTimer = safeWindow->findChild<QTimer *>(retryTimerName, Qt::FindDirectChildrenOnly);
-    if (!safeWindow->isExposed())
-        wd->hasRenderableSwapchain = false;
-
+    Window *tracked = windowFor(safeWindow);
     bool skipThisExpose = false;
-    if (safeWindow->isExposed()) {
+    if (safeWindow->isExposed()
+            && (!tracked || !tracked->thread->rhiReady.load(std::memory_order_acquire))) {
         QSize surfaceSize;
-        if (wd->hasActiveSwapchain && wd->swapchain)
-            surfaceSize = wd->swapchain->surfacePixelSize();
-        else if (safeWindow->handle())
+        if (safeWindow->handle())
             surfaceSize = safeWindow->handle()->geometry().size()
                           * safeWindow->effectiveDevicePixelRatio();
 
         if (surfaceSize.isEmpty()) {
-            wd->hasRenderableSwapchain = false;
             skipThisExpose = true;
-            if (!retryTimer) {
-                retryTimer = new QTimer(safeWindow);
-                retryTimer->setObjectName(retryTimerName);
-                retryTimer->setSingleShot(true);
-                retryTimer->setTimerType(Qt::PreciseTimer);
-                connect(retryTimer, &QTimer::timeout, this, [this, safeWindow]() {
-                    if (safeWindow && safeWindow->isExposed())
-                        exposureChanged(safeWindow);
-                });
-                connect(this, &QObject::destroyed, retryTimer, [retryTimer] { delete retryTimer; });
-            }
-            if (!retryTimer->isActive())
-                retryTimer->start(16);
+            if (tracked && tracked->thread->surfaceExposed.exchange(false, std::memory_order_acq_rel)
+                    && tracked->thread->isRunning())
+                tracked->thread->postEvent(WMExposedEvent(safeWindow));
         }
     }
 
-    if (!skipThisExpose && retryTimer)
-        retryTimer->stop();
-
-    if (safeWindow->isExposed() && !wd->hasRenderableSwapchain && wd->hasActiveSwapchain
-            && wd->swapchain
-            && !wd->swapchain->surfacePixelSize().isEmpty())
-    {
-        wd->hasRenderableSwapchain = true;
-        wd->swapchainJustBecameRenderable = true;
-    }
+    if (skipThisExpose)
+        scheduleExposureRetry(this, safeWindow);
+    else if (auto *timer = safeWindow->findChild<QTimer *>(ExposureRetryTimerName, Qt::FindDirectChildrenOnly))
+        timer->stop();
 
     if (safeWindow->isExposed()) {
         if (!skipThisExpose)
@@ -1388,42 +1397,19 @@ void QSGThreadedRenderLoop::handleObscurity(Window *w)
 
 bool QSGThreadedRenderLoop::eventFilter(QObject *watched, QEvent *event)
 {
-    switch (event->type()) {
-#ifdef Q_OS_ANDROID
-    case QEvent::ApplicationStateChange:
-        if (watched == qGuiApp
-                && static_cast<QApplicationStateChangeEvent *>(event)->applicationState()
-                <= Qt::ApplicationHidden) {
-            for (Window &w : m_windows)
-                w.thread->surfaceAboutToBeDestroyed.store(true, std::memory_order_release);
-
-            for (Window &w : m_windows) {
-                if (!w.thread->isRunning())
-                    continue;
-
+    if (event->type() == QEvent::PlatformSurface
+            && static_cast<QPlatformSurfaceEvent *>(event)->surfaceEventType()
+                    == QPlatformSurfaceEvent::SurfaceAboutToBeDestroyed) {
+        QQuickWindow *window = qobject_cast<QQuickWindow *>(watched);
+        if (window) {
+            Window *w = windowFor(window);
+            if (w && w->thread->isRunning()) {
                 auto isDone = std::make_shared<std::atomic<bool>>(false);
-                w.thread->postEvent(WMReleaseSwapchainEvent(w.window, isDone));
+                w->thread->surfaceAboutToBeDestroyed.store(true, std::memory_order_release);
+                w->thread->postEvent(WMReleaseSwapchainEvent(window, isDone));
                 isDone->wait(false, std::memory_order_acquire);
             }
         }
-        break;
-#endif
-    case QEvent::PlatformSurface:
-        if (static_cast<QPlatformSurfaceEvent *>(event)->surfaceEventType() == QPlatformSurfaceEvent::SurfaceAboutToBeDestroyed) {
-            QQuickWindow *window = qobject_cast<QQuickWindow *>(watched);
-            if (window) {
-                Window *w = windowFor(window);
-                if (w && w->thread->isRunning()) {
-                    auto isDone = std::make_shared<std::atomic<bool>>(false);
-                    w->thread->surfaceAboutToBeDestroyed.store(true, std::memory_order_release);
-                    w->thread->postEvent(WMReleaseSwapchainEvent(window, isDone));
-                    isDone->wait(false, std::memory_order_acquire);
-                }
-            }
-        }
-        break;
-    default:
-        break;
     }
     return QObject::eventFilter(watched, event);
 }
@@ -1776,17 +1762,20 @@ QImage QSGThreadedRenderLoop::grab(QQuickWindow *window)
 {
     qCDebug(QSG_LOG_RENDERLOOP) << "grab()" << window;
 
+    QPointer<QQuickWindow> safeWindow = window;
     Window *w = windowFor(window);
-    Q_ASSERT(w);
-
-    if (!w->thread->isRunning())
+    const auto canGrab = [&] {
+        return safeWindow && w && w->thread && w->thread->isRunning()
+                && w->thread->active.load(std::memory_order_relaxed);
+    };
+    if (!canGrab())
         return QImage();
 
     if (!window->handle())
         window->create();
 
-    w = windowFor(window);
-    if (!w || !w->thread->isRunning())
+    w = safeWindow ? windowFor(safeWindow) : nullptr;
+    if (!canGrab())
         return QImage();
 
     qCDebug(QSG_LOG_RENDERLOOP, "- polishing items");
@@ -1794,6 +1783,10 @@ QImage QSGThreadedRenderLoop::grab(QQuickWindow *window)
     m_inPolish = true;
     d->polishItems();
     m_inPolish = false;
+
+    w = safeWindow ? windowFor(safeWindow) : nullptr;
+    if (!canGrab())
+        return QImage();
 
     QImage result;
     auto isDone = std::make_shared<std::atomic<bool>>(false);
