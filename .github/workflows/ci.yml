@@ -188,12 +188,7 @@ jobs:
         with:
           distribution: 'temurin'
           check-latest: true
-          java-version: 27
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v6
-        #with:
-          #gradle-version: current
+          java-version: 26
         
       - name: Initialize Qt submodules
         run: init-repository.bat ${{ env.INIT_FLAGS }}
@@ -264,8 +259,8 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/reg31/qt/main/files/qsgthreadedrenderloop.cpp -o qtdeclarative/src/quick/scenegraph/qsgthreadedrenderloop.cpp
           echo "Download completed  ..."
           
-      #- name: Setup Android Tools
-        #run:  cmake -DACTION_RESOLVE_GRADLE=ON -DQT_ROOT_DIR=D:/a/qt/qt/qtbase -DGRADLE_PROJECT_DIR=D:/a/qt/qt/qtbase/src/android/jar -P D:/a/qt/qt/qtbase/cmake/QtSetupAndroid.cmake
+      - name: Setup Android Tools
+        run:  cmake -DACTION_RESOLVE_GRADLE=ON -DQT_ROOT_DIR=D:/a/qt/qt/qtbase -DGRADLE_PROJECT_DIR=D:/a/qt/qt/qtbase/src/android/jar -P D:/a/qt/qt/qtbase/cmake/QtSetupAndroid.cmake
         
       - name: Configure Android Qt
         run: |
