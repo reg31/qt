@@ -98,45 +98,28 @@ jobs:
           GERRIT_USERNAME: ${{ secrets.GERRIT_USERNAME }}
           GERRIT_KEY: ${{ secrets.GERRIT_KEY }}
         run: |
-          GERRIT_USERNAME=$(printf %s "$GERRIT_USERNAME" | tr -d '[:space:]')
-          GERRIT_KEY=$(printf %s "$GERRIT_KEY" | tr -d '[:space:]')
-          echo "user length: ${#GERRIT_USERNAME}, key length: ${#GERRIT_KEY}"
-
-          code=$(curl -s -o /tmp/self.json -w '%{http_code}' \
-            -u "$GERRIT_USERNAME:$GERRIT_KEY" \
-            "https://codereview.qt-project.org/a/accounts/self")
-          echo "auth check: HTTP $code"
-          head -c 300 /tmp/self.json; echo
-          [ "$code" = "200" ] || { echo "::error::Gerrit auth failed (HTTP $code)"; exit 1; }
-
-          basic=$(printf '%s:%s' "$GERRIT_USERNAME" "$GERRIT_KEY" | base64 | tr -d '\n')
+          host=https://codereview.qt-project.org
+          user=$(printf %s "$GERRIT_USERNAME" | tr -d '[:space:]')
+          key=$(printf %s "$GERRIT_KEY" | tr -d '[:space:]')
+          basic=$(printf '%s:%s' "$user" "$key" | base64 | tr -d '\n')
           echo "::add-mask::$basic"
-          git_auth="Authorization: Basic $basic"
 
           apply_changes() {
-            local repo=$1
-            shift
-            local workspace=$(echo "${{ github.workspace }}" | sed 's/\\/\//g')
+            local repo=$1; shift
+            cd "${GITHUB_WORKSPACE//\\//}/$repo"
             for change in "$@"; do
-              cd "$workspace/$repo"
-
-              resp=$(curl -s -w '\n%{http_code}' -u "$GERRIT_USERNAME:$GERRIT_KEY" \
-                "https://codereview.qt-project.org/a/changes/qt%2F${repo}~${change}?o=CURRENT_REVISION")
-              http=${resp##*$'\n'}
-              body=${resp%$'\n'*}
-              [ "$http" = "200" ] || { echo "::error::Change $change in $repo: HTTP $http: $body"; exit 1; }
-              info=$(printf '%s' "$body" | tail -n +2)
-
+              info=$(curl -sS --fail-with-body -u "$user:$key" \
+                "$host/a/changes/qt%2F${repo}~${change}?o=CURRENT_REVISION" | tail -n +2)
               read -r commit status < <(jq -r '[.current_revision // "", .status // "UNKNOWN"] | @tsv' <<< "$info")
-              [ "$status" = "MERGED" ] && echo "Change $change is already merged" || echo "Change $change status: $status"
-              [ -z "$commit" ] && { echo "::error::Change $change not found in $repo"; exit 1; }
-
-              git -c http.extraHeader="$git_auth" fetch "https://codereview.qt-project.org/a/qt/$repo" "$commit" || exit 1
+              echo "Change $change status: $status"
+              [ -n "$commit" ] || { echo "::error::Change $change not found in $repo"; exit 1; }
+              git -c http.extraHeader="Authorization: Basic $basic" fetch "$host/a/qt/$repo" "$commit"
               git cherry-pick --no-commit FETCH_HEAD || { echo "::error::Cherry-pick failed for $change"; git cherry-pick --abort; exit 1; }
             done
           }
-          [ -n "${QT_BASE_CHERRY_PICK}" ] && apply_changes qtbase ${QT_BASE_CHERRY_PICK}
-          [ -n "${QT_DECLARATIVE_CHERRY_PICK}" ] && apply_changes qtdeclarative ${QT_DECLARATIVE_CHERRY_PICK}
+
+          [ -z "$QT_BASE_CHERRY_PICK" ] || apply_changes qtbase $QT_BASE_CHERRY_PICK
+          [ -z "$QT_DECLARATIVE_CHERRY_PICK" ] || apply_changes qtdeclarative $QT_DECLARATIVE_CHERRY_PICK
     
       - name: Experimental library improvement
         shell: bash
@@ -226,45 +209,28 @@ jobs:
           GERRIT_USERNAME: ${{ secrets.GERRIT_USERNAME }}
           GERRIT_KEY: ${{ secrets.GERRIT_KEY }}
         run: |
-          GERRIT_USERNAME=$(printf %s "$GERRIT_USERNAME" | tr -d '[:space:]')
-          GERRIT_KEY=$(printf %s "$GERRIT_KEY" | tr -d '[:space:]')
-          echo "user length: ${#GERRIT_USERNAME}, key length: ${#GERRIT_KEY}"
-
-          code=$(curl -s -o /tmp/self.json -w '%{http_code}' \
-            -u "$GERRIT_USERNAME:$GERRIT_KEY" \
-            "https://codereview.qt-project.org/a/accounts/self")
-          echo "auth check: HTTP $code"
-          head -c 300 /tmp/self.json; echo
-          [ "$code" = "200" ] || { echo "::error::Gerrit auth failed (HTTP $code)"; exit 1; }
-
-          basic=$(printf '%s:%s' "$GERRIT_USERNAME" "$GERRIT_KEY" | base64 | tr -d '\n')
+          host=https://codereview.qt-project.org
+          user=$(printf %s "$GERRIT_USERNAME" | tr -d '[:space:]')
+          key=$(printf %s "$GERRIT_KEY" | tr -d '[:space:]')
+          basic=$(printf '%s:%s' "$user" "$key" | base64 | tr -d '\n')
           echo "::add-mask::$basic"
-          git_auth="Authorization: Basic $basic"
 
           apply_changes() {
-            local repo=$1
-            shift
-            local workspace=$(echo "${{ github.workspace }}" | sed 's/\\/\//g')
+            local repo=$1; shift
+            cd "${GITHUB_WORKSPACE//\\//}/$repo"
             for change in "$@"; do
-              cd "$workspace/$repo"
-
-              resp=$(curl -s -w '\n%{http_code}' -u "$GERRIT_USERNAME:$GERRIT_KEY" \
-                "https://codereview.qt-project.org/a/changes/qt%2F${repo}~${change}?o=CURRENT_REVISION")
-              http=${resp##*$'\n'}
-              body=${resp%$'\n'*}
-              [ "$http" = "200" ] || { echo "::error::Change $change in $repo: HTTP $http: $body"; exit 1; }
-              info=$(printf '%s' "$body" | tail -n +2)
-
+              info=$(curl -sS --fail-with-body -u "$user:$key" \
+                "$host/a/changes/qt%2F${repo}~${change}?o=CURRENT_REVISION" | tail -n +2)
               read -r commit status < <(jq -r '[.current_revision // "", .status // "UNKNOWN"] | @tsv' <<< "$info")
-              [ "$status" = "MERGED" ] && echo "Change $change is already merged" || echo "Change $change status: $status"
-              [ -z "$commit" ] && { echo "::error::Change $change not found in $repo"; exit 1; }
-
-              git -c http.extraHeader="$git_auth" fetch "https://codereview.qt-project.org/a/qt/$repo" "$commit" || exit 1
+              echo "Change $change status: $status"
+              [ -n "$commit" ] || { echo "::error::Change $change not found in $repo"; exit 1; }
+              git -c http.extraHeader="Authorization: Basic $basic" fetch "$host/a/qt/$repo" "$commit"
               git cherry-pick --no-commit FETCH_HEAD || { echo "::error::Cherry-pick failed for $change"; git cherry-pick --abort; exit 1; }
             done
           }
-          [ -n "${QT_BASE_CHERRY_PICK}" ] && apply_changes qtbase ${QT_BASE_CHERRY_PICK}
-          [ -n "${QT_DECLARATIVE_CHERRY_PICK}" ] && apply_changes qtdeclarative ${QT_DECLARATIVE_CHERRY_PICK}
+
+          [ -z "$QT_BASE_CHERRY_PICK" ] || apply_changes qtbase $QT_BASE_CHERRY_PICK
+          [ -z "$QT_DECLARATIVE_CHERRY_PICK" ] || apply_changes qtdeclarative $QT_DECLARATIVE_CHERRY_PICK
           
       - name: Download prebuilt Qt Host
         run: |
@@ -385,45 +351,28 @@ jobs:
           GERRIT_USERNAME: ${{ secrets.GERRIT_USERNAME }}
           GERRIT_KEY: ${{ secrets.GERRIT_KEY }}
         run: |
-          GERRIT_USERNAME=$(printf %s "$GERRIT_USERNAME" | tr -d '[:space:]')
-          GERRIT_KEY=$(printf %s "$GERRIT_KEY" | tr -d '[:space:]')
-          echo "user length: ${#GERRIT_USERNAME}, key length: ${#GERRIT_KEY}"
-
-          code=$(curl -s -o /tmp/self.json -w '%{http_code}' \
-            -u "$GERRIT_USERNAME:$GERRIT_KEY" \
-            "https://codereview.qt-project.org/a/accounts/self")
-          echo "auth check: HTTP $code"
-          head -c 300 /tmp/self.json; echo
-          [ "$code" = "200" ] || { echo "::error::Gerrit auth failed (HTTP $code)"; exit 1; }
-
-          basic=$(printf '%s:%s' "$GERRIT_USERNAME" "$GERRIT_KEY" | base64 | tr -d '\n')
+          host=https://codereview.qt-project.org
+          user=$(printf %s "$GERRIT_USERNAME" | tr -d '[:space:]')
+          key=$(printf %s "$GERRIT_KEY" | tr -d '[:space:]')
+          basic=$(printf '%s:%s' "$user" "$key" | base64 | tr -d '\n')
           echo "::add-mask::$basic"
-          git_auth="Authorization: Basic $basic"
 
           apply_changes() {
-            local repo=$1
-            shift
-            local workspace=$(echo "${{ github.workspace }}" | sed 's/\\/\//g')
+            local repo=$1; shift
+            cd "${GITHUB_WORKSPACE//\\//}/$repo"
             for change in "$@"; do
-              cd "$workspace/$repo"
-
-              resp=$(curl -s -w '\n%{http_code}' -u "$GERRIT_USERNAME:$GERRIT_KEY" \
-                "https://codereview.qt-project.org/a/changes/qt%2F${repo}~${change}?o=CURRENT_REVISION")
-              http=${resp##*$'\n'}
-              body=${resp%$'\n'*}
-              [ "$http" = "200" ] || { echo "::error::Change $change in $repo: HTTP $http: $body"; exit 1; }
-              info=$(printf '%s' "$body" | tail -n +2)
-
+              info=$(curl -sS --fail-with-body -u "$user:$key" \
+                "$host/a/changes/qt%2F${repo}~${change}?o=CURRENT_REVISION" | tail -n +2)
               read -r commit status < <(jq -r '[.current_revision // "", .status // "UNKNOWN"] | @tsv' <<< "$info")
-              [ "$status" = "MERGED" ] && echo "Change $change is already merged" || echo "Change $change status: $status"
-              [ -z "$commit" ] && { echo "::error::Change $change not found in $repo"; exit 1; }
-
-              git -c http.extraHeader="$git_auth" fetch "https://codereview.qt-project.org/a/qt/$repo" "$commit" || exit 1
+              echo "Change $change status: $status"
+              [ -n "$commit" ] || { echo "::error::Change $change not found in $repo"; exit 1; }
+              git -c http.extraHeader="Authorization: Basic $basic" fetch "$host/a/qt/$repo" "$commit"
               git cherry-pick --no-commit FETCH_HEAD || { echo "::error::Cherry-pick failed for $change"; git cherry-pick --abort; exit 1; }
             done
           }
-          [ -n "${QT_BASE_CHERRY_PICK}" ] && apply_changes qtbase ${QT_BASE_CHERRY_PICK}
-          [ -n "${QT_DECLARATIVE_CHERRY_PICK}" ] && apply_changes qtdeclarative ${QT_DECLARATIVE_CHERRY_PICK}
+
+          [ -z "$QT_BASE_CHERRY_PICK" ] || apply_changes qtbase $QT_BASE_CHERRY_PICK
+          [ -z "$QT_DECLARATIVE_CHERRY_PICK" ] || apply_changes qtdeclarative $QT_DECLARATIVE_CHERRY_PICK
           
       - name: Experimental library improvement
         shell: bash
@@ -496,45 +445,28 @@ jobs:
           GERRIT_USERNAME: ${{ secrets.GERRIT_USERNAME }}
           GERRIT_KEY: ${{ secrets.GERRIT_KEY }}
         run: |
-          GERRIT_USERNAME=$(printf %s "$GERRIT_USERNAME" | tr -d '[:space:]')
-          GERRIT_KEY=$(printf %s "$GERRIT_KEY" | tr -d '[:space:]')
-          echo "user length: ${#GERRIT_USERNAME}, key length: ${#GERRIT_KEY}"
-
-          code=$(curl -s -o /tmp/self.json -w '%{http_code}' \
-            -u "$GERRIT_USERNAME:$GERRIT_KEY" \
-            "https://codereview.qt-project.org/a/accounts/self")
-          echo "auth check: HTTP $code"
-          head -c 300 /tmp/self.json; echo
-          [ "$code" = "200" ] || { echo "::error::Gerrit auth failed (HTTP $code)"; exit 1; }
-
-          basic=$(printf '%s:%s' "$GERRIT_USERNAME" "$GERRIT_KEY" | base64 | tr -d '\n')
+          host=https://codereview.qt-project.org
+          user=$(printf %s "$GERRIT_USERNAME" | tr -d '[:space:]')
+          key=$(printf %s "$GERRIT_KEY" | tr -d '[:space:]')
+          basic=$(printf '%s:%s' "$user" "$key" | base64 | tr -d '\n')
           echo "::add-mask::$basic"
-          git_auth="Authorization: Basic $basic"
 
           apply_changes() {
-            local repo=$1
-            shift
-            local workspace=$(echo "${{ github.workspace }}" | sed 's/\\/\//g')
+            local repo=$1; shift
+            cd "${GITHUB_WORKSPACE//\\//}/$repo"
             for change in "$@"; do
-              cd "$workspace/$repo"
-
-              resp=$(curl -s -w '\n%{http_code}' -u "$GERRIT_USERNAME:$GERRIT_KEY" \
-                "https://codereview.qt-project.org/a/changes/qt%2F${repo}~${change}?o=CURRENT_REVISION")
-              http=${resp##*$'\n'}
-              body=${resp%$'\n'*}
-              [ "$http" = "200" ] || { echo "::error::Change $change in $repo: HTTP $http: $body"; exit 1; }
-              info=$(printf '%s' "$body" | tail -n +2)
-
+              info=$(curl -sS --fail-with-body -u "$user:$key" \
+                "$host/a/changes/qt%2F${repo}~${change}?o=CURRENT_REVISION" | tail -n +2)
               read -r commit status < <(jq -r '[.current_revision // "", .status // "UNKNOWN"] | @tsv' <<< "$info")
-              [ "$status" = "MERGED" ] && echo "Change $change is already merged" || echo "Change $change status: $status"
-              [ -z "$commit" ] && { echo "::error::Change $change not found in $repo"; exit 1; }
-
-              git -c http.extraHeader="$git_auth" fetch "https://codereview.qt-project.org/a/qt/$repo" "$commit" || exit 1
+              echo "Change $change status: $status"
+              [ -n "$commit" ] || { echo "::error::Change $change not found in $repo"; exit 1; }
+              git -c http.extraHeader="Authorization: Basic $basic" fetch "$host/a/qt/$repo" "$commit"
               git cherry-pick --no-commit FETCH_HEAD || { echo "::error::Cherry-pick failed for $change"; git cherry-pick --abort; exit 1; }
             done
           }
-          [ -n "${QT_BASE_CHERRY_PICK}" ] && apply_changes qtbase ${QT_BASE_CHERRY_PICK}
-          [ -n "${QT_DECLARATIVE_CHERRY_PICK}" ] && apply_changes qtdeclarative ${QT_DECLARATIVE_CHERRY_PICK}
+
+          [ -z "$QT_BASE_CHERRY_PICK" ] || apply_changes qtbase $QT_BASE_CHERRY_PICK
+          [ -z "$QT_DECLARATIVE_CHERRY_PICK" ] || apply_changes qtdeclarative $QT_DECLARATIVE_CHERRY_PICK
           
       - name: Experimental library improvement
         shell: bash
