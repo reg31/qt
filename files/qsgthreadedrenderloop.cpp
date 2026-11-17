@@ -209,8 +209,6 @@ public:
         , rhi(nullptr)
         , ownRhi(true)
         , sgrc(static_cast<QSGDefaultRenderContext *>(renderContext))
-        , offscreenSurface(nullptr)
-        , animatorDriver(nullptr)
         , pendingUpdate(0)
         , sleeping(false)
         , active(false)
@@ -220,12 +218,6 @@ public:
 #if defined(Q_OS_QNX) || defined(Q_OS_INTEGRITY)
         setStackSize(1024 * 1024);
 #endif
-    }
-
-    ~QSGRenderThread()
-    {
-        delete sgrc;
-        delete offscreenSurface;
     }
 
     void invalidateGraphics(QQuickWindow *window, bool inDestructor, bool needsFallbackSurface);
@@ -268,10 +260,11 @@ public:
     QSGThreadedRenderLoop *wm;
     QRhi *rhi;
     bool ownRhi;
-    QSGDefaultRenderContext *sgrc;
-    QOffscreenSurface *offscreenSurface;
+    // Declared before sgrc so it is destroyed after it, as the old destructor did.
+    std::unique_ptr<QOffscreenSurface> offscreenSurface;
+    std::unique_ptr<QSGDefaultRenderContext> sgrc;
 
-    QAnimationDriver *animatorDriver;
+    std::unique_ptr<QAnimationDriver> animatorDriver;
 
     uint pendingUpdate;
     bool sleeping;
@@ -307,7 +300,6 @@ public:
 
 namespace {
 template<class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
-template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
 
 constexpr qint64 NsecsPerMillisecond = 1000000;
 constexpr auto ExposureRetryTimerName = "_q_sg_exposureRetry";
@@ -556,10 +548,10 @@ void QSGRenderThread::sync()
     auto *d = QQuickWindowPrivate::get(window);
     const bool canSync = rhi && !windowSize.isEmpty() && (!d->rhi || d->swapchain);
 
-    if (canSync) [[likely]] {
-        if (!rhi->isRecordingFrame()) [[unlikely]]
+    if (canSync) {
+        if (!rhi->isRecordingFrame())
             rhi->makeThreadLocalNativeContextCurrent();
-        if (d->renderer) [[likely]]
+        if (d->renderer)
             d->renderer->clearChangedFlag();
         insideSync = true;
         d->syncSceneGraph();
@@ -660,11 +652,11 @@ void QSGRenderThread::syncAndRender()
         return false;
     };
 
-    if (hasValidSwapChain && !rhi->isRecordingFrame()) [[likely]] {
+    if (hasValidSwapChain && !rhi->isRecordingFrame()) {
         rhi->makeThreadLocalNativeContextCurrent();
     }
 
-    if (animatorRunning) [[unlikely]] {
+    if (animatorRunning) {
         cd->animationController->lock();
         animatorDriver->advance();
         cd->animationController->unlock();
@@ -681,17 +673,17 @@ void QSGRenderThread::syncAndRender()
 
     bool gpuStarted = false;
     bool emptySurface = windowSize.isEmpty();
-    if (hasValidSwapChain) [[likely]] {
+    if (hasValidSwapChain) {
         cd->swapchain->setProxyData(scProxyData);
         const QSize effectiveOutputSize = cd->swapchain->surfacePixelSize();
         emptySurface = effectiveOutputSize.isEmpty();
 
-        if (!emptySurface) [[likely]] {
+        if (!emptySurface) {
             const QSize previousOutputSize = cd->swapchain->currentPixelSize();
-            if (previousOutputSize != effectiveOutputSize || cd->swapchainJustBecameRenderable) [[unlikely]] {
+            if (previousOutputSize != effectiveOutputSize || cd->swapchainJustBecameRenderable) {
                 cd->hasActiveSwapchain = cd->swapchain->createOrResize();
 
-                if (!cd->hasActiveSwapchain) [[unlikely]] {
+                if (!cd->hasActiveSwapchain) {
                     if (rhi->isDeviceLost()) {
                         handleDeviceLoss();
                     } else if (previousOutputSize.isEmpty() && !swRastFallbackDueToSwapchainFailure &&
@@ -761,7 +753,7 @@ void QSGRenderThread::syncAndRender()
     }
 
     Q_TRACE(QSG_sync_entry);
-    if (syncRequested && !syncDoneBeforeEnsure) [[likely]]
+    if (syncRequested && !syncDoneBeforeEnsure)
         sync();
     if (profileFrame)
         afterSyncTime = frameTimer.nsecsElapsed();
@@ -772,7 +764,7 @@ void QSGRenderThread::syncAndRender()
     Q_TRACE(QSG_render_entry);
 
     double lastCompletedGpuTime = 0;
-    if (cd->renderer) [[likely]] {
+    if (cd->renderer) {
         cd->renderSceneGraph();
         if (profileFrame)
             afterRenderTime = frameTimer.nsecsElapsed();
@@ -786,7 +778,7 @@ void QSGRenderThread::syncAndRender()
                 ? rhi->endFrame(cd->swapchain, QRhi::SkipPresent)
                 : rhi->endFrame(cd->swapchain);
 
-        if (endFrameResult != QRhi::FrameOpSuccess) [[unlikely]] {
+        if (endFrameResult != QRhi::FrameOpSuccess) {
             if (handleEndFrameFailure(endFrameResult))
                 requestRenderRetry(false);
         } else {
@@ -880,7 +872,7 @@ void QSGRenderThread::processEventsAndWaitForMore()
 
 void QSGRenderThread::ensureRhiDevice()
 {
-    if (rhi || rhiDoomed) [[likely]]
+    if (rhi || rhiDoomed)
         return;
 
     const bool profileRhiInit = QSG_LOG_TIME_RENDERLOOP().isDebugEnabled();
@@ -889,7 +881,7 @@ void QSGRenderThread::ensureRhiDevice()
         rhiInitTimer.start();
 
     auto *rhiSupport = QSGRhiSupport::instance();
-    auto rhiResult = rhiSupport->createRhi(window, offscreenSurface, swRastFallbackDueToSwapchainFailure);
+    auto rhiResult = rhiSupport->createRhi(window, offscreenSurface.get(), swRastFallbackDueToSwapchainFailure);
     qint64 createRhiTime = 0;
     if (profileRhiInit)
         createRhiTime = rhiInitTimer.nsecsElapsed();
@@ -950,7 +942,7 @@ void QSGRenderThread::ensureRhi()
 {
     auto *cd = QQuickWindowPrivate::get(window);
 
-    if (rhi && cd->swapchain && sgrc->rhi()) [[likely]]
+    if (rhi && cd->swapchain && sgrc->rhi())
         return;
 
     if (!m_lastPixelSize.isValid())
@@ -964,7 +956,7 @@ void QSGRenderThread::ensureRhi()
     if (!rhi)
         return;
 
-    if (!sgrc->rhi() && !pixelSize.isEmpty()) [[unlikely]] {
+    if (!sgrc->rhi() && !pixelSize.isEmpty()) {
         rhi->makeThreadLocalNativeContextCurrent();
         QSGDefaultRenderContext::InitParams params;
         params.rhi = rhi;
@@ -974,7 +966,7 @@ void QSGRenderThread::ensureRhi()
         sgrc->initialize(&params);
     }
 
-    if (!cd->swapchain && surfaceExposed.load(std::memory_order_acquire)) [[unlikely]] {
+    if (!cd->swapchain && surfaceExposed.load(std::memory_order_acquire)) {
         cd->rhi = rhi;
         const auto requestedFormat = window->requestedFormat();
         QRhiSwapChain::Flags flags = QRhiSwapChain::UsedAsTransferSource;
@@ -983,7 +975,7 @@ void QSGRenderThread::ensureRhi()
         if (requestedFormat.swapInterval() == 0) flags |= QRhiSwapChain::NoVSync;
 
         cd->swapchain = rhi->newSwapChain();
-        if (depthBufferEnabled()) [[likely]] {
+        if (depthBufferEnabled()) {
             cd->depthStencilForSwapchain = rhi->newRenderBuffer(
                     QRhiRenderBuffer::DepthStencil, {}, rhiSampleCount,
                     QRhiRenderBuffer::UsedWithSwapChainOnly | QSGRhiSupport::depthStencilBufferFlags());
@@ -998,7 +990,7 @@ void QSGRenderThread::ensureRhi()
         cd->rpDescForSwapchain = cd->swapchain->newCompatibleRenderPassDescriptor();
         cd->swapchain->setRenderPassDescriptor(cd->rpDescForSwapchain);
 
-        if (auto *renderer = cd->renderer) [[likely]] {
+        if (auto *renderer = cd->renderer) {
             const QRect viewport(QPoint(0, 0), pixelSize);
             renderer->setDeviceRect(viewport);
             renderer->setViewportRect(viewport);
@@ -1010,16 +1002,16 @@ void QSGRenderThread::ensureRhi()
 
 void QSGRenderThread::run()
 {
-    animatorDriver = sgrc->sceneGraphContext()->createAnimationDriver(nullptr);
+    animatorDriver.reset(sgrc->sceneGraphContext()->createAnimationDriver(nullptr));
     animatorDriver->install();
-    if (QQmlDebugConnector::service<QQmlProfilerService>()) [[unlikely]]
+    if (QQmlDebugConnector::service<QQmlProfilerService>())
         QQuickProfiler::registerAnimationCallback();
 
     if (window) {
         ensureRhiDevice();
     }
 
-    while (active.load(std::memory_order_relaxed)) [[likely]] {
+    while (active.load(std::memory_order_relaxed)) {
 #ifdef Q_OS_DARWIN
         QMacAutoReleasePool frameReleasePool;
 #endif
@@ -1029,10 +1021,10 @@ void QSGRenderThread::run()
         if (!active.load(std::memory_order_relaxed))
             break;
 
-        if (window) [[likely]] {
+        if (window) {
             syncDoneBeforeEnsure = false;
             const auto *windowData = QQuickWindowPrivate::get(window);
-            if ((pendingUpdate & SyncRequest) && rhi && !windowData->rhi && !windowData->swapchain) [[unlikely]] {
+            if ((pendingUpdate & SyncRequest) && rhi && !windowData->rhi && !windowData->swapchain) {
                 syncDoneBeforeEnsure = true;
                 sync();
             }
@@ -1041,7 +1033,7 @@ void QSGRenderThread::run()
                 syncAndRender();
         }
 
-        if (active.load(std::memory_order_relaxed) && (pendingUpdate == 0 || !window)) [[unlikely]] {
+        if (active.load(std::memory_order_relaxed) && (pendingUpdate == 0 || !window)) {
             acknowledgeSync();
             sleeping = true;
             processEventsAndWaitForMore();
@@ -1049,11 +1041,10 @@ void QSGRenderThread::run()
         }
     }
 
-    if (rhi) [[likely]]
+    if (rhi)
         rhi->makeThreadLocalNativeContextCurrent();
 
-    delete animatorDriver;
-    animatorDriver = nullptr;
+    animatorDriver.reset();
 
     if (auto target = wm->thread(); target != QThread::currentThread()) {
         sgrc->moveToThread(target);
@@ -1279,17 +1270,17 @@ void QSGThreadedRenderLoop::exposureChanged(QQuickWindow *window)
                 w->psTimeSampleCount = 0;
                 w->timeBetweenPolishAndSyncs.start();
                 auto *rhiSupport = QSGRhiSupport::instance();
-                w->thread->offscreenSurface = rhiSupport->maybeCreateOffscreenSurface(candidate);
+                w->thread->offscreenSurface.reset(rhiSupport->maybeCreateOffscreenSurface(candidate));
                 w->thread->window = candidate;
                 w->thread->windowSize = candidate->size();
                 w->thread->dpr = float(candidate->effectiveDevicePixelRatio());
                 w->thread->scProxyData = QRhi::updateSwapChainProxyData(rhiSupport->rhiBackend(), candidate);
                 candidate->installEventFilter(this);
                 if (auto *controller = wd->animationController.get();
-                    controller->thread() != w->thread) [[unlikely]]
+                    controller->thread() != w->thread)
                     controller->moveToThread(w->thread);
                 w->thread->active.store(true, std::memory_order_relaxed);
-                if (w->thread->thread() == QThread::currentThread()) [[unlikely]] {
+                if (w->thread->thread() == QThread::currentThread()) {
                     w->thread->sgrc->moveToThread(w->thread);
                     w->thread->moveToThread(w->thread);
                 }
@@ -1311,12 +1302,12 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
 {
     auto it = std::ranges::find(m_windows, window, &Window::window);
     Window *w = nullptr;
-    if (it != m_windows.end()) [[likely]] {
+    if (it != m_windows.end()) {
         w = &*it;
         w->thread->prewarmed = false;
         w->thread->surfaceAboutToBeDestroyed.store(false, std::memory_order_release);
         w->thread->surfaceExposed.store(true, std::memory_order_release);
-        if (!QQuickWindowPrivate::get(window)->updatesEnabled) [[unlikely]] return;
+        if (!QQuickWindowPrivate::get(window)->updatesEnabled) return;
     } else {
         auto *wd = QQuickWindowPrivate::get(window);
         auto *renderContext = wd->context;
@@ -1336,23 +1327,23 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
     w->thread->prewarmed = false;
     w->thread->surfaceAboutToBeDestroyed.store(false, std::memory_order_release);
     w->thread->surfaceExposed.store(true, std::memory_order_release);
-    if (!w->window->handle()) [[unlikely]] window->create();
+    if (!w->window->handle()) window->create();
     if (!w->thread->isRunning()) {
         w->thread->window = window;
         if (!w->thread->rhi) {
             auto *rhiSupport = QSGRhiSupport::instance();
-            if (!w->thread->offscreenSurface) [[unlikely]]
-                w->thread->offscreenSurface = rhiSupport->maybeCreateOffscreenSurface(window);
+            if (!w->thread->offscreenSurface)
+                w->thread->offscreenSurface.reset(rhiSupport->maybeCreateOffscreenSurface(window));
             w->thread->windowSize = window->size();
             w->thread->dpr = float(window->effectiveDevicePixelRatio());
             w->thread->scProxyData = QRhi::updateSwapChainProxyData(rhiSupport->rhiBackend(), window);
             window->installEventFilter(this);
         }
         if (auto *controller = QQuickWindowPrivate::get(w->window)->animationController.get();
-            controller->thread() != w->thread) [[unlikely]]
+            controller->thread() != w->thread)
             controller->moveToThread(w->thread);
         w->thread->active.store(true, std::memory_order_relaxed);
-        if (w->thread->thread() == QThread::currentThread()) [[unlikely]] {
+        if (w->thread->thread() == QThread::currentThread()) {
             w->thread->sgrc->moveToThread(w->thread);
             w->thread->moveToThread(w->thread);
         }
@@ -1442,7 +1433,7 @@ void QSGThreadedRenderLoop::maybeUpdate(QQuickWindow *window)
         maybeUpdate(w);
         return;
     }
-    if (!window->isExposed()) [[unlikely]] {
+    if (!window->isExposed()) {
         if (!window->handle())
             window->create();
         exposureChanged(window);
@@ -1596,7 +1587,7 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
             w->psTimeAccumulator += elapsedSinceLastMs;
             ++w->psTimeSampleCount;
             const int sampleLength = w->badVSync ? PS_RECOVERY_SAMPLE_LENGTH : PS_TIME_SAMPLE_LENGTH;
-            if (w->psTimeSampleCount > sampleLength) [[unlikely]] {
+            if (w->psTimeSampleCount > sampleLength) {
                 const float t = w->psTimeAccumulator / w->psTimeSampleCount;
                 if (!w->badVSync) {
                     if (t < vsyncRate * PS_DETECT_THRESHOLD) {
