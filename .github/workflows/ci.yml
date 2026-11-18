@@ -86,6 +86,13 @@ jobs:
         with:
           platform: x64
           #version: 15.2.0
+
+      - name: Configure Vulkan SDK
+        uses: humbletim/setup-vulkan-sdk@v1
+        with:
+          vulkan-query-version: latest
+          vulkan-components: Vulkan-Headers, Vulkan-Loader
+          vulkan-use-cache: true
    
       - name: Initialize Qt submodules
         run: init-repository.bat ${{ env.INIT_FLAGS }}
@@ -340,6 +347,13 @@ jobs:
       - name: Setup lld
         run: brew install lld
 
+      - name: Configure Vulkan SDK
+        uses: humbletim/setup-vulkan-sdk@v1
+        with:
+          vulkan-query-version: latest
+          vulkan-components: Vulkan-Headers, Vulkan-Loader
+          vulkan-use-cache: true
+
       - name: Initialize Qt submodules
         run: perl init-repository ${{ env.INIT_FLAGS }}
 
@@ -433,6 +447,13 @@ jobs:
 
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.11
+
+      - name: Configure Vulkan SDK
+        uses: humbletim/setup-vulkan-sdk@v1
+        with:
+          vulkan-query-version: latest
+          vulkan-components: Vulkan-Headers, Vulkan-Loader
+          vulkan-use-cache: true
         
       - name: Initialize Qt submodules
         run: perl init-repository ${{ env.INIT_FLAGS }}
