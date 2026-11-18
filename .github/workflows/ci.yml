@@ -347,13 +347,6 @@ jobs:
       - name: Setup lld
         run: brew install lld
 
-      - name: Configure Vulkan SDK
-        uses: humbletim/setup-vulkan-sdk@v1.2.1
-        with:
-          vulkan-query-version: latest
-          vulkan-components: Vulkan-Headers, Vulkan-Loader
-          vulkan-use-cache: true
-
       - name: Initialize Qt submodules
         run: perl init-repository ${{ env.INIT_FLAGS }}
 
@@ -405,8 +398,8 @@ jobs:
           
           mkdir -p build && cd build
           
-          ../configure ${{ env.SHARED_FLAGS }} -securetransport -feature-appstore-compliant -prefix $OUTPUT_DIR -framework \
-           -feature-vulkan -unity-build-batch-size ${{ env.UNITY_BUILD_BATCH_SIZE_MACOS }} \
+          ../configure ${{ env.SHARED_FLAGS }} -securetransport -feature-appstore-compliant -prefix $OUTPUT_DIR \
+          -framework -unity-build-batch-size ${{ env.UNITY_BUILD_BATCH_SIZE_MACOS }} \
           -- -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DCMAKE_SHARED_LINKER_FLAGS="${{ env.SHARED_LINKER_FLAGS }} -Wl,-dead_strip" \
             -DCMAKE_CXX_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} $EXTRA_FLAGS" \
             -DCMAKE_C_FLAGS_RELEASE="${{ env.SHARED_COMPILER_FLAGS }} $EXTRA_FLAGS"
