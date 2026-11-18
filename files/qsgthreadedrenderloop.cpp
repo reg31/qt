@@ -99,19 +99,17 @@ public:
 class WMSyncEvent : public WMWindowEvent
 {
 public:
-    WMSyncEvent(QQuickWindow *c, bool inExpose, bool force, QRhiSwapChainProxyData proxyData, uint64_t serial)
+    WMSyncEvent(QQuickWindow *c, bool inExpose, QRhiSwapChainProxyData proxyData, uint64_t serial)
         : WMWindowEvent(c)
         , size(c->size())
         , dpr(float(c->effectiveDevicePixelRatio()))
         , syncInExpose(inExpose)
-        , forceRenderPass(force)
         , scProxyData(std::move(proxyData))
         , serial(serial)
     {}
     QSize size;
     float dpr;
     bool syncInExpose;
-    bool forceRenderPass;
     QRhiSwapChainProxyData scProxyData;
     uint64_t serial;
 };
@@ -253,6 +251,7 @@ public:
     };
 
     void ensureRhiDevice();
+    void publishRhiReady();
     void ensureRhi();
     void teardownGraphics();
     void handleDeviceLoss();
@@ -280,8 +279,8 @@ public:
     bool rhiDoomed = false;
     bool swRastFallbackDueToSwapchainFailure = false;
     bool prewarmed = false;
-    std::atomic<bool> rhiReady{false};
-    std::atomic<bool> deferredExposeRequest{false};
+    enum RhiState : unsigned { RhiReady = 1, ExposePending = 2 };
+    std::atomic<unsigned> rhiState{0};
     std::atomic<bool> updateRequestPending{false};
     std::atomic<bool> surfaceExposed{false};
     std::atomic<bool> surfaceAboutToBeDestroyed{false};
@@ -347,7 +346,6 @@ void QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
             QQuickWindowPrivate::get(window)->fireAboutToStop();
             qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- window removed");
             window = nullptr;
-            deferredExposeRequest.store(false, std::memory_order_release);
         }
     },
     [&](WMExposedEvent &e) {
@@ -382,10 +380,6 @@ void QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
         if (e.syncInExpose) {
             qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- triggered from expose");
             pendingUpdate |= ExposeRequest;
-        }
-        if (e.forceRenderPass) {
-            qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- repaint regardless");
-            pendingUpdate |= RepaintRequest;
         }
     },
     [&](WMTryReleaseEvent &e) {
@@ -534,8 +528,7 @@ void QSGRenderThread::invalidateGraphics(QQuickWindow *window, bool inDestructor
             QSGRhiSupport::instance()->destroyRhi(rhi, dd->graphicsConfig);
         }
         rhi = nullptr;
-        rhiReady.store(false, std::memory_order_release);
-        deferredExposeRequest.store(false, std::memory_order_release);
+        rhiState.store(0, std::memory_order_release);
         dd->rhi = nullptr;
         qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "- QRhi destroyed");
     } else {
@@ -574,8 +567,7 @@ void QSGRenderThread::teardownGraphics()
     }
     rhi = nullptr;
     wd->rhi = nullptr;
-    rhiReady.store(false, std::memory_order_release);
-    deferredExposeRequest.store(false, std::memory_order_release);
+    rhiState.store(0, std::memory_order_release);
 }
 
 void QSGRenderThread::handleDeviceLoss()
@@ -622,20 +614,15 @@ void QSGRenderThread::syncAndRender()
         return surfaceExposed.load(std::memory_order_acquire)
                 && !surfaceAboutToBeDestroyed.load(std::memory_order_acquire);
     };
-    const auto requestRenderRetry = [this](bool forceRenderPass, bool emptySurface = false) {
-        if (forceRenderPass) {
-            QMetaObject::invokeMethod(wm, [wm = this->wm, win = QPointer(window), emptySurface]() {
-                if (win) {
-                    if (QSGThreadedRenderLoop::Window *w = wm->windowFor(win)) {
-                        w->forceRenderPass = true;
-                        if (emptySurface)
-                            scheduleExposureRetry(wm, win);
-                    }
-                }
+    const auto requestRenderRetry = [this](bool emptySurface = false) {
+        if (emptySurface) {
+            QMetaObject::invokeMethod(wm, [wm = this->wm, win = QPointer(window)] {
+                if (win && wm->windowFor(win))
+                    scheduleExposureRetry(wm, win);
             }, Qt::QueuedConnection);
-        }
-        if (!emptySurface)
+        } else {
             QMetaObject::invokeMethod(window, &QQuickWindow::update, Qt::QueuedConnection);
+        }
     };
     const auto handleEndFrameFailure = [this, cd](QRhi::FrameOpResult result) {
         if (result == QRhi::FrameOpDeviceLost) {
@@ -729,7 +716,7 @@ void QSGRenderThread::syncAndRender()
                     if (exposeRequested
                             || beginFrameResult == QRhi::FrameOpDeviceLost
                             || beginFrameResult == QRhi::FrameOpSwapChainOutOfDate)
-                        requestRenderRetry(true);
+                        requestRenderRetry();
                     if (syncRequested && !syncDoneBeforeEnsure)
                         acknowledgeSync();
                     abortProfile();
@@ -747,7 +734,7 @@ void QSGRenderThread::syncAndRender()
         if (syncRequested && !syncDoneBeforeEnsure)
             acknowledgeSync();
         if (exposeRequested)
-            requestRenderRetry(true, emptySurface);
+            requestRenderRetry(emptySurface);
         abortProfile();
         return;
     }
@@ -780,7 +767,7 @@ void QSGRenderThread::syncAndRender()
 
         if (endFrameResult != QRhi::FrameOpSuccess) {
             if (handleEndFrameFailure(endFrameResult))
-                requestRenderRetry(false);
+                requestRenderRetry();
         } else {
             if (skipPresent)
                 cd->hasRenderableSwapchain = false;
@@ -803,7 +790,7 @@ void QSGRenderThread::syncAndRender()
         Q_TRACE(QSG_swap_entry);
         const QRhi::FrameOpResult endFrameResult = rhi->endFrame(cd->swapchain, QRhi::SkipPresent);
         if (endFrameResult != QRhi::FrameOpSuccess && handleEndFrameFailure(endFrameResult))
-            requestRenderRetry(false);
+            requestRenderRetry();
         if (profileFrame)
             afterEndFrameTime = frameTimer.nsecsElapsed();
     }
@@ -918,10 +905,7 @@ void QSGRenderThread::ensureRhiDevice()
                     nsecsToMillis(totalTime - rhiSetupTime),
                     nsecsToMillis(totalTime));
         }
-        rhiReady.store(true, std::memory_order_release);
-        if (deferredExposeRequest.load(std::memory_order_acquire)
-                && surfaceExposed.load(std::memory_order_acquire))
-            QMetaObject::invokeMethod(window, &QQuickWindow::requestUpdate, Qt::QueuedConnection);
+        publishRhiReady();
     } else {
         if (profileRhiInit) {
             qCDebug(QSG_LOG_TIME_RENDERLOOP,
@@ -929,13 +913,20 @@ void QSGRenderThread::ensureRhiDevice()
                     static_cast<void *>(window),
                     nsecsToMillis(createRhiTime));
         }
-        deferredExposeRequest.store(false, std::memory_order_release);
+        rhiState.fetch_and(~ExposePending, std::memory_order_acq_rel);
         if (!rhiDeviceLost) {
             rhiDoomed = true;
             QCoreApplication::postEvent(window,
                     new QEvent(QEvent::Type(QQuickWindowPrivate::TriggerContextCreationFailure)));
         }
     }
+}
+
+void QSGRenderThread::publishRhiReady()
+{
+    const auto previous = rhiState.fetch_or(RhiReady, std::memory_order_acq_rel);
+    if ((previous & ExposePending) && surfaceExposed.load(std::memory_order_acquire))
+        QMetaObject::invokeMethod(window, &QQuickWindow::requestUpdate, Qt::QueuedConnection);
 }
 
 void QSGRenderThread::ensureRhi()
@@ -1227,7 +1218,8 @@ void QSGThreadedRenderLoop::exposureChanged(QQuickWindow *window)
     Window *tracked = windowFor(safeWindow);
     bool skipThisExpose = false;
     if (safeWindow->isExposed()
-            && (!tracked || !tracked->thread->rhiReady.load(std::memory_order_acquire))) {
+            && (!tracked || !(tracked->thread->rhiState.load(std::memory_order_acquire)
+                              & QSGRenderThread::RhiReady))) {
         QSize surfaceSize;
         if (safeWindow->handle())
             surfaceSize = safeWindow->handle()->geometry().size()
@@ -1264,7 +1256,6 @@ void QSGThreadedRenderLoop::exposureChanged(QQuickWindow *window)
                 w->actualWindowFormat = candidate->format();
                 w->thread = new QSGRenderThread(this, renderContext);
                 w->updateDuringSync = false;
-                w->forceRenderPass = true;
                 w->badVSync = false;
                 w->psTimeAccumulator = 0.0f;
                 w->psTimeSampleCount = 0;
@@ -1318,7 +1309,6 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
         w->actualWindowFormat = window->format();
         w->thread = new QSGRenderThread(this, renderContext);
         w->updateDuringSync = false;
-        w->forceRenderPass = true;
         w->badVSync = false;
         w->psTimeAccumulator = 0.0f;
         w->psTimeSampleCount = 0;
@@ -1348,22 +1338,20 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
             w->thread->moveToThread(w->thread);
         }
         w->thread->postEvent(WMExposedEvent(window));
-        w->thread->deferredExposeRequest.store(true, std::memory_order_release);
+        const auto previous = w->thread->rhiState.fetch_or(QSGRenderThread::ExposePending,
+                                                            std::memory_order_acq_rel);
         w->thread->start();
-        if (w->thread->rhiReady.load(std::memory_order_acquire))
+        if (previous & QSGRenderThread::RhiReady)
             QMetaObject::invokeMethod(window, &QQuickWindow::requestUpdate, Qt::QueuedConnection);
-        startOrStopAnimationTimer();
-        return;
     } else {
-        w->thread->postEvent(WMExposedEvent(w->window));
-        w->thread->deferredExposeRequest.store(true, std::memory_order_release);
-        if (!w->thread->rhiReady.load(std::memory_order_acquire)) {
-            startOrStopAnimationTimer();
-            return;
+        w->thread->postEvent(WMExposedEvent(window));
+        const auto previous = w->thread->rhiState.fetch_or(QSGRenderThread::ExposePending,
+                                                            std::memory_order_acq_rel);
+        if (previous & QSGRenderThread::RhiReady) {
+            w->thread->rhiState.fetch_and(~QSGRenderThread::ExposePending, std::memory_order_acq_rel);
+            polishAndSync(w, true);
         }
     }
-    w->thread->deferredExposeRequest.store(false, std::memory_order_release);
-    polishAndSync(w, true);
     startOrStopAnimationTimer();
 }
 
@@ -1376,6 +1364,7 @@ void QSGThreadedRenderLoop::handleObscurity(Window *w)
     const bool wasPrewarmed = std::exchange(w->thread->prewarmed, false);
     w->thread->surfaceAboutToBeDestroyed.store(true, std::memory_order_release);
     w->thread->surfaceExposed.store(false, std::memory_order_release);
+    w->thread->rhiState.fetch_and(~QSGRenderThread::ExposePending, std::memory_order_acq_rel);
     if (w->thread->isRunning()) {
         if (!wasPrewarmed && !QQuickWindowPrivate::get(w->window)->updatesEnabled) {
             qCDebug(QSG_LOG_RENDERLOOP, "- updatesEnabled is false, abort");
@@ -1415,14 +1404,15 @@ void QSGThreadedRenderLoop::handleUpdateRequest(QQuickWindow *window)
         return;
     if (!w->thread->isRunning() || !w->thread->active.load(std::memory_order_relaxed))
         return;
-    if (w->thread->deferredExposeRequest.load(std::memory_order_acquire)
-            && !w->thread->rhiReady.load(std::memory_order_acquire)) {
+    const auto state = w->thread->rhiState.load(std::memory_order_acquire);
+    const bool inExpose = (state & QSGRenderThread::ExposePending) != 0;
+    if (inExpose && !(state & QSGRenderThread::RhiReady)) {
         qCDebug(QSG_LOG_RENDERLOOP, "- first expose update deferred while RHI warm-up is running");
         return;
     }
 
-    const bool inExpose =
-            w->thread->deferredExposeRequest.exchange(false, std::memory_order_acq_rel);
+    if (inExpose)
+        w->thread->rhiState.fetch_and(~QSGRenderThread::ExposePending, std::memory_order_acq_rel);
     polishAndSync(w, inExpose);
 }
 
@@ -1505,7 +1495,6 @@ void QSGThreadedRenderLoop::update(QQuickWindow *window)
     }
 
     qCDebug(QSG_LOG_RENDERLOOP) << "update on window" << w->window;
-    w->forceRenderPass = true;
     maybeUpdate(w);
 }
 
@@ -1663,8 +1652,7 @@ void QSGThreadedRenderLoop::polishAndSync(Window *w, bool inExpose)
     qCDebug(QSG_LOG_RENDERLOOP, "- lock for sync");
     {
         const uint64_t serial = ++w->thread->lastPostedSyncSerial;
-        w->thread->postEvent(WMSyncEvent(window, inExpose, w->forceRenderPass, std::move(scProxyData), serial));
-        w->forceRenderPass = false;
+        w->thread->postEvent(WMSyncEvent(window, inExpose, std::move(scProxyData), serial));
 
         if (profileFrames)
             waitTime = timer.nsecsElapsed();
