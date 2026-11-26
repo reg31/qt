@@ -425,7 +425,7 @@ void QSGRenderThread::processEvent(QSGRenderThreadEvent &e)
                     QMetaObject::invokeMethod(e.window, &QQuickWindow::update, Qt::QueuedConnection);
                 }
             };
-            if (cd->swapchain
+            if (cd->hasActiveSwapchain && cd->swapchain
                     && !surfaceAboutToBeDestroyed.load(std::memory_order_acquire)
                     && surfaceExposed.load(std::memory_order_acquire)) {
                 rhi->makeThreadLocalNativeContextCurrent();
@@ -667,24 +667,29 @@ void QSGRenderThread::syncAndRender()
 
         if (!emptySurface) {
             const QSize previousOutputSize = cd->swapchain->currentPixelSize();
-            if (previousOutputSize != effectiveOutputSize || cd->swapchainJustBecameRenderable) {
+            if (!cd->hasActiveSwapchain || previousOutputSize != effectiveOutputSize
+                    || cd->swapchainJustBecameRenderable) {
                 cd->hasActiveSwapchain = cd->swapchain->createOrResize();
 
                 if (!cd->hasActiveSwapchain) {
+                    cd->hasRenderableSwapchain = false;
                     if (rhi->isDeviceLost()) {
                         handleDeviceLoss();
+                        requestRenderRetry();
                     } else if (previousOutputSize.isEmpty() && !swRastFallbackDueToSwapchainFailure &&
                               QSGRhiSupport::instance()->attemptReinitWithSwRastUponFail()) {
                         swRastFallbackDueToSwapchainFailure = true;
                         teardownGraphics();
-                    } else {
-                        cd->swapchainJustBecameRenderable = true;
+                        requestRenderRetry();
                     }
-                } else {
-                    cd->swapchainJustBecameRenderable = false;
+                    if (syncRequested && !syncDoneBeforeEnsure)
+                        acknowledgeSync();
+                    abortProfile();
+                    return;
                 }
 
-                cd->hasRenderableSwapchain = cd->hasActiveSwapchain;
+                cd->swapchainJustBecameRenderable = false;
+                cd->hasRenderableSwapchain = true;
             }
             if (profileFrame)
                 afterSwapchainTime = frameTimer.nsecsElapsed();
