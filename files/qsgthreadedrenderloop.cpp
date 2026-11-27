@@ -1020,7 +1020,8 @@ void QSGRenderThread::run()
         if (window) {
             syncDoneBeforeEnsure = false;
             const auto *windowData = QQuickWindowPrivate::get(window);
-            if ((pendingUpdate & SyncRequest) && rhi && !windowData->rhi && !windowData->swapchain) {
+            if ((pendingUpdate & SyncRequest) && rhi && !windowData->rhi && !windowData->swapchain
+                    && sgrc->rhi()) {
                 syncDoneBeforeEnsure = true;
                 sync();
             }
